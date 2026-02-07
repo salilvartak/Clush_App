@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'photo_page.dart';
+import 'main.dart'; // Import for createPremiumRoute
+
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
 
@@ -22,10 +24,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
   final Set<String> foods = {};
   final Set<String> places = {};
 
-  // Calculate total selected chips across all categories
   int get totalSelected => interests.length + foods.length + places.length;
-
-  // Helper to get all selected items as a single list for the display area
   List<String> get allSelected => [...interests, ...foods, ...places];
 
   void toggleChip(String label, Set<String> group) {
@@ -76,7 +75,6 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Top Navigation
             Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -92,7 +90,16 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  LinearProgressIndicator(value: progress, color: kRose, backgroundColor: Colors.white24),
+                  
+                  // HERO WIDGET ADDED HERE
+                  Hero(
+                    tag: 'progress_bar',
+                    child: LinearProgressIndicator(
+                      value: progress, 
+                      color: kRose, 
+                      backgroundColor: Colors.white24
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -109,7 +116,6 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                       style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                     ),
                     
-                    // --- NEW: DYNAMIC SELECTED CHIPS AREA ---
                     if (allSelected.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       Text("Selected ($totalSelected/15)", style: const TextStyle(color: kRose, fontWeight: FontWeight.bold)),
@@ -127,7 +133,6 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                         )).toList(),
                       ),
                     ],
-                    // ----------------------------------------
 
                     const SizedBox(height: 24),
                     const Text("Interests & Hobbies", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -181,11 +186,10 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
                 onPressed: totalSelected > 0 ? () {
+                  // PREMIUM ROUTE USED HERE
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const PhotoPage(currentStep: 4, totalSteps: 6),
-                    ),
+                    createPremiumRoute(const PhotoPage(currentStep: 4, totalSteps: 6)),
                   );
                 } : null,
                 child: const Text("Continue", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

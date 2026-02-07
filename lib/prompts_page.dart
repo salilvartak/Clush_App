@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'main.dart'; // Import just in case you add next step
 
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
@@ -194,7 +195,16 @@ class _PromptsPageState extends State<PromptsPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  LinearProgressIndicator(value: progress, color: kRose, backgroundColor: Colors.white24),
+                  
+                  // HERO WIDGET ADDED HERE
+                  Hero(
+                    tag: 'progress_bar',
+                    child: LinearProgressIndicator(
+                      value: progress, 
+                      color: kRose, 
+                      backgroundColor: Colors.white24
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -253,7 +263,6 @@ class _PromptsPageState extends State<PromptsPage> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          // FIXED: Added .toUpperCase() here instead of in TextStyle
                                           slot['question']!.toUpperCase(),
                                           style: const TextStyle(
                                             fontSize: 12, 
@@ -312,7 +321,7 @@ class _PromptsPageState extends State<PromptsPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
                 onPressed: _isComplete ? () {
-                  // Navigate to Final Step
+                  // Navigate to Final Step (not provided in context)
                 } : null,
                 child: const Text("Continue", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),

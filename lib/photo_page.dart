@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'prompts_page.dart';
 import 'dart:io';
+import 'main.dart'; // Import for createPremiumRoute
 
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
@@ -107,10 +108,15 @@ class _PhotoPageState extends State<PhotoPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  LinearProgressIndicator(
-                    value: progress, 
-                    color: kRose, 
-                    backgroundColor: Colors.white24
+                  
+                  // HERO WIDGET ADDED HERE
+                  Hero(
+                    tag: 'progress_bar',
+                    child: LinearProgressIndicator(
+                      value: progress, 
+                      color: kRose, 
+                      backgroundColor: Colors.white24
+                    ),
                   ),
                 ],
               ),
@@ -127,7 +133,6 @@ class _PhotoPageState extends State<PhotoPage> {
                     const Text("At least 2 photos required (Max 6).", style: TextStyle(color: Colors.black54)),
                     const SizedBox(height: 32),
                     
-                    // The Grid Section
                     Expanded(
                       child: GridView.builder(
                         itemCount: 6,
@@ -181,7 +186,6 @@ class _PhotoPageState extends State<PhotoPage> {
                       ),
                     ),
 
-                    // --- NEW: PRO TIP TAG AT THE BOTTOM OF SECTION ---
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -226,11 +230,10 @@ class _PhotoPageState extends State<PhotoPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
                 onPressed: _hasMinimumPhotos ? () {
+                  // PREMIUM ROUTE USED HERE
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const PromptsPage(currentStep: 5, totalSteps: 6),
-                    ),
+                    createPremiumRoute(const PromptsPage(currentStep: 5, totalSteps: 6)),
                   );
                 } : null,
                 child: const Text("Continue", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart'; // 1. Add this import
 import 'intent_page.dart';
- // Import to access kTan and kRose constants
+import 'main.dart'; 
 
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
@@ -72,7 +73,7 @@ class _BasicsPageState extends State<BasicsPage> {
     return Scaffold(
       backgroundColor: kTan,
       body: SafeArea(
-        child: SingleChildScrollView( // Fixes RenderFlex overflow
+        child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -83,17 +84,27 @@ class _BasicsPageState extends State<BasicsPage> {
                   children: [
                     IconButton(
                       icon: const Icon(Icons.logout),
-                      onPressed: () => FirebaseAuth.instance.signOut(),
+                      onPressed: () async {
+                        // FIX: Sign out of Google Plugin AND Firebase
+                        await GoogleSignIn().signOut();
+                        await FirebaseAuth.instance.signOut();
+                      },
                     ),
                     Text("Step ${widget.currentStep} of ${widget.totalSteps}"),
                   ],
                 ),
                 const SizedBox(height: 16),
-                LinearProgressIndicator(
-                  value: progress,
-                  color: kRose,
-                  backgroundColor: Colors.white,
+                
+                // HERO WIDGET (Preserving previous fix)
+                Hero(
+                  tag: 'progress_bar',
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    color: kRose,
+                    backgroundColor: Colors.white,
+                  ),
                 ),
+                
                 const SizedBox(height: 32),
                 const Text(
                   "The Basics",
@@ -162,9 +173,7 @@ class _BasicsPageState extends State<BasicsPage> {
                     }
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => const IntentPage(currentStep: 2, totalSteps: 6),
-                      ),
+                      createPremiumRoute(const IntentPage(currentStep: 2, totalSteps: 6)),
                     );
                   },
                   child: const Text("Continue", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

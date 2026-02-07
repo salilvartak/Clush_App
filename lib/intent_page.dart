@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'discovery_page.dart';
+import 'main.dart'; // Import for createPremiumRoute
 
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
@@ -74,11 +75,17 @@ class _IntentPageState extends State<IntentPage> {
               ],
             ),
             const SizedBox(height: 16),
-            LinearProgressIndicator(
-              value: progress, 
-              color: kRose, 
-              backgroundColor: Colors.white24
+            
+            // HERO WIDGET ADDED HERE
+            Hero(
+              tag: 'progress_bar',
+              child: LinearProgressIndicator(
+                value: progress, 
+                color: kRose, 
+                backgroundColor: Colors.white24
+              ),
             ),
+            
             const SizedBox(height: 32),
             const Text(
               "What are you looking for?",
@@ -105,12 +112,10 @@ class _IntentPageState extends State<IntentPage> {
                     );
                     return;
                   }
-                  // Navigate to Step 3
+                  // PREMIUM ROUTE USED HERE
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const DiscoveryPage(currentStep: 3, totalSteps: 6),
-                    ),
+                    createPremiumRoute(const DiscoveryPage(currentStep: 3, totalSteps: 6)),
                   );
                 },
               child: const Text("Continue", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:video_player/video_player.dart';
 import 'firebase_options.dart';
-import 'basics_page.dart'; // Import your separate page here
+import 'basics_page.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,13 +23,12 @@ class AuraApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: VideoSplashScreen(), // App starts with the video splash
+      home: VideoSplashScreen(),
     );
   }
 }
 
-// --- AUTH WRAPPER ---
-// This widget listens to the user's login state
+// --- AUTH WRAPPER (Updated with AnimatedSwitcher) ---
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -38,11 +37,37 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          // Changed: Now starting at Step 1
-          return const BasicsPage(currentStep: 1, totalSteps: 6);
+        Widget displayedWidget;
+
+        // 1. Determine which widget to show based on Auth State
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          displayedWidget = const Scaffold(
+            key: ValueKey('loading'), // Unique key triggers animation
+            backgroundColor: Color(0xFFE9E6E1),
+            body: Center(child: CircularProgressIndicator(color: Color(0xFFCD9D8F))),
+          );
+        } else if (snapshot.hasData) {
+          displayedWidget = const BasicsPage(
+            key: ValueKey('basics'), // Unique key triggers animation
+            currentStep: 1, 
+            totalSteps: 6
+          );
+        } else {
+          displayedWidget = const LoginScreen(
+            key: ValueKey('login') // Unique key triggers animation
+          ); 
         }
-        return const LoginScreen();
+
+        // 2. Animate the switch between them
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 800),
+          switchInCurve: Curves.easeInOutQuart,
+          switchOutCurve: Curves.easeInOutQuart,
+          transitionBuilder: (Widget child, Animation<double> animation) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          child: displayedWidget,
+        );
       },
     );
   }
@@ -76,21 +101,20 @@ class _VideoSplashScreenState extends State<VideoSplashScreen> {
   }
 
   void _finishSplash() {
-    // Moves to AuthWrapper which then decides to show Login or BasicsPage
-    Navigator.of(context).pushReplacement(_createSlideUpRoute(const AuthWrapper()));
+    // Uses the smooth fade route
+    Navigator.of(context).pushReplacement(_createFadeRoute(const AuthWrapper()));
   }
 
-  Route _createSlideUpRoute(Widget destination) {
+  Route _createFadeRoute(Widget destination) {
     return PageRouteBuilder(
       pageBuilder: (context, animation, secondaryAnimation) => destination,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        const begin = Offset(0.0, 1.0);
-        const end = Offset.zero;
-        const curve = Curves.easeInOutQuad;
-        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-        return SlideTransition(position: animation.drive(tween), child: child);
+        return FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeIn),
+          child: child,
+        );
       },
-      transitionDuration: const Duration(milliseconds: 800),
+      transitionDuration: const Duration(milliseconds: 1000),
     );
   }
 
@@ -157,7 +181,6 @@ class LoginScreen extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: () async {
                     await _signInWithGoogle(context);
-                    // AuthWrapper will detect the login and switch screens automatically
                   },
                   icon: Image.network("https://cdn-icons-png.flaticon.com/512/2991/2991148.png", height: 22),
                   label: const Text("Continue with Google", style: TextStyle(fontSize: 18, color: Colors.black87)),
@@ -174,4 +197,32 @@ class LoginScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+// --- PREMIUM TRANSITION ENGINE ---
+Route createPremiumRoute(Widget page) {
+  return PageRouteBuilder(
+    pageBuilder: (context, animation, secondaryAnimation) => page,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      const begin = Offset(1.0, 0.0);
+      const end = Offset.zero;
+      const curve = Curves.easeInOutQuart;
+
+      var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+      var offsetAnimation = animation.drive(tween);
+
+      var fadeAnimation = Tween(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: animation, curve: Curves.easeIn),
+      );
+
+      return SlideTransition(
+        position: offsetAnimation,
+        child: FadeTransition(
+          opacity: fadeAnimation,
+          child: child,
+        ),
+      );
+    },
+    transitionDuration: const Duration(milliseconds: 600),
+  );
 }
