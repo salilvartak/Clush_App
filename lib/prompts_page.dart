@@ -1,0 +1,325 @@
+import 'package:flutter/material.dart';
+
+const Color kTan = Color(0xFFE9E6E1);
+const Color kRose = Color(0xFFCD9D8F);
+
+class PromptsPage extends StatefulWidget {
+  final int currentStep;
+  final int totalSteps;
+
+  const PromptsPage({
+    super.key,
+    required this.currentStep,
+    required this.totalSteps,
+  });
+
+  @override
+  State<PromptsPage> createState() => _PromptsPageState();
+}
+
+class _PromptsPageState extends State<PromptsPage> {
+  final List<Map<String, String>?> _slots = [null, null, null];
+
+  final List<String> _questions = [
+    "What I'd order for the table",
+    "One thing to know about me",
+    "My ideal Sunday",
+    "I'm overly competitive about",
+    "The way to win my heart",
+    "My biggest pet peeve",
+    "I geek out on",
+    "A random fact I love",
+    "My simple pleasures",
+    "I'm looking for",
+    "Unpopular opinion",
+    "Two truths and a lie",
+  ];
+
+  bool get _isComplete => _slots.every((slot) => slot != null);
+
+  void _showQuestionSelector(int slotIndex) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                const SizedBox(height: 16),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text(
+                    "Pick a Prompt",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    controller: scrollController,
+                    itemCount: _questions.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final question = _questions[index];
+                      final isAlreadySelected = _slots.any((s) => s != null && s['question'] == question);
+
+                      return ListTile(
+                        title: Text(
+                          question, 
+                          style: TextStyle(
+                            color: isAlreadySelected ? Colors.grey : Colors.black87
+                          )
+                        ),
+                        enabled: !isAlreadySelected,
+                        trailing: const Icon(Icons.chevron_right, size: 18),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _showAnswerDialog(slotIndex, question);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAnswerDialog(int slotIndex, String question) {
+    final TextEditingController controller = TextEditingController(
+      text: _slots[slotIndex]?['answer'] ?? ''
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(question, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: "Type your answer...",
+              hintStyle: TextStyle(color: Colors.grey.shade400),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: const BorderSide(color: kRose),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kRose,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+              onPressed: () {
+                if (controller.text.trim().isNotEmpty) {
+                  setState(() {
+                    _slots[slotIndex] = {
+                      'question': question,
+                      'answer': controller.text.trim(),
+                    };
+                  });
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text("Save"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _removePrompt(int index) {
+    setState(() {
+      _slots[index] = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = widget.currentStep / widget.totalSteps;
+
+    return Scaffold(
+      backgroundColor: kTan,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // --- HEADER ---
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      Text("Step ${widget.currentStep} of ${widget.totalSteps}"),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(value: progress, color: kRose, backgroundColor: Colors.white24),
+                ],
+              ),
+            ),
+
+            // --- CONTENT ---
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    const Text(
+                      "Write your profile answers",
+                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      "Pick 3 prompts to help others get to know you better.",
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // --- PROMPT SLOTS ---
+                    ...List.generate(3, (index) {
+                      final slot = _slots[index];
+                      final isFilled = slot != null;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        child: isFilled
+                            ? Dismissible(
+                                key: ValueKey("slot_$index"),
+                                direction: DismissDirection.endToStart,
+                                onDismissed: (_) => _removePrompt(index),
+                                background: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 20),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade100,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Icon(Icons.delete, color: Colors.red),
+                                ),
+                                child: GestureDetector(
+                                  onTap: () => _showAnswerDialog(index, slot['question']!),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(20),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: kRose.withOpacity(0.3)),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          // FIXED: Added .toUpperCase() here instead of in TextStyle
+                                          slot['question']!.toUpperCase(),
+                                          style: const TextStyle(
+                                            fontSize: 12, 
+                                            fontWeight: FontWeight.bold,
+                                            color: kRose,
+                                            letterSpacing: 0.5
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          slot['answer']!,
+                                          style: const TextStyle(fontSize: 16, height: 1.4),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : GestureDetector(
+                                onTap: () => _showQuestionSelector(index),
+                                child: Container(
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey.shade400, style: BorderStyle.solid),
+                                    borderRadius: BorderRadius.circular(20),
+                                    color: Colors.white.withOpacity(0.5),
+                                  ),
+                                  child: Center(
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: const [
+                                        Icon(Icons.add, color: kRose),
+                                        SizedBox(width: 8),
+                                        Text("Select a Prompt", style: TextStyle(color: kRose, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+
+            // --- FOOTER ---
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kRose,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey.shade300,
+                  minimumSize: const Size(double.infinity, 60),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                ),
+                onPressed: _isComplete ? () {
+                  // Navigate to Final Step
+                } : null,
+                child: const Text("Continue", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
