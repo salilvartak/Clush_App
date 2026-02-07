@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'prompts_page.dart';
 import 'dart:io';
-import 'main.dart'; // Import for createPremiumRoute
+import 'main.dart'; 
+import 'profile_store.dart'; // Import Store
 
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
@@ -24,6 +25,16 @@ class PhotoPage extends StatefulWidget {
 class _PhotoPageState extends State<PhotoPage> {
   final List<File?> _photos = List<File?>.generate(6, (_) => null);
   final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill existing photos
+    final stored = ProfileStore.instance.photos;
+    for (int i = 0; i < stored.length && i < 6; i++) {
+      _photos[i] = stored[i];
+    }
+  }
 
   bool get _hasMinimumPhotos => _photos.where((p) => p != null).length >= 2;
 
@@ -108,8 +119,6 @@ class _PhotoPageState extends State<PhotoPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  
-                  // HERO WIDGET ADDED HERE
                   Hero(
                     tag: 'progress_bar',
                     child: LinearProgressIndicator(
@@ -230,7 +239,11 @@ class _PhotoPageState extends State<PhotoPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
                 onPressed: _hasMinimumPhotos ? () {
-                  // PREMIUM ROUTE USED HERE
+                  
+                  // SAVE TO STORE
+                  // Filter out nulls so we only get valid Files
+                  ProfileStore.instance.photos = _photos.whereType<File>().toList();
+
                   Navigator.push(
                     context,
                     createPremiumRoute(const PromptsPage(currentStep: 5, totalSteps: 6)),

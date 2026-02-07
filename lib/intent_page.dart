@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'discovery_page.dart';
-import 'main.dart'; // Import for createPremiumRoute
+import 'main.dart';
+import 'profile_store.dart'; // Import Store
 
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
@@ -21,6 +22,12 @@ class IntentPage extends StatefulWidget {
 
 class _IntentPageState extends State<IntentPage> {
   String? intent;
+
+  @override
+  void initState() {
+    super.initState();
+    intent = ProfileStore.instance.intent;
+  }
 
   Widget option(String title, String subtitle) {
     final selected = intent == title;
@@ -75,8 +82,6 @@ class _IntentPageState extends State<IntentPage> {
               ],
             ),
             const SizedBox(height: 16),
-            
-            // HERO WIDGET ADDED HERE
             Hero(
               tag: 'progress_bar',
               child: LinearProgressIndicator(
@@ -85,7 +90,6 @@ class _IntentPageState extends State<IntentPage> {
                 backgroundColor: Colors.white24
               ),
             ),
-            
             const SizedBox(height: 32),
             const Text(
               "What are you looking for?",
@@ -112,7 +116,10 @@ class _IntentPageState extends State<IntentPage> {
                     );
                     return;
                   }
-                  // PREMIUM ROUTE USED HERE
+                  
+                  // SAVE TO STORE
+                  ProfileStore.instance.intent = intent;
+
                   Navigator.push(
                     context,
                     createPremiumRoute(const DiscoveryPage(currentStep: 3, totalSteps: 6)),

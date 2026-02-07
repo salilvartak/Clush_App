@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart'; // 1. Add this import
+import 'package:google_sign_in/google_sign_in.dart';
 import 'intent_page.dart';
-import 'main.dart'; 
+import 'main.dart';
+import 'profile_store.dart'; // Import Store
 
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
@@ -25,6 +26,15 @@ class _BasicsPageState extends State<BasicsPage> {
   final TextEditingController nameController = TextEditingController();
   DateTime? selectedDate;
   String? selectedGender;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill if data exists (optional, good for back navigation)
+    nameController.text = ProfileStore.instance.name ?? '';
+    selectedDate = ProfileStore.instance.birthday;
+    selectedGender = ProfileStore.instance.gender;
+  }
 
   bool get isValid =>
       nameController.text.trim().length >= 2 &&
@@ -85,7 +95,6 @@ class _BasicsPageState extends State<BasicsPage> {
                     IconButton(
                       icon: const Icon(Icons.logout),
                       onPressed: () async {
-                        // FIX: Sign out of Google Plugin AND Firebase
                         await GoogleSignIn().signOut();
                         await FirebaseAuth.instance.signOut();
                       },
@@ -94,8 +103,6 @@ class _BasicsPageState extends State<BasicsPage> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                
-                // HERO WIDGET (Preserving previous fix)
                 Hero(
                   tag: 'progress_bar',
                   child: LinearProgressIndicator(
@@ -104,7 +111,6 @@ class _BasicsPageState extends State<BasicsPage> {
                     backgroundColor: Colors.white,
                   ),
                 ),
-                
                 const SizedBox(height: 32),
                 const Text(
                   "The Basics",
@@ -171,6 +177,12 @@ class _BasicsPageState extends State<BasicsPage> {
                       );
                       return;
                     }
+                    
+                    // SAVE DATA TO STORE
+                    ProfileStore.instance.name = nameController.text.trim();
+                    ProfileStore.instance.birthday = selectedDate;
+                    ProfileStore.instance.gender = selectedGender;
+
                     Navigator.push(
                       context,
                       createPremiumRoute(const IntentPage(currentStep: 2, totalSteps: 6)),

@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
-import 'main.dart'; // Import just in case you add next step
+import 'success_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User; // Hide User to avoid conflicts
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
+import 'main.dart'; 
+import 'profile_store.dart'; 
+ // Ensure this file exists
 
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
@@ -20,6 +25,7 @@ class PromptsPage extends StatefulWidget {
 
 class _PromptsPageState extends State<PromptsPage> {
   final List<Map<String, String>?> _slots = [null, null, null];
+  bool _isUploading = false; // Controls the loading spinner
 
   final List<String> _questions = [
     "What I'd order for the table",
@@ -37,6 +43,77 @@ class _PromptsPageState extends State<PromptsPage> {
   ];
 
   bool get _isComplete => _slots.every((slot) => slot != null);
+
+  // --- SUBMIT PROFILE LOGIC ---
+  Future<void> _submitProfile() async {
+    setState(() => _isUploading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final store = ProfileStore.instance;
+      
+      // 1. Get the current User ID from Firebase
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+
+      if (userId == null) throw Exception("User not logged in");
+
+      // 2. Upload Photos to Supabase Storage
+      List<String> photoUrls = [];
+      
+      for (var file in store.photos) {
+        // Extract file extension safely
+        final fileExt = file.path.split('.').last; 
+        final fileName = '$userId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+        
+        // Upload to 'user_photos' bucket
+        await supabase.storage.from('user_photos').upload(fileName, file);
+        
+        // Get Public URL
+        final imageUrl = supabase.storage.from('user_photos').getPublicUrl(fileName);
+        photoUrls.add(imageUrl);
+      }
+
+      // 3. Prepare the Data Object
+      final profileData = {
+        'id': userId, // Link to the Firebase Auth ID
+        'full_name': store.name,
+        'birthday': store.birthday?.toIso8601String(),
+        'gender': store.gender,
+        'intent': store.intent,
+        'interests': store.interests,
+        'foods': store.foods,
+        'places': store.places,
+        'photo_urls': photoUrls,
+        'prompts': _slots, // The answers from this page
+        'created_at': DateTime.now().toIso8601String(),
+      };
+
+      // 4. Insert into 'profiles' table
+      await supabase.from('profiles').upsert(profileData);
+
+      // 5. Success Handling
+      if (mounted) {
+        store.clear(); // Clear local state backpack
+        
+        // NAVIGATE TO SUCCESS SCREEN
+        // FIX: Removed 'const' keyword here to prevent the error
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => SuccessScreen()), 
+        );
+      }
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
+    }
+  }
 
   void _showQuestionSelector(int slotIndex) {
     showModalBottomSheet(
@@ -195,8 +272,6 @@ class _PromptsPageState extends State<PromptsPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  
-                  // HERO WIDGET ADDED HERE
                   Hero(
                     tag: 'progress_bar',
                     child: LinearProgressIndicator(
@@ -309,7 +384,7 @@ class _PromptsPageState extends State<PromptsPage> {
               ),
             ),
 
-            // --- FOOTER ---
+            // --- FOOTER (Finish Profile Button) ---
             Padding(
               padding: const EdgeInsets.all(20),
               child: ElevatedButton(
@@ -320,10 +395,11 @@ class _PromptsPageState extends State<PromptsPage> {
                   minimumSize: const Size(double.infinity, 60),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
-                onPressed: _isComplete ? () {
-                  // Navigate to Final Step (not provided in context)
-                } : null,
-                child: const Text("Continue", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                // LOGIC: Enable only if prompts are filled AND not currently uploading
+                onPressed: (_isComplete && !_isUploading) ? _submitProfile : null,
+                child: _isUploading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text("Finish profile", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ),
           ],

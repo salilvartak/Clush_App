@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'photo_page.dart';
-import 'main.dart'; // Import for createPremiumRoute
+import 'main.dart'; 
+import 'profile_store.dart'; // Import Store
 
 const Color kTan = Color(0xFFE9E6E1);
 const Color kRose = Color(0xFFCD9D8F);
@@ -20,9 +21,18 @@ class DiscoveryPage extends StatefulWidget {
 }
 
 class _DiscoveryPageState extends State<DiscoveryPage> {
-  final Set<String> interests = {};
-  final Set<String> foods = {};
-  final Set<String> places = {};
+  // Initialize with empty sets or data from store
+  late Set<String> interests;
+  late Set<String> foods;
+  late Set<String> places;
+
+  @override
+  void initState() {
+    super.initState();
+    interests = Set.from(ProfileStore.instance.interests);
+    foods = Set.from(ProfileStore.instance.foods);
+    places = Set.from(ProfileStore.instance.places);
+  }
 
   int get totalSelected => interests.length + foods.length + places.length;
   List<String> get allSelected => [...interests, ...foods, ...places];
@@ -90,8 +100,6 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  
-                  // HERO WIDGET ADDED HERE
                   Hero(
                     tag: 'progress_bar',
                     child: LinearProgressIndicator(
@@ -186,7 +194,12 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
                 onPressed: totalSelected > 0 ? () {
-                  // PREMIUM ROUTE USED HERE
+                  
+                  // SAVE TO STORE
+                  ProfileStore.instance.interests = interests.toList();
+                  ProfileStore.instance.foods = foods.toList();
+                  ProfileStore.instance.places = places.toList();
+
                   Navigator.push(
                     context,
                     createPremiumRoute(const PhotoPage(currentStep: 4, totalSteps: 6)),

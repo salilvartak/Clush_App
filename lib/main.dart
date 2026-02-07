@@ -1,18 +1,28 @@
-// lib/main.dart
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:video_player/video_player.dart';
+// FIX: Hide User from Supabase to avoid conflicts
+import 'package:supabase_flutter/supabase_flutter.dart' hide User; 
 import 'firebase_options.dart';
 import 'basics_page.dart'; 
+import 'home_page.dart'; // IMPORT HOME PAGE
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 1. Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // 2. Initialize Supabase (KEEP YOUR KEYS HERE)
+  await Supabase.initialize(
+    url: 'https://roblwklgvyvjrgvyumqp.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvYmx3a2xndnl2anJndnl1bXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzOTY0OTgsImV4cCI6MjA4NTk3MjQ5OH0.7kpPNmAHnGthepUIimiw_HovLOVjfX5mIWcr8WH-NrQ',
+  );
+
   runApp(const AuraApp());
 }
 
@@ -28,52 +38,81 @@ class AuraApp extends StatelessWidget {
   }
 }
 
-// --- AUTH WRAPPER (Updated with AnimatedSwitcher) ---
-class AuthWrapper extends StatelessWidget {
+// --- UPDATED AUTH WRAPPER ---
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        Widget displayedWidget;
-
-        // 1. Determine which widget to show based on Auth State
+        // 1. If waiting for Firebase Auth...
         if (snapshot.connectionState == ConnectionState.waiting) {
-          displayedWidget = const Scaffold(
-            key: ValueKey('loading'), // Unique key triggers animation
-            backgroundColor: Color(0xFFE9E6E1),
+          return const Scaffold(
             body: Center(child: CircularProgressIndicator(color: Color(0xFFCD9D8F))),
           );
-        } else if (snapshot.hasData) {
-          displayedWidget = const BasicsPage(
-            key: ValueKey('basics'), // Unique key triggers animation
-            currentStep: 1, 
-            totalSteps: 6
-          );
-        } else {
-          displayedWidget = const LoginScreen(
-            key: ValueKey('login') // Unique key triggers animation
-          ); 
-        }
+        } 
+        
+        // 2. If User is Logged In, Check Supabase for Profile
+        if (snapshot.hasData) {
+          return FutureBuilder<bool>(
+            future: _checkProfileExists(snapshot.data!.uid),
+            builder: (context, profileSnapshot) {
+              
+              if (profileSnapshot.connectionState == ConnectionState.waiting) {
+                 return const Scaffold(
+                    backgroundColor: Color(0xFFE9E6E1),
+                    body: Center(child: CircularProgressIndicator(color: Color(0xFFCD9D8F))),
+                 );
+              }
 
-        // 2. Animate the switch between them
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 800),
-          switchInCurve: Curves.easeInOutQuart,
-          switchOutCurve: Curves.easeInOutQuart,
-          transitionBuilder: (Widget child, Animation<double> animation) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          child: displayedWidget,
-        );
+              final bool profileExists = profileSnapshot.data ?? false;
+
+              // 3. DECISION TIME
+              if (profileExists) {
+                return const HomePage(); // User finished profile -> Go Home
+              } else {
+                return const BasicsPage( // User is new -> Start Wizard
+                  currentStep: 1, 
+                  totalSteps: 6
+                );
+              }
+            },
+          );
+        } 
+        
+        // 4. If User is NOT Logged In
+        else {
+          return const LoginScreen(); 
+        }
       },
     );
   }
+
+  // Helper to check Supabase
+  Future<bool> _checkProfileExists(String userId) async {
+    try {
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .maybeSingle(); // Returns null if no row found, instead of throwing error
+      
+      return data != null;
+    } catch (e) {
+      debugPrint("Error checking profile: $e");
+      return false; // Assume no profile on error
+    }
+  }
 }
 
-// --- VIDEO SPLASH SCREEN ---
+// --- VIDEO SPLASH SCREEN (unchanged) ---
 class VideoSplashScreen extends StatefulWidget {
   const VideoSplashScreen({super.key});
 
@@ -101,7 +140,6 @@ class _VideoSplashScreenState extends State<VideoSplashScreen> {
   }
 
   void _finishSplash() {
-    // Uses the smooth fade route
     Navigator.of(context).pushReplacement(_createFadeRoute(const AuthWrapper()));
   }
 
@@ -140,7 +178,7 @@ class _VideoSplashScreenState extends State<VideoSplashScreen> {
   }
 }
 
-// --- LOGIN SCREEN ---
+// --- LOGIN SCREEN (unchanged) ---
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
 
@@ -153,8 +191,7 @@ class LoginScreen extends StatelessWidget {
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      return userCredential.user;
+      return await FirebaseAuth.instance.signInWithCredential(credential).then((cred) => cred.user);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sign in failed: $e')));
       return null;
@@ -199,7 +236,6 @@ class LoginScreen extends StatelessWidget {
   }
 }
 
-// --- PREMIUM TRANSITION ENGINE ---
 Route createPremiumRoute(Widget page) {
   return PageRouteBuilder(
     pageBuilder: (context, animation, secondaryAnimation) => page,
@@ -207,20 +243,14 @@ Route createPremiumRoute(Widget page) {
       const begin = Offset(1.0, 0.0);
       const end = Offset.zero;
       const curve = Curves.easeInOutQuart;
-
       var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
       var offsetAnimation = animation.drive(tween);
-
       var fadeAnimation = Tween(begin: 0.0, end: 1.0).animate(
         CurvedAnimation(parent: animation, curve: Curves.easeIn),
       );
-
       return SlideTransition(
         position: offsetAnimation,
-        child: FadeTransition(
-          opacity: fadeAnimation,
-          child: child,
-        ),
+        child: FadeTransition(opacity: fadeAnimation, child: child),
       );
     },
     transitionDuration: const Duration(milliseconds: 600),
