@@ -246,7 +246,7 @@ class ProfileViewPage extends StatelessWidget {
           // 1. Horizontal Scroll Section
           if (horizontalData.isNotEmpty) ...[
             SizedBox(
-              height: 90,
+              height: 60, // Reduced height since Row takes less vertical space than Column
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -257,20 +257,24 @@ class ProfileViewPage extends StatelessWidget {
                   String value = horizontalData[key]!;
                   return Container(
                     margin: const EdgeInsets.only(right: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.grey[50], // Subtle background to differentiate from white card
+                      color: Colors.grey[50],
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: Colors.grey.shade200),
                     ),
-                    child: Column(
+                    child: Row( // CHANGED from Column to Row
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(icons[key] ?? Icons.circle, color: kRose, size: 20),
-                        const SizedBox(height: 8),
+                        Icon(icons[key] ?? Icons.circle, color: kRose, size: 18), // Slightly smaller icon
+                        const SizedBox(width: 8), // Horizontal spacing
                         Text(
                           value,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold, 
+                            fontSize: 13, 
+                            color: Colors.black87
+                          ),
                         ),
                       ],
                     ),
