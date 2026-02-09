@@ -1,7 +1,7 @@
+// lib/profile_store.dart
 import 'dart:io';
 
 class ProfileStore {
-  // Singleton pattern ensures we access the same instance everywhere
   static final ProfileStore instance = ProfileStore._internal();
   
   factory ProfileStore() {
@@ -10,21 +10,56 @@ class ProfileStore {
   
   ProfileStore._internal();
 
-  // Data fields to hold user input
+  // Basic Info
   String? name;
   DateTime? birthday;
   String? gender;
+  
+  // New Fields
+  String? sexualOrientation;
+  String? pronouns;
+  String? ethnicity;
+  String? height;
+  String? religion;
+  String? education;
+  String? jobTitle;
+  String? languages;
+  String? politicalViews;
+  String? kids;
+  String? starSign;
+  String? pets;
+  String? drink;
+  String? smoke;
+  String? weed;
+  String? location;
+
+  // Interaction Data
   String? intent;
   List<String> interests = [];
   List<String> foods = [];
   List<String> places = [];
-  List<File> photos = []; // Only stores non-null files
+  List<File> photos = []; 
   
-  // Helper to clear data after successful submission
   void clear() {
     name = null;
     birthday = null;
     gender = null;
+    sexualOrientation = null;
+    pronouns = null;
+    ethnicity = null;
+    height = null;
+    religion = null;
+    education = null;
+    jobTitle = null;
+    languages = null;
+    politicalViews = null;
+    kids = null;
+    starSign = null;
+    pets = null;
+    drink = null;
+    smoke = null;
+    weed = null;
+    location = null;
     intent = null;
     interests = [];
     foods = [];

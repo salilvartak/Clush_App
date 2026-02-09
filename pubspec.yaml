@@ -34,6 +34,9 @@ dependencies:
   video_player: ^2.8.1
   image_picker: ^1.0.7
   supabase_flutter: ^2.0.0
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
+  permission_handler: ^11.0.1
   flutter:
     sdk: flutter
 
