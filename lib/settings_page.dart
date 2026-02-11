@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // REQUIRED: To fetch data
 import 'main.dart'; 
 import 'setting_sub_pages.dart'; 
+import 'edit_profile_page.dart'; // REQUIRED: To navigate to editor
 
 const Color kRose = Color(0xFFCD9D8F);
 const Color kTan = Color(0xFFE9E6E1);
@@ -19,6 +21,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool activityStatus = true;
   bool notificationsEnabled = true;
   bool emailUpdates = true;
+  bool _isLoadingProfile = false; // To show loading state
 
   Future<void> _logout() async {
     try {
@@ -36,6 +39,39 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  // NEW: Fetch data before opening Edit Page
+  Future<void> _handleEditProfile() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    setState(() => _isLoadingProfile = true);
+
+    try {
+      // 1. Fetch the profile data from Supabase
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .single();
+
+      if (!mounted) return;
+
+      // 2. Navigate to EditProfilePage with the required data
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => EditProfilePage(currentData: data),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error loading profile: $e")),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoadingProfile = false);
+    }
+  }
+
   void _navTo(Widget page) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => page));
   }
@@ -45,9 +81,9 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       backgroundColor: kTan,
       body: CustomScrollView(
-        physics: const BouncingScrollPhysics(), // iOS style bounce
+        physics: const BouncingScrollPhysics(),
         slivers: [
-          // 1. PREMIUM HEADER (Large Title)
+          // 1. PREMIUM HEADER
           const SliverAppBar(
             backgroundColor: kTan,
             expandedHeight: 120,
@@ -75,10 +111,26 @@ class _SettingsPageState extends State<SettingsPage> {
                   // --- ACCOUNT ---
                   _buildSectionLabel("Account"),
                   _buildSectionContainer(children: [
+                    // NEW: Edit Profile Tile
+                    _buildPremiumTile(
+                      icon: Icons.edit_outlined,
+                      title: "Edit Profile",
+                      // Show a spinner if we are currently fetching data
+                      trailing: _isLoadingProfile 
+                          ? const SizedBox(
+                              width: 20, 
+                              height: 20, 
+                              child: CircularProgressIndicator(strokeWidth: 2, color: kRose)
+                            ) 
+                          : null,
+                      onTap: _isLoadingProfile ? null : _handleEditProfile,
+                    ),
+                    _buildDivider(),
+                    
                     _buildPremiumTile(
                       icon: Icons.phone_outlined,
                       title: "Phone Number",
-                      subtitle: "Verified", // Example of status text
+                      subtitle: "Verified",
                       onTap: () => _navTo(const PhoneNumberPage()),
                     ),
                     _buildDivider(),
@@ -108,7 +160,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     _buildPremiumTile(
                       icon: Icons.flight_takeoff,
                       title: "Travel Mode",
-                      trailing: _buildPremiumBadge("Premium"), // Badge example
+                      trailing: _buildPremiumBadge("Premium"),
                       onTap: () => _navTo(const TravelModePage()),
                     ),
                   ]),
@@ -221,7 +273,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20), // Softer corners
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -245,23 +297,21 @@ class _SettingsPageState extends State<SettingsPage> {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20), // Matches container
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           child: Row(
             children: [
-              // 1. Soft Icon Container
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: kRose.withOpacity(0.1), // Soft pastel background
+                  color: kRose.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, color: kRose, size: 20),
               ),
               const SizedBox(width: 16),
               
-              // 2. Text Content
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -289,7 +339,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
 
-              // 3. Trailing (Chevron or Switch)
               if (trailing != null) 
                 trailing
               else 
@@ -306,7 +355,7 @@ class _SettingsPageState extends State<SettingsPage> {
       height: 1, 
       thickness: 1, 
       color: Colors.grey.withOpacity(0.08), 
-      indent: 60, // Indent to align with text, skipping icon
+      indent: 60,
     );
   }
 
@@ -328,7 +377,6 @@ class _SettingsPageState extends State<SettingsPage> {
     return Center(
       child: TextButton(
         onPressed: () {
-          // Add a confirmation dialog for extra premium feel
           showDialog(
             context: context, 
             builder: (ctx) => AlertDialog(
