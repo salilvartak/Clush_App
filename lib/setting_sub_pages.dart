@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // Imports kTan & kRose
 
 // --- GENERIC TEMPLATE FOR SUB-PAGES ---
@@ -36,7 +39,6 @@ class BaseSettingsPage extends StatelessWidget {
 }
 
 // ================= ACCOUNT PAGES =================
-// (Preserved as requested)
 class PhoneNumberPage extends StatelessWidget {
   const PhoneNumberPage({super.key});
   @override
@@ -185,212 +187,203 @@ class TravelModePage extends StatelessWidget {
   }
 }
 
-// ================= PRIVACY & VERIFICATION =================
+// ================= PRIVACY & VERIFICATION (UPDATED FOR API) =================
 
-class VerificationPage extends StatelessWidget {
+class VerificationPage extends StatefulWidget {
   const VerificationPage({super.key});
+
+  @override
+  State<VerificationPage> createState() => _VerificationPageState();
+}
+
+class _VerificationPageState extends State<VerificationPage> {
+  // Logic Variables
+  File? _profileImage;
+  File? _videoFile;
+  bool _isLoading = false;
+  final ImagePicker _picker = ImagePicker();
+
+  // 1. Pick Image Logic
+  Future<void> _pickImage() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (image != null) {
+      setState(() => _profileImage = File(image.path));
+    }
+  }
+
+  // 2. Record Video Logic
+  Future<void> _recordVideo() async {
+    final XFile? video = await _picker.pickVideo(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.front, // Force selfie camera
+      maxDuration: const Duration(seconds: 5),   // Limit to 5 seconds
+    );
+    if (video != null) {
+      setState(() => _videoFile = File(video.path));
+    }
+  }
+
+  // 3. API Call Logic (The "Verify Me" Button)
+  Future<void> _submitVerification() async {
+    if (_profileImage == null || _videoFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select both image and video.")));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 1. Prepare the URL
+      var uri = Uri.parse('https://clush-api.onrender.com/verify'); 
+      var request = http.MultipartRequest('POST', uri);
+
+      // 2. Add the Files (KEYS MUST MATCH YOUR PYTHON CODE EXACTLY)
+      
+      // Changed 'profile_image' -> 'profile' to match your Python code
+      request.files.add(await http.MultipartFile.fromPath('profile', _profileImage!.path));
+      
+      // 'video' matches 'video' in Python, so this is good
+      request.files.add(await http.MultipartFile.fromPath('video', _videoFile!.path));
+
+      // 3. Send the Request
+      print("⏳ Sending verification request...");
+      var response = await request.send();
+      final respStr = await response.stream.bytesToString();
+
+      // 4. Handle Response
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text("✅ Verification Successful! You are verified.")),
+          );
+          Navigator.pop(context);
+        }
+      } else {
+        print("Server Error: $respStr"); // Check your console if it fails again
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("❌ Failed: Code ${response.statusCode}")),
+          );
+        }
+      }
+    } catch (e) {
+      print("Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return BaseSettingsPage(
       title: "Identity Verification",
       body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Center(child: Icon(Icons.verified_user_rounded, size: 80, color: Color(0xFFCD9D8F))),
+          // Header
+          const Icon(Icons.verified_user_rounded, size: 80, color: Color(0xFFCD9D8F)),
           const SizedBox(height: 20),
-          const Center(child: Text("Get the Blue Tick", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))),
+          const Text("Get the Blue Tick", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          Text("To ensure our community stays safe, we use video verification to confirm you are the person in your photos.", textAlign: TextAlign.center, style: TextStyle(color: Colors.black.withOpacity(0.6), height: 1.4)),
+          Text(
+            "Upload a clear selfie and record a 5-second video turning your head to verify your identity.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.black.withOpacity(0.6), height: 1.4),
+          ),
           const SizedBox(height: 32),
-          const Text("How it works:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+
+          // --- STEP 1: UPLOAD PHOTO ---
+          _buildStepCard(
+            title: "Step 1: Upload Selfie",
+            subtitle: _profileImage == null ? "Tap to select photo" : "Photo Selected",
+            icon: Icons.photo_camera,
+            isDone: _profileImage != null,
+            onTap: _pickImage,
+          ),
+
           const SizedBox(height: 16),
-          _buildRule(Icons.face_retouching_natural, "Keep your face within the oval frame."),
-          _buildRule(Icons.light_mode_outlined, "Ensure you are in a well-lit room."),
-          _buildRule(Icons.videocam_outlined, "Follow the on-screen prompts (e.g., turn your head)."),
+
+          // --- STEP 2: RECORD VIDEO ---
+          _buildStepCard(
+            title: "Step 2: Record Video",
+            subtitle: _videoFile == null ? "Tap to record (5s)" : "Video Recorded",
+            icon: Icons.videocam,
+            isDone: _videoFile != null,
+            onTap: _recordVideo,
+          ),
+
           const SizedBox(height: 40),
+
+          // --- VERIFY BUTTON ---
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 60), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const VideoCapturePage())),
-            child: const Text("I'm Ready", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 60),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            onPressed: (_isLoading || _profileImage == null || _videoFile == null) 
+                ? null 
+                : _submitVerification,
+            child: _isLoading 
+                ? const CircularProgressIndicator(color: Color(0xFFCD9D8F))
+                : const Text("Verify Me", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRule(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: const Color(0xFFCD9D8F).withOpacity(0.15), shape: BoxShape.circle),
-            child: Icon(icon, color: const Color(0xFFCD9D8F), size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 15))),
-        ],
-      ),
-    );
-  }
-}
-
-class VideoCapturePage extends StatefulWidget {
-  const VideoCapturePage({super.key});
-
-  @override
-  State<VideoCapturePage> createState() => _VideoCapturePageState();
-}
-
-class _VideoCapturePageState extends State<VideoCapturePage> {
-  CameraController? _controller;
-  bool isProcessing = false;
-  bool isRecording = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeCamera();
-  }
-
-  Future<void> _initializeCamera() async {
-    final cameras = await availableCameras();
-    // Select front camera if available
-    final frontCamera = cameras.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => cameras.first);
-    
-    _controller = CameraController(frontCamera, ResolutionPreset.medium, enableAudio: false);
-    await _controller!.initialize();
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _startRecording() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-    
-    setState(() => isRecording = true);
-    await _controller!.startVideoRecording();
-    
-    // Auto-stop after 3 seconds for verification
-    await Future.delayed(const Duration(seconds: 3));
-    
-    if (isRecording) {
-      final XFile video = await _controller!.stopVideoRecording();
-      _processVideo(video);
-    }
-  }
-
-  void _processVideo(XFile video) async {
-    setState(() {
-      isRecording = false;
-      isProcessing = true;
-    });
-    
-    // Simulate authentication/upload logic
-    await Future.delayed(const Duration(seconds: 4));
-    
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Verification video submitted!")));
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 1. Camera Feed
-          if (_controller != null && _controller!.value.isInitialized)
-            Positioned.fill(child: CameraPreview(_controller!))
-          else
-            const Center(child: CircularProgressIndicator(color: Color(0xFFCD9D8F))),
-
-          // 2. Oval Frame Guide
-          Center(
-            child: Container(
-              width: 280,
-              height: 400,
-              decoration: BoxDecoration(
-                border: Border.all(color: isRecording ? Colors.red : Colors.white, width: 4),
-                borderRadius: const BorderRadius.all(Radius.elliptical(140, 200)),
-              ),
-            ),
-          ),
-
-          // 3. UI Controls
-          SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                  child: Row(
-                    children: [
-                      IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(context)),
-                      const Spacer(),
-                      const Text("Identity Verification", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      const Spacer(),
-                      const SizedBox(width: 48),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                if (!isProcessing) ...[
-                  Text(isRecording ? "Recording... turn your head slowly" : "Position your face in the oval", style: const TextStyle(color: Colors.white, fontSize: 16)),
-                  const SizedBox(height: 30),
-                  GestureDetector(
-                    onTap: isRecording ? null : _startRecording,
-                    child: Container(
-                      height: 80,
-                      width: 80,
-                      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 4)),
-                      child: Center(
-                        child: Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(color: isRecording ? Colors.grey : Colors.red, shape: BoxShape.circle),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 60),
-                ]
-              ],
-            ),
-          ),
-
-          // 4. Processing Animation Overlay
-          if (isProcessing)
+  Widget _buildStepCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool isDone,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: isDone ? Border.all(color: const Color(0xFFCD9D8F), width: 2) : null,
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Row(
+          children: [
             Container(
-              color: Colors.black.withOpacity(0.85),
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(width: 80, height: 80, child: CircularProgressIndicator(strokeWidth: 6, color: Color(0xFFCD9D8F))),
-                    SizedBox(height: 32),
-                    Text("Sending for Authentication...", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 10),
-                    Text("Verifying your unique features", style: TextStyle(color: Colors.white70)),
-                  ],
-                ),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDone ? const Color(0xFFCD9D8F) : Colors.grey[100],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(isDone ? Icons.check : icon, color: isDone ? Colors.white : Colors.grey),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: TextStyle(color: isDone ? const Color(0xFFCD9D8F) : Colors.grey)),
+                ],
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 // ================= REMAINING PAGES =================
-// (Preserved as requested)
+
 class BlockListPage extends StatelessWidget {
   const BlockListPage({super.key});
   @override
