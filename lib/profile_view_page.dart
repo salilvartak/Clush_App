@@ -398,12 +398,14 @@ class ProfileViewPage extends StatelessWidget {
   }
 
   // 3. INTENT CARD
+// 3. INTENT CARD
   Widget _buildIntentCard(String intent) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       padding: const EdgeInsets.all(24),
       decoration: _premiumShadowDecoration(),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start, // Optional: aligns icon to top if text wraps multiple lines
         children: [
           Container(
             padding: const EdgeInsets.all(12),
@@ -411,16 +413,23 @@ class ProfileViewPage extends StatelessWidget {
             child: const Icon(Icons.search_rounded, color: kRose, size: 28),
           ),
           const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "LOOKING FOR",
-                style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0),
-              ),
-              const SizedBox(height: 4),
-              Text(intent, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87)),
-            ],
+          // FIX: Wrap the Column in Expanded to prevent overflow
+          Expanded( 
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "LOOKING FOR",
+                  style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  intent, 
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
+                  softWrap: true, // Ensures text wraps
+                ),
+              ],
+            ),
           )
         ],
       ),

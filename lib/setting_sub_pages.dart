@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert'; // REQUIRED: For jsonDecode
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -187,7 +188,7 @@ class TravelModePage extends StatelessWidget {
   }
 }
 
-// ================= PRIVACY & VERIFICATION (UPDATED FOR API) =================
+// ================= PRIVACY & VERIFICATION (UPDATED) =================
 
 class VerificationPage extends StatefulWidget {
   const VerificationPage({super.key});
@@ -223,7 +224,7 @@ class _VerificationPageState extends State<VerificationPage> {
     }
   }
 
-  // 3. API Call Logic (The "Verify Me" Button)
+  // 3. API Call Logic (Updated with JSON Parsing)
   Future<void> _submitVerification() async {
     if (_profileImage == null || _videoFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select both image and video.")));
@@ -233,47 +234,78 @@ class _VerificationPageState extends State<VerificationPage> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Prepare the URL
-      var uri = Uri.parse('https://clush-api.onrender.com/verify'); 
+      final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown_user';
+      print("🚀 Starting Verification for user: $userId");
+
+      // 1. Prepare Request
+      // NOTE: Using your Render URL
+      var uri = Uri.parse('https://nina-unpumped-linus.ngrok-free.dev/verify'); 
       var request = http.MultipartRequest('POST', uri);
 
-      // 2. Add the Files (KEYS MUST MATCH YOUR PYTHON CODE EXACTLY)
-      
-      // Changed 'profile_image' -> 'profile' to match your Python code
+      // 2. Add Fields
+      request.fields['user_id'] = userId;
+
+      // 3. Add Files
+      // IMPORTANT: Keys must match your Python code ('profile' & 'video')
       request.files.add(await http.MultipartFile.fromPath('profile', _profileImage!.path));
-      
-      // 'video' matches 'video' in Python, so this is good
       request.files.add(await http.MultipartFile.fromPath('video', _videoFile!.path));
 
-      // 3. Send the Request
-      print("⏳ Sending verification request...");
-      var response = await request.send();
-      final respStr = await response.stream.bytesToString();
+      // 4. Send and Wait
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
 
-      // 4. Handle Response
+      print("📡 Server Status: ${response.statusCode}");
+      print("📩 Server Response: ${response.body}");
+
       if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(content: Text("✅ Verification Successful! You are verified.")),
-          );
-          Navigator.pop(context);
+        // 5. PARSE THE RESULT
+        var data = jsonDecode(response.body);
+        
+        // Handle potential nulls or type issues safely
+        bool isMatch = data['match'] ?? false;
+        double score = (data['score'] is num) ? (data['score'] as num).toDouble() : 0.0;
+
+        if (isMatch) {
+          if (mounted) {
+            print("✅ VERIFICATION SUCCESSFUL! (Score: $score)");
+            ScaffoldMessenger.of(context).showSnackBar(
+               SnackBar(content: Text("✅ Verification Successful! Score: ${score.toStringAsFixed(2)}")),
+            );
+            Navigator.pop(context); // Go back to settings
+          }
+        } else {
+          if (mounted) {
+            print("❌ VERIFICATION FAILED. Score: $score");
+            _showErrorDialog("Verification Failed", "Faces do not match. Match Score: ${score.toStringAsFixed(2)}");
+          }
         }
       } else {
-        print("Server Error: $respStr"); // Check your console if it fails again
+        print("⚠️ Server Error: ${response.body}");
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("❌ Failed: Code ${response.statusCode}")),
-          );
+           _showErrorDialog("Server Error", "Code: ${response.statusCode}\n${response.body}");
         }
       }
     } catch (e) {
-      print("Error: $e");
+      print("🔥 Connection Error: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+        _showErrorDialog("Connection Error", e.toString());
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showErrorDialog(String title, String content) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(content),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))
+        ],
+      ),
+    );
   }
 
   @override
