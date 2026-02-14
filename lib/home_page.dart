@@ -17,7 +17,7 @@ class _HomePageState extends State<HomePage> {
   final List<Widget> _pages = [
     const DiscoverPage(),
     const LikesPage(),
-    const ChatPage(),
+    const ChatScreen(username: "default_user"),
     const ProfileTab(),
   ];
 

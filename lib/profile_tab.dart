@@ -43,6 +43,9 @@ class ProfileTab extends StatelessWidget {
             final String firstPhoto = photos.isNotEmpty ? photos.first : '';
             final String name = profile['full_name'] ?? 'User';
             final int age = _calculateAge(profile['birthday']);
+            
+            // 1. EXTRACT VERIFICATION STATUS
+            final bool isVerified = profile['is_verified'] ?? false; 
 
             return Padding(
               padding: const EdgeInsets.all(20),
@@ -71,10 +74,11 @@ class ProfileTab extends StatelessWidget {
                     onTap: () {
                       Navigator.push(
                         context, 
-                        MaterialPageRoute(builder: (_) => ProfileViewPage(profile: profile))
+                        MaterialPageRoute(builder: (_) => ProfileViewPage(profile: profile)) // Assumes ProfileViewPage handles profile map
                       );
                     },
-                    child: _buildProfilePreviewCard(firstPhoto, name, age),
+                    // 2. PASS STATUS TO WIDGET
+                    child: _buildProfilePreviewCard(firstPhoto, name, age, isVerified),
                   ),
                   const SizedBox(height: 20),
                   const Center(child: Text("This is how you appear to others", style: TextStyle(color: Colors.grey))),
@@ -87,7 +91,8 @@ class ProfileTab extends StatelessWidget {
     );
   }
 
-  Widget _buildProfilePreviewCard(String photoUrl, String name, int age) {
+  // 3. UPDATED WIDGET SIGNATURE
+  Widget _buildProfilePreviewCard(String photoUrl, String name, int age, bool isVerified) {
     return Container(
       height: 500,
       width: double.infinity,
@@ -124,7 +129,23 @@ class ProfileTab extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("$name, $age", style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                // 4. ROW FOR NAME + TICK
+                Row(
+                  children: [
+                    Text(
+                      "$name, $age", 
+                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)
+                    ),
+                    
+                    // --- THE BLUE TICK ---
+                    if (isVerified) ...[
+                      const SizedBox(width: 8),
+                      const Icon(Icons.verified, color: Colors.blue, size: 28),
+                    ],
+                    // ---------------------
+                  ],
+                ),
+                
                 const SizedBox(height: 5),
                 _buildPreviewBadge(),
               ],

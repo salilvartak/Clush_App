@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart'; // Imports kTan & kRose
 
 // --- GENERIC TEMPLATE FOR SUB-PAGES ---
@@ -190,6 +191,8 @@ class TravelModePage extends StatelessWidget {
 
 // ================= PRIVACY & VERIFICATION (UPDATED) =================
 
+// ================= PRIVACY & VERIFICATION (UPDATED LOGIC) =================
+
 class VerificationPage extends StatefulWidget {
   const VerificationPage({super.key});
 
@@ -199,16 +202,42 @@ class VerificationPage extends StatefulWidget {
 
 class _VerificationPageState extends State<VerificationPage> {
   // Logic Variables
-  File? _profileImage;
+  String? _profileImageUrl;
   File? _videoFile;
   bool _isLoading = false;
+  bool _isFetchingProfile = true;
+  bool _isVerified = false; // New state to track verification
   final ImagePicker _picker = ImagePicker();
 
-  // 1. Pick Image Logic
-  Future<void> _pickImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (image != null) {
-      setState(() => _profileImage = File(image.path));
+  @override
+  void initState() {
+    super.initState();
+    _checkVerificationStatus(); // Check if already verified on load
+  }
+
+  // 1. CHECK IF USER IS ALREADY VERIFIED
+  Future<void> _checkVerificationStatus() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('photo_urls, is_verified') // Fetch verified status
+          .eq('id', userId)
+          .single();
+
+      final List photos = data['photo_urls'] ?? [];
+      final bool verified = data['is_verified'] ?? false;
+
+      setState(() {
+        _isVerified = verified; // Lock screen if true
+        if (photos.isNotEmpty) _profileImageUrl = photos[0];
+        _isFetchingProfile = false;
+      });
+    } catch (e) {
+      print("Error fetching profile: $e");
+      setState(() => _isFetchingProfile = false);
     }
   }
 
@@ -216,93 +245,100 @@ class _VerificationPageState extends State<VerificationPage> {
   Future<void> _recordVideo() async {
     final XFile? video = await _picker.pickVideo(
       source: ImageSource.camera,
-      preferredCameraDevice: CameraDevice.front, // Force selfie camera
-      maxDuration: const Duration(seconds: 5),   // Limit to 5 seconds
+      preferredCameraDevice: CameraDevice.front,
+      maxDuration: const Duration(seconds: 5),
     );
     if (video != null) {
       setState(() => _videoFile = File(video.path));
     }
   }
 
-  // 3. API Call Logic (Updated with JSON Parsing)
+  // 3. API Call Logic
   Future<void> _submitVerification() async {
-    if (_profileImage == null || _videoFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select both image and video.")));
-      return;
-    }
+    if (_profileImageUrl == null || _videoFile == null) return;
 
     setState(() => _isLoading = true);
 
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown_user';
-      print("🚀 Starting Verification for user: $userId");
+      
+      // A. Download Profile Image
+      final imageResponse = await http.get(Uri.parse(_profileImageUrl!));
+      if (imageResponse.statusCode != 200) throw Exception("Failed to download profile photo");
 
-      // 1. Prepare Request
-      // NOTE: Using your Render URL
+      // B. Prepare Request
       var uri = Uri.parse('https://nina-unpumped-linus.ngrok-free.dev/verify'); 
       var request = http.MultipartRequest('POST', uri);
 
-      // 2. Add Fields
       request.fields['user_id'] = userId;
-
-      // 3. Add Files
-      // IMPORTANT: Keys must match your Python code ('profile' & 'video')
-      request.files.add(await http.MultipartFile.fromPath('profile', _profileImage!.path));
+      request.files.add(http.MultipartFile.fromBytes(
+        'profile', 
+        imageResponse.bodyBytes, 
+        filename: 'profile_supa.jpg'
+      ));
       request.files.add(await http.MultipartFile.fromPath('video', _videoFile!.path));
 
-      // 4. Send and Wait
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
+      // C. Send & Parse
+      var response = await request.send();
+      final respStr = await response.stream.bytesToString();
+      final data = jsonDecode(respStr); // Parse the JSON you showed me
 
-      print("📡 Server Status: ${response.statusCode}");
-      print("📩 Server Response: ${response.body}");
+      print("📩 Server Response: $data");
 
-      if (response.statusCode == 200) {
-        // 5. PARSE THE RESULT
-        var data = jsonDecode(response.body);
-        
-        // Handle potential nulls or type issues safely
-        bool isMatch = data['match'] ?? false;
-        double score = (data['score'] is num) ? (data['score'] as num).toDouble() : 0.0;
+      // D. HANDLE THE LOGIC
+      bool isMatch = data['match'] == true;
+      double score = (data['score'] is num) ? (data['score'] as num).toDouble() : 0.0;
 
-        if (isMatch) {
-          if (mounted) {
-            print("✅ VERIFICATION SUCCESSFUL! (Score: $score)");
-            ScaffoldMessenger.of(context).showSnackBar(
-               SnackBar(content: Text("✅ Verification Successful! Score: ${score.toStringAsFixed(2)}")),
-            );
-            Navigator.pop(context); // Go back to settings
-          }
-        } else {
-          if (mounted) {
-            print("❌ VERIFICATION FAILED. Score: $score");
-            _showErrorDialog("Verification Failed", "Faces do not match. Match Score: ${score.toStringAsFixed(2)}");
-          }
+      if (isMatch) {
+        // --- CASE 1: SUCCESS ---
+        // 1. Update Supabase
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'is_verified': true}) // Mark as Verified in DB
+            .eq('id', userId);
+
+        // 2. Update Local State
+        setState(() {
+          _isVerified = true; // Lock the screen
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text("✅ Verification Complete! You now have a blue tick.")),
+          );
         }
       } else {
-        print("⚠️ Server Error: ${response.body}");
+        // --- CASE 2: FAILED ---
         if (mounted) {
-           _showErrorDialog("Server Error", "Code: ${response.statusCode}\n${response.body}");
+          _showFailDialog(score); // Show custom fail dialog
         }
       }
+
     } catch (e) {
-      print("🔥 Connection Error: $e");
-      if (mounted) {
-        _showErrorDialog("Connection Error", e.toString());
-      }
+      print("Error: $e");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _showErrorDialog(String title, String content) {
+  void _showFailDialog(double score) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
+        title: const Text("Verification Failed ❌"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Your video did not match your profile picture."),
+            const SizedBox(height: 10),
+            Text("Match Score: ${score.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            const Text("Please upload a clearer profile picture where your face is visible, or try recording again in better lighting.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Try Again"))
         ],
       ),
     );
@@ -310,105 +346,89 @@ class _VerificationPageState extends State<VerificationPage> {
 
   @override
   Widget build(BuildContext context) {
+    // --- IF VERIFIED: SHOW SUCCESS SCREEN & LOCK ---
+    if (_isVerified) {
+      return BaseSettingsPage(
+        title: "Identity Verification",
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 50),
+              const Icon(Icons.verified, size: 100, color: Colors.blue), // Blue Tick
+              const SizedBox(height: 20),
+              const Text("You are Verified!", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              const Text("You have the blue tick on your profile.", style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // --- IF NOT VERIFIED: SHOW NORMAL UI ---
     return BaseSettingsPage(
       title: "Identity Verification",
       body: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Header
           const Icon(Icons.verified_user_rounded, size: 80, color: Color(0xFFCD9D8F)),
           const SizedBox(height: 20),
           const Text("Get the Blue Tick", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Text(
-            "Upload a clear selfie and record a 5-second video turning your head to verify your identity.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.black.withOpacity(0.6), height: 1.4),
-          ),
           const SizedBox(height: 32),
 
-          // --- STEP 1: UPLOAD PHOTO ---
-          _buildStepCard(
-            title: "Step 1: Upload Selfie",
-            subtitle: _profileImage == null ? "Tap to select photo" : "Photo Selected",
-            icon: Icons.photo_camera,
-            isDone: _profileImage != null,
-            onTap: _pickImage,
+          // Step 1: Profile Photo
+           Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 25,
+                  backgroundColor: Colors.grey[200],
+                  backgroundImage: _profileImageUrl != null ? NetworkImage(_profileImageUrl!) : null,
+                  child: _profileImageUrl == null ? const Icon(Icons.person) : null,
+                ),
+                const SizedBox(width: 16),
+                const Expanded(child: Text("Step 1: Profile Photo (Using Main)", style: TextStyle(fontWeight: FontWeight.bold))),
+                const Icon(Icons.check_circle, color: Color(0xFFCD9D8F)),
+              ],
+            ),
           ),
 
           const SizedBox(height: 16),
 
-          // --- STEP 2: RECORD VIDEO ---
-          _buildStepCard(
-            title: "Step 2: Record Video",
-            subtitle: _videoFile == null ? "Tap to record (5s)" : "Video Recorded",
-            icon: Icons.videocam,
-            isDone: _videoFile != null,
+          // Step 2: Record Video
+          GestureDetector(
             onTap: _recordVideo,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white, 
+                borderRadius: BorderRadius.circular(16),
+                border: _videoFile != null ? Border.all(color: const Color(0xFFCD9D8F), width: 2) : null
+              ),
+              child: Row(
+                children: [
+                  Icon(_videoFile != null ? Icons.check : Icons.videocam, color: const Color(0xFFCD9D8F)),
+                  const SizedBox(width: 16),
+                  Text(_videoFile == null ? "Step 2: Record Video (5s)" : "Video Recorded", style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
           ),
 
           const SizedBox(height: 40),
 
-          // --- VERIFY BUTTON ---
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.black,
+              backgroundColor: Colors.black, 
               foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 60),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              minimumSize: const Size(double.infinity, 60)
             ),
-            onPressed: (_isLoading || _profileImage == null || _videoFile == null) 
-                ? null 
-                : _submitVerification,
-            child: _isLoading 
-                ? const CircularProgressIndicator(color: Color(0xFFCD9D8F))
-                : const Text("Verify Me", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            onPressed: (_isLoading || _profileImageUrl == null || _videoFile == null) ? null : _submitVerification,
+            child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Verify Me"),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildStepCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required bool isDone,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: isDone ? Border.all(color: const Color(0xFFCD9D8F), width: 2) : null,
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDone ? const Color(0xFFCD9D8F) : Colors.grey[100],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(isDone ? Icons.check : icon, color: isDone ? Colors.white : Colors.grey),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 4),
-                  Text(subtitle, style: TextStyle(color: isDone ? const Color(0xFFCD9D8F) : Colors.grey)),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
