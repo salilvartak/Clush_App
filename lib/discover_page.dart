@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:ui'; // For blur effects
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'profile_store.dart'; // To access the current user's gender
+import 'profile_store.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'services/matching_service.dart'; // Ensure this file exists as created in the previous step
 
 const Color kRose = Color(0xFFCD9D8F);
 const Color kTan = Color(0xFFE9E6E1);
@@ -14,6 +16,9 @@ class DiscoverPage extends StatefulWidget {
 }
 
 class _DiscoverPageState extends State<DiscoverPage> {
+  // Service for handling likes/matches
+  final MatchingService _matchingService = MatchingService();
+  
   List<Map<String, dynamic>> _profiles = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -35,8 +40,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
       } else if (currentUserGender?.toLowerCase() == 'man') {
         targetGender = 'Woman';
       } else {
-        // Fallback for other genders or if null: Show everyone or handle as needed
-        // For now, we'll fetch both to be safe, or you can default to 'Man'
+        // Fallback for other genders or if null
         targetGender = 'Man'; 
       }
 
@@ -44,8 +48,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
           .from('profiles')
           .select()
           .eq('gender', targetGender) // Filter by opposite gender
-          .neq('id', Supabase.instance.client.auth.currentUser?.id ?? '') // Exclude self
-          .limit(20); // Limit to 20 for now
+          .neq('id', FirebaseAuth.instance.currentUser?.uid ?? '')
+          .limit(20);
 
       if (mounted) {
         setState(() {
@@ -69,6 +73,95 @@ class _DiscoverPageState extends State<DiscoverPage> {
         _profiles.removeAt(0);
       }
     });
+  }
+
+  // --- SWIPE LOGIC ---
+  void _onSwipe(String targetUserId, String swipeType) async {
+    // 1. Keep a reference to the profile before removing (for the match dialog)
+    if (_profiles.isEmpty) return;
+    final droppedProfile = _profiles.first;
+    
+    // 2. Optimistic UI update: Remove card immediately so user doesn't wait
+    _removeCurrentProfile();
+
+    // 3. Call Backend
+    bool isMatch = false;
+    if (swipeType == 'like') {
+      isMatch = await _matchingService.swipeRight(targetUserId);
+    } else if (swipeType == 'dislike') {
+      await _matchingService.swipeLeft(targetUserId);
+    } else if (swipeType == 'super_like') {
+      isMatch = await _matchingService.superLike(targetUserId);
+    }
+
+    // 4. Show Match Dialog if applicable
+    if (isMatch && mounted) {
+      _showMatchDialog(droppedProfile);
+    }
+  }
+
+  void _showMatchDialog(Map<String, dynamic> profile) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        final photoUrl = (profile['photo_urls'] != null && (profile['photo_urls'] as List).isNotEmpty)
+            ? profile['photo_urls'][0]
+            : 'https://via.placeholder.com/150';
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(20),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 10))],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("IT'S A MATCH!", 
+                  style: TextStyle(color: kRose, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 1.0)
+                ),
+                const SizedBox(height: 24),
+                CircleAvatar(
+                  radius: 60,
+                  backgroundImage: NetworkImage(photoUrl),
+                  backgroundColor: Colors.grey[200],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  "You and ${profile['full_name']} like each other.",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16, color: Colors.black54),
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context), // Logic to go to chat can be added here
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kRose,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                      elevation: 0,
+                    ),
+                    child: const Text("SEND A MESSAGE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("KEEP SWIPING", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -103,7 +196,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
       body: Stack(
         children: [
           // 1. SCROLLABLE PROFILE CONTENT
-          // We wrap this in a Key so it rebuilds when the profile changes
           KeyedSubtree(
             key: ValueKey(profile['id'] ?? profile['full_name']),
             child: _buildProfileContent(profile),
@@ -302,6 +394,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   Widget _buildFloatingButtons() {
+    if (_profiles.isEmpty) return const SizedBox();
+    
+    // Safely get the ID. Use 'id' from database.
+    // Ensure your database has 'id' column or use 'full_name' if necessary, but ID is preferred for matching.
+    final currentProfileId = _profiles.first['id'].toString();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Row(
@@ -309,20 +407,17 @@ class _DiscoverPageState extends State<DiscoverPage> {
         children: [
           // DISLIKE BUTTON
           _buildActionButton(Icons.close_rounded, Colors.redAccent, 64, () {
-            // Logic: Dislike (Skip)
-            _removeCurrentProfile();
+            _onSwipe(currentProfileId, 'dislike');
           }),
           
           // SUPER LIKE BUTTON
           _buildActionButton(Icons.star_rounded, Colors.blueAccent, 52, () {
-             // Logic: Super Like
-            _removeCurrentProfile();
+             _onSwipe(currentProfileId, 'super_like');
           }),
 
           // LIKE BUTTON
           _buildActionButton(Icons.favorite_rounded, const Color(0xFF00BFA5), 64, () {
-            // Logic: Like
-            _removeCurrentProfile();
+            _onSwipe(currentProfileId, 'like');
           }),
         ],
       ),
