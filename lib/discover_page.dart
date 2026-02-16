@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:ui'; // For blur effects
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'profile_store.dart'; 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'services/matching_service.dart'; // Ensure this file exists as created in the previous step
+import 'services/matching_service.dart'; 
 
 const Color kRose = Color(0xFFCD9D8F);
 const Color kTan = Color(0xFFE9E6E1);
@@ -29,26 +28,65 @@ class _DiscoverPageState extends State<DiscoverPage> {
     _fetchProfiles();
   }
 
+  /// FETCHING LOGIC:
+  /// 1. Get IDs of people I've already swiped on.
+  /// 2. Get my own gender.
+  /// 3. Fetch new profiles that match my target gender AND are not in the "swiped" list.
   Future<void> _fetchProfiles() async {
     try {
-      final currentUserGender = ProfileStore.instance.gender;
-      String targetGender;
-
-      // Logic: If Woman -> Show Man, If Man -> Show Woman
-      if (currentUserGender?.toLowerCase() == 'woman') {
-        targetGender = 'Man';
-      } else if (currentUserGender?.toLowerCase() == 'man') {
-        targetGender = 'Woman';
-      } else {
-        // Fallback for other genders or if null
-        targetGender = 'Man'; 
+      final myId = FirebaseAuth.instance.currentUser?.uid;
+      if (myId == null) {
+        if (mounted) setState(() => _errorMessage = "User not logged in");
+        return;
       }
 
+      // --- STEP 1: Get IDs of people I have ALREADY swiped ---
+      final alreadySwipedResponse = await Supabase.instance.client
+          .from('likes')
+          .select('target_user_id')
+          .eq('user_id', myId);
+
+      final List<String> ignoreIds = (alreadySwipedResponse as List)
+          .map((e) => e['target_user_id'].toString())
+          .toList();
+
+      // Always ignore myself (ensure list is never empty)
+      ignoreIds.add(myId);
+
+      // --- STEP 2: Get My Gender ---
+      final myProfileResponse = await Supabase.instance.client
+          .from('profiles')
+          .select('gender')
+          .eq('id', myId)
+          .maybeSingle();
+
+      if (myProfileResponse == null) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = "Profile not found. Please complete your profile.";
+          });
+        }
+        return;
+      }
+
+      final myGender = myProfileResponse['gender'] as String?;
+      String targetGender;
+
+      if (myGender?.toLowerCase() == 'woman') {
+        targetGender = 'Man';
+      } else if (myGender?.toLowerCase() == 'man') {
+        targetGender = 'Woman';
+      } else {
+        targetGender = 'Woman'; 
+      }
+
+      // --- STEP 3: Fetch Profiles with Exclusion Filter ---
       final response = await Supabase.instance.client
           .from('profiles')
           .select()
-          .eq('gender', targetGender) // Filter by opposite gender
-          .neq('id', FirebaseAuth.instance.currentUser?.uid ?? '')
+          .eq('gender', targetGender)
+          .not('id', 'in', ignoreIds) // <--- FIXED LINE HERE
           .limit(20);
 
       if (mounted) {
@@ -77,24 +115,29 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
   // --- SWIPE LOGIC ---
   void _onSwipe(String targetUserId, String swipeType) async {
-    // 1. Keep a reference to the profile before removing (for the match dialog)
     if (_profiles.isEmpty) return;
+    
+    // A. Keep reference for the dialog
     final droppedProfile = _profiles.first;
     
-    // 2. Optimistic UI update: Remove card immediately so user doesn't wait
+    // B. Optimistic UI update (Remove card immediately)
     _removeCurrentProfile();
 
-    // 3. Call Backend
+    // C. Call Backend
     bool isMatch = false;
-    if (swipeType == 'like') {
-      isMatch = await _matchingService.swipeRight(targetUserId);
-    } else if (swipeType == 'dislike') {
-      await _matchingService.swipeLeft(targetUserId);
-    } else if (swipeType == 'super_like') {
-      isMatch = await _matchingService.superLike(targetUserId);
+    try {
+      if (swipeType == 'like') {
+        isMatch = await _matchingService.swipeRight(targetUserId);
+      } else if (swipeType == 'dislike') {
+        await _matchingService.swipeLeft(targetUserId);
+      } else if (swipeType == 'super_like') {
+        isMatch = await _matchingService.superLike(targetUserId);
+      }
+    } catch (e) {
+      print("Error recording swipe: $e");
     }
 
-    // 4. Show Match Dialog if applicable
+    // D. Show Match Dialog if applicable
     if (isMatch && mounted) {
       _showMatchDialog(droppedProfile);
     }
@@ -142,7 +185,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context), // Logic to go to chat can be added here
+                    onPressed: () => Navigator.pop(context), 
                     style: ElevatedButton.styleFrom(
                       backgroundColor: kRose,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
@@ -177,7 +220,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     if (_errorMessage != null) {
       return Scaffold(
         backgroundColor: kTan,
-        body: Center(child: Text(_errorMessage!)),
+        body: Center(child: Text(_errorMessage!, textAlign: TextAlign.center)),
       );
     }
 
@@ -201,7 +244,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
             child: _buildProfileContent(profile),
           ),
 
-          // 2. HEADER (Discover + Filter)
+          // 2. HEADER
           Positioned(
             top: 0,
             left: 0,
@@ -397,7 +440,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
     if (_profiles.isEmpty) return const SizedBox();
     
     // Safely get the ID. Use 'id' from database.
-    // Ensure your database has 'id' column or use 'full_name' if necessary, but ID is preferred for matching.
     final currentProfileId = _profiles.first['id'].toString();
 
     return Padding(
