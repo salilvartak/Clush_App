@@ -1,15 +1,18 @@
-// lib/chat_page.dart
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class ChatScreen extends StatefulWidget {
-  final String username;  // Your Name (e.g., Salil)
-  final String matchName; // Their Name (e.g., Rahul)
+  final String myId;       // My Supabase UUID
+  final String matchId;    // Their Supabase UUID
+  final String myName;     // My Name (e.g. "Salil")
+  final String matchName;  // Their Name (e.g. "Rahul")
 
   const ChatScreen({
-    Key? key, 
-    required this.username, 
-    required this.matchName
+    Key? key,
+    required this.myId,
+    required this.matchId,
+    required this.myName,
+    required this.matchName,
   }) : super(key: key);
 
   @override
@@ -19,11 +22,12 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   late IO.Socket socket;
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController(); // Auto-scroll
   List<Map<String, dynamic>> messages = [];
-  String? privateRoom; 
-  
-  // 🔴 REPLACE THIS WITH YOUR CURRENT NGROK URL
-  final String serverUrl = 'https://nina-unpumped-linus.ngrok-free.dev'; 
+  String? privateRoom; // The secure "UUID_UUID" room ID
+
+  // 🔴 IMPORTANT: REPLACE THIS WITH YOUR CURRENT NGROK URL!
+  final String serverUrl = 'https://nina-unpumped-linus.ngrok-free.dev';
 
   @override
   void initState() {
@@ -31,13 +35,16 @@ class _ChatScreenState extends State<ChatScreen> {
     connectToServer();
   }
 
-  String getRoomId(String user1, String user2) {
-    List<String> users = [user1, user2];
-    users.sort(); // Sorting ensures 'Rahul_Salil' is always the same for both people
-    return "${users[0]}_${users[1]}";
+  // --- 1. SECURE ROOM GENERATOR ---
+  // Sorts UUIDs alphabetically so "UserA_UserB" is ALWAYS the same string
+  String getRoomId(String id1, String id2) {
+    List<String> ids = [id1, id2];
+    ids.sort(); 
+    return "${ids[0]}_${ids[1]}";
   }
 
   void connectToServer() {
+    // Initialize Socket
     socket = IO.io(serverUrl, <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
@@ -47,65 +54,85 @@ class _ChatScreenState extends State<ChatScreen> {
 
     socket.onConnect((_) {
       print('✅ Connected to Server');
-      
-      // Use the real names passed from the previous screen
-      privateRoom = getRoomId(widget.username, widget.matchName);
-      
-      print("🔐 Joining Private Room: $privateRoom");
-      
+
+      // Generate the Secure Room ID using UUIDs
+      privateRoom = getRoomId(widget.myId, widget.matchId);
+      print("🔐 Joining Secure Room: $privateRoom");
+
+      // Join the room
+      // We send 'username' so the server can print "Salil joined..."
       socket.emit('join_room', {
-        'room': privateRoom, 
-        'username': widget.username
+        'room': privateRoom,
+        'username': widget.myName, 
       });
-      
-      // Optional: Ask server for previous messages
-      // socket.emit('get_history', {'room': privateRoom}); 
     });
 
+    // --- 2. LOAD PREVIOUS CHATS ---
     socket.on('load_history', (data) {
-      print("📜 HISTORY RECEIVED: $data"); // Debug print
       if (mounted) {
         setState(() {
-          // Convert the incoming List to our Message format
           messages = List<Map<String, dynamic>>.from(data.map((msg) => {
             'sender': msg['sender'],
             'message': msg['message'],
-            'isMe': msg['sender'] == widget.username, // Check if I sent it
+            'isMe': msg['sender'] == widget.myName, // Check if I sent it
           }));
         });
+        _scrollToBottom();
       }
     });
 
+    // --- 3. RECEIVE NEW MESSAGES ---
     socket.on('receive_message', (data) {
-      print("📩 MSG RECEIVED FROM SERVER: $data");
       if (mounted) {
         setState(() {
           messages.add({
             'sender': data['sender'],
             'message': data['message'],
-            'isMe': data['sender'] == widget.username,
+            'isMe': data['sender'] == widget.myName,
           });
         });
+        _scrollToBottom();
       }
     });
+    
+    // Handle connection errors
+    socket.onConnectError((data) => print("❌ Connection Error: $data"));
+    socket.onDisconnect((_) => print("⚠️ Disconnected"));
   }
 
   void sendMessage() {
-    if (_controller.text.isEmpty || privateRoom == null) return;
+    String text = _controller.text.trim();
+    if (text.isEmpty || privateRoom == null) return;
 
+    // Send the message
+    // Note: We use UUID for the room, but Name for the 'sender' display
     socket.emit('send_message', {
-      'room': privateRoom, 
-      'sender': widget.username,
-      'message': _controller.text,
+      'room': privateRoom,
+      'sender': widget.myName, 
+      'message': text,
     });
 
     _controller.clear();
+  }
+  
+  void _scrollToBottom() {
+    // Scroll to bottom after a slight delay to let the list render
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
     socket.dispose();
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -113,7 +140,17 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Chat with ${widget.matchName}"), // Shows who you are talking to
+        title: Row(
+          children: [
+            const CircleAvatar(
+              backgroundColor: Colors.grey,
+              radius: 16,
+              child: Icon(Icons.person, size: 20, color: Colors.white),
+            ),
+            const SizedBox(width: 10),
+            Text(widget.matchName, style: const TextStyle(fontSize: 18)), // "Chat with Rahul"
+          ],
+        ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 1,
@@ -121,54 +158,81 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final msg = messages[index];
-                bool isMe = msg['isMe'];
-                
-                return ListTile(
-                  title: Align(
-                    alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: isMe ? const Color(0xFFCD9D8F) : Colors.grey[300],
-                        borderRadius: BorderRadius.circular(20),
+            child: messages.isEmpty 
+              ? const Center(child: Text("Say Hello! 👋", style: TextStyle(color: Colors.grey))) 
+              : ListView.builder(
+                  controller: _scrollController,
+                  itemCount: messages.length,
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                  itemBuilder: (context, index) {
+                    final msg = messages[index];
+                    bool isMe = msg['isMe'];
+
+                    return Align(
+                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                        decoration: BoxDecoration(
+                          color: isMe ? const Color(0xFFCD9D8F) : Colors.grey[200],
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(16),
+                            topRight: const Radius.circular(16),
+                            bottomLeft: isMe ? const Radius.circular(16) : Radius.zero,
+                            bottomRight: isMe ? Radius.zero : const Radius.circular(16),
+                          ),
+                        ),
+                        child: Text(
+                          msg['message'],
+                          style: TextStyle(
+                            color: isMe ? Colors.white : Colors.black87,
+                            fontSize: 16
+                          ),
+                        ),
                       ),
-                      child: Text(
-                        msg['message'],
-                        style: TextStyle(color: isMe ? Colors.white : Colors.black87),
-                      ),
-                    ),
-                  ),
-                );
-              },
+                    );
+                  },
+                ),
+          ),
+          _buildMessageInput(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageInput() {
+    return Container(
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: "Type a message...",
+                filled: true,
+                fillColor: Colors.grey[100],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      hintText: "Type a message...",
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: const Color(0xFFCD9D8F),
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: sendMessage,
-                  ),
-                ),
-              ],
+          const SizedBox(width: 8),
+          CircleAvatar(
+            backgroundColor: const Color(0xFFCD9D8F),
+            radius: 24,
+            child: IconButton(
+              icon: const Icon(Icons.send, color: Colors.white, size: 20),
+              onPressed: sendMessage,
             ),
           ),
         ],

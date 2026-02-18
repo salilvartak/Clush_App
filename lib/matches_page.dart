@@ -1,87 +1,134 @@
-// lib/matches_page.dart
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'chat_page.dart'; // Import the chat screen
+import 'package:supabase_flutter/supabase_flutter.dart' hide User; // Hide Supabase User to avoid conflict
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase to get the real User ID
+import 'chat_page.dart';
 
 class MatchesPage extends StatefulWidget {
-  final String myUsername; // Your name
-  const MatchesPage({Key? key, required this.myUsername}) : super(key: key);
+  const MatchesPage({super.key});
 
   @override
-  _MatchesPageState createState() => _MatchesPageState();
+  State<MatchesPage> createState() => _MatchesPageState();
 }
 
 class _MatchesPageState extends State<MatchesPage> {
-  List<String> matches = [];
-  bool isLoading = true;
+  final _supabase = Supabase.instance.client;
   
-  // 🔴 REPLACE THIS WITH YOUR NGROK URL
-  final String serverUrl = 'https://nina-unpumped-linus.ngrok-free.dev'; 
+  List<Map<String, dynamic>> matches = [];
+  String? _myDisplayName;
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    fetchMatches();
+    _fetchData();
   }
 
-  Future<void> fetchMatches() async {
+  Future<void> _fetchData() async {
     try {
-      // Call the Python Server: GET /get_matches/Salil
-      final url = Uri.parse('$serverUrl/get_matches/${widget.myUsername}');
-      final response = await http.get(url);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final myId = user.uid;
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+      // 1. Fetch My Name
+      try {
+        final myProfile = await _supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', myId)
+            .single();
+        _myDisplayName = myProfile['full_name'];
+      } catch (e) {
+        _myDisplayName = "Me";
+      }
+
+      // 2. Fetch Matches (Using user_a and user_b)
+      final data = await _supabase
+          .from('matches')
+          .select('''
+            *,
+            profile_a:profiles!user_a(id, full_name), 
+            profile_b:profiles!user_b(id, full_name)
+          ''')
+          .or('user_a.eq.$myId, user_b.eq.$myId');
+
+      final List<Map<String, dynamic>> loadedMatches = [];
+
+      for (var match in data) {
+        final isUserA_Me = match['user_a'] == myId;
+        
+        // If I am 'user_a', then the match is 'profile_b'
+        // If I am 'user_b', then the match is 'profile_a'
+        final otherProfile = isUserA_Me ? match['profile_b'] : match['profile_a'];
+
+        if (otherProfile != null) {
+          loadedMatches.add({
+            'match_uuid': otherProfile['id'],
+            'display_name': otherProfile['full_name'],
+          });
+        }
+      }
+
+      if (mounted) {
         setState(() {
-          // Convert the JSON list ["Rahul", "Anjali"] to a Dart List<String>
-          matches = List<String>.from(data['matches']);
+          matches = loadedMatches;
           isLoading = false;
         });
-      } else {
-        print("❌ Server Error: ${response.statusCode}");
       }
+
     } catch (e) {
-      print("❌ Connection Error: $e");
-      setState(() => isLoading = false);
+      print('❌ Error fetching matches: $e');
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("My Matches")),
+      appBar: AppBar(
+        title: const Text("Matches"),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        foregroundColor: Colors.black,
+      ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFCD9D8F)))
           : matches.isEmpty
-              ? const Center(child: Text("No matches yet! Go swipe some people! ❤️"))
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.heart_broken, size: 60, color: Colors.grey[300]),
+                      const SizedBox(height: 10),
+                      const Text("No matches yet.", style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                )
               : ListView.builder(
                   itemCount: matches.length,
                   itemBuilder: (context, index) {
-                    final personName = matches[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.blueAccent,
-                          child: Text(personName[0].toUpperCase()), // First letter of name
-                        ),
-                        title: Text(personName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: const Text("Tap to chat"),
-                        trailing: const Icon(Icons.chat_bubble_outline),
-                        onTap: () {
-                          // 🚀 GO TO CHAT SCREEN
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ChatScreen(
-                                username: widget.myUsername,
-                                matchName: personName, // Pass the clicked name!
-                              ),
-                            ),
-                          );
-                        },
+                    final match = matches[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: const Color(0xFFCD9D8F),
+                        child: Text(match['display_name'][0].toUpperCase(), style: const TextStyle(color: Colors.white)),
                       ),
+                      title: Text(match['display_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: const Text("Tap to chat"),
+                      trailing: const Icon(Icons.chat_bubble_outline, color: Color(0xFFCD9D8F)),
+                      onTap: () {
+                        // Pass the Firebase ID as "myId"
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(
+                              myId: FirebaseAuth.instance.currentUser!.uid,
+                              matchId: match['match_uuid'],
+                              matchName: match['display_name'],
+                              myName: _myDisplayName ?? "Me", 
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),
