@@ -18,24 +18,23 @@ class MatchingService {
     return await _recordSwipe(targetUserId, 'super_like');
   }
 
-Future<bool> _recordSwipe(String targetUserId, String type) async {
-  final myId = _auth.currentUser?.uid;
-  if (myId == null) return false;
+  Future<bool> _recordSwipe(String targetUserId, String type) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return false;
 
-  try {
-    // 1. UPDATED PARAMETER NAMES HERE:
-    final response = await _client.rpc('handle_swipe', params: {
-      'p_swiper_id': myId,          // <--- Changed to p_swiper_id
-      'p_target_user_id': targetUserId, // <--- Changed to p_target_user_id
-      'p_swipe_type': type,         // <--- Changed to p_swipe_type
-    });
-    
-    return response as bool;
-  } catch (e) {
-    print('Error recording swipe: $e');
-    return false;
+    try {
+      final response = await _client.rpc('handle_swipe', params: {
+        'p_swiper_id': myId,
+        'p_target_user_id': targetUserId,
+        'p_swipe_type': type,
+      });
+      
+      return response as bool;
+    } catch (e) {
+      print('Error recording swipe: $e');
+      return false;
+    }
   }
-}
 
   // Fetch profiles that liked the current user (for a "Likes You" page)
   Future<List<Map<String, dynamic>>> fetchWhoLikedMe() async {
@@ -52,11 +51,26 @@ Future<bool> _recordSwipe(String targetUserId, String type) async {
 
       if (likesData.isEmpty) return [];
 
+      // 2. Get IDs of people *I* have already swiped on (Accepted or Rejected)
+      final List<dynamic> mySwipes = await _client
+          .from('likes')
+          .select('target_user_id')
+          .eq('user_id', myId);
+
+      // Create a Set of IDs I have already interacted with
+      final Set<String> interactedIds = mySwipes
+          .map((e) => e['target_user_id'].toString())
+          .toSet();
+
+      // 3. Filter the list: Only show people who liked me AND whom I haven't swiped on yet
       final List<String> userIds = likesData
           .map((e) => e['user_id'].toString())
+          .where((id) => !interactedIds.contains(id))
           .toList();
 
-      // 2. Get their profile details
+      if (userIds.isEmpty) return [];
+
+      // 4. Get their profile details
       final List<dynamic> profilesData = await _client
           .from('profiles')
           .select()

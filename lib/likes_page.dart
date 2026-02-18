@@ -31,6 +31,37 @@ class _LikesPageState extends State<LikesPage> {
     }
   }
 
+  Future<void> _handleReject(String userId) async {
+    // Optimistically remove from list immediately for better UI flow
+    setState(() {
+      _likedByUsers.removeWhere((user) => user['id'] == userId);
+    });
+    
+    // Perform backend operation
+    await _matchingService.swipeLeft(userId);
+  }
+
+  Future<void> _handleAccept(String userId) async {
+    // 1. Perform Swipe Right
+    final isMatch = await _matchingService.swipeRight(userId);
+    
+    // 2. Show User Feedback
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isMatch ? "It's a Match! Check your Chats." : "You liked them back!"),
+          backgroundColor: kRose,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      
+      // 3. Remove from this list (they move to Matches now)
+      setState(() {
+        _likedByUsers.removeWhere((user) => user['id'] == userId);
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -50,7 +81,8 @@ class _LikesPageState extends State<LikesPage> {
                 itemCount: _likedByUsers.length,
                 itemBuilder: (context, index) {
                   final user = _likedByUsers[index];
-                  return _buildUserTile(user);
+                  // Ensure we have a valid key for lists
+                  return _buildUserTile(user, key: ValueKey(user['id'])); 
                 },
               ),
     );
@@ -64,12 +96,12 @@ class _LikesPageState extends State<LikesPage> {
           Icon(Icons.favorite_border, size: 60, color: Colors.grey.shade400),
           const SizedBox(height: 16),
           Text(
-            "No likes yet",
+            "No pending likes",
             style: TextStyle(fontSize: 18, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
-            "Keep your profile updated!",
+            "Go swipe to find more matches!",
             style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
           ),
         ],
@@ -77,14 +109,16 @@ class _LikesPageState extends State<LikesPage> {
     );
   }
 
-  Widget _buildUserTile(Map<String, dynamic> user) {
+  Widget _buildUserTile(Map<String, dynamic> user, {Key? key}) {
     final photoUrl = (user['photo_urls'] != null && (user['photo_urls'] as List).isNotEmpty)
         ? user['photo_urls'][0]
         : 'https://via.placeholder.com/150';
     final name = user['full_name'] ?? 'User';
     final age = _calculateAge(user['birthday']);
+    final userId = user['id']; // Needed for actions
 
     return Container(
+      key: key,
       margin: const EdgeInsets.only(bottom: 16.0),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -123,15 +157,11 @@ class _LikesPageState extends State<LikesPage> {
           // Action Buttons
           IconButton(
             icon: const Icon(Icons.close, color: Colors.redAccent),
-            onPressed: () {
-              // Handle reject locally or backend
-            },
+            onPressed: () => _handleReject(userId),
           ),
           IconButton(
             icon: const Icon(Icons.favorite, color: Color(0xFF00BFA5)),
-            onPressed: () {
-              // Handle accept match
-            },
+            onPressed: () => _handleAccept(userId),
           ),
         ],
       ),
