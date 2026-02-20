@@ -6,6 +6,7 @@ import 'services/matching_service.dart';
 
 const Color kRose = Color(0xFFCD9D8F);
 const Color kTan = Color(0xFFE9E6E1);
+const Color kBlack = Color(0xFF2C2C2C);
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -29,9 +30,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   /// FETCHING LOGIC:
-  /// 1. Get IDs of people I've already swiped on.
-  /// 2. Get my own gender.
-  /// 3. Fetch new profiles that match my target gender AND are not in the "swiped" list.
+  /// 1. Get IDs of people I've already swiped on (Likes/Dislikes).
+  /// 2. Get IDs of people I have already MATCHED with.
+  /// 3. Get my own gender.
+  /// 4. Fetch new profiles that match my target gender AND are not in the "swiped" or "matched" list.
   Future<void> _fetchProfiles() async {
     try {
       final myId = FirebaseAuth.instance.currentUser?.uid;
@@ -40,20 +42,40 @@ class _DiscoverPageState extends State<DiscoverPage> {
         return;
       }
 
-      // --- STEP 1: Get IDs of people I have ALREADY swiped ---
+      // --- STEP 1: Initialize Exclusion List (Always ignore myself) ---
+      final List<String> ignoreIds = [];
+      ignoreIds.add(myId);
+
+      // --- STEP 2: Get IDs from 'likes' table (Pending swipes) ---
       final alreadySwipedResponse = await Supabase.instance.client
           .from('likes')
           .select('target_user_id')
           .eq('user_id', myId);
 
-      final List<String> ignoreIds = (alreadySwipedResponse as List)
+      final List<String> swipedIds = (alreadySwipedResponse as List)
           .map((e) => e['target_user_id'].toString())
           .toList();
+      ignoreIds.addAll(swipedIds);
 
-      // Always ignore myself (ensure list is never empty)
-      ignoreIds.add(myId);
+      // --- STEP 3: Get IDs from 'matches' table (Confirmed matches) ---
+      try {
+        final matchesResponse = await Supabase.instance.client
+            .from('matches')
+            .select('user_a, user_b') 
+            .or('user_a.eq.$myId,user_b.eq.$myId');
 
-      // --- STEP 2: Get My Gender ---
+        final List<String> matchedIds = (matchesResponse as List).map((e) {
+          final u1 = e['user_a'].toString();
+          final u2 = e['user_b'].toString();
+          return u1 == myId ? u2 : u1;
+        }).toList();
+        
+        ignoreIds.addAll(matchedIds);
+      } catch (e) {
+        print("Matches check failed (continuing with swipes only): $e");
+      }
+
+      // --- STEP 4: Get My Gender ---
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
           .select('gender')
@@ -81,12 +103,14 @@ class _DiscoverPageState extends State<DiscoverPage> {
         targetGender = 'Woman'; 
       }
 
-      // --- STEP 3: Fetch Profiles with Exclusion Filter ---
+      // --- STEP 5: Fetch Profiles with Exclusion Filter ---
+      final uniqueIgnoreIds = ignoreIds.toSet().toList();
+
       final response = await Supabase.instance.client
           .from('profiles')
           .select()
           .eq('gender', targetGender)
-          .not('id', 'in', ignoreIds) // <--- FIXED LINE HERE
+          .not('id', 'in', uniqueIgnoreIds)
           .limit(20);
 
       if (mounted) {
@@ -117,27 +141,24 @@ class _DiscoverPageState extends State<DiscoverPage> {
   void _onSwipe(String targetUserId, String swipeType) async {
     if (_profiles.isEmpty) return;
     
-    // A. Keep reference for the dialog
     final droppedProfile = _profiles.first;
     
-    // B. Optimistic UI update (Remove card immediately)
+    // Optimistic UI update
     _removeCurrentProfile();
 
-    // C. Call Backend
+    // Call Backend
     bool isMatch = false;
     try {
       if (swipeType == 'like') {
         isMatch = await _matchingService.swipeRight(targetUserId);
       } else if (swipeType == 'dislike') {
         await _matchingService.swipeLeft(targetUserId);
-      } else if (swipeType == 'super_like') {
-        isMatch = await _matchingService.superLike(targetUserId);
-      }
+      } 
     } catch (e) {
       print("Error recording swipe: $e");
     }
 
-    // D. Show Match Dialog if applicable
+    // Show Match Dialog
     if (isMatch && mounted) {
       _showMatchDialog(droppedProfile);
     }
@@ -209,7 +230,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Handling Loading and Empty States
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: kTan,
@@ -231,17 +251,37 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
-    // Get the first profile in the list
     final profile = _profiles.first;
 
     return Scaffold(
       backgroundColor: kTan,
       body: Stack(
         children: [
-          // 1. SCROLLABLE PROFILE CONTENT
-          KeyedSubtree(
-            key: ValueKey(profile['id'] ?? profile['full_name']),
-            child: _buildProfileContent(profile),
+          // 1. SCROLLABLE PROFILE CONTENT (Animated Transition)
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
+            switchInCurve: Curves.easeOutBack,
+            switchOutCurve: Curves.easeInBack,
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              // Custom Slide and Fade Transition
+              final offsetAnimation = Tween<Offset>(
+                begin: const Offset(0.0, 0.1), // Slide up slightly on entry
+                end: Offset.zero,
+              ).animate(animation);
+              
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: offsetAnimation,
+                  child: child,
+                ),
+              );
+            },
+            child: KeyedSubtree(
+              // Key ensures Flutter knows this is a NEW widget when profile changes
+              key: ValueKey(profile['id'] ?? profile['full_name']),
+              child: _buildProfileContent(profile),
+            ),
           ),
 
           // 2. HEADER
@@ -254,7 +294,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
           // 3. FLOATING ACTION BUTTONS
           Positioned(
-            bottom: 30,
+            bottom: 40,
             left: 0,
             right: 0,
             child: _buildFloatingButtons(),
@@ -305,7 +345,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
       'Exercise': profile['exercise'],
     };
 
-    // 2. Prepare Lists for the "Mix" section
+    // 2. Prepare Lists
     List<String> remainingPhotos = [];
     if (photoUrls.length > 1) {
       remainingPhotos.addAll(List<String>.from(photoUrls.sublist(1)));
@@ -321,33 +361,31 @@ class _DiscoverPageState extends State<DiscoverPage> {
     // 3. Build Content List
     List<Widget> content = [];
     
-    // Top Padding for Header
-    content.add(const SizedBox(height: 100));
+    content.add(const SizedBox(height: 100)); // Header Spacer
 
-    // -- 1. FIRST IMAGE CARD (Name + Age) --
+    // -- 1. FIRST IMAGE CARD --
     if (photoUrls.isNotEmpty) {
       content.add(_buildMainPhotoCard(url: photoUrls[0], name: name, age: age));
     } else {
-       // Fallback if no photos
        content.add(_buildMainPhotoCard(url: 'https://via.placeholder.com/600x800', name: name, age: age));
     }
 
-    // -- 2. FIRST PROMPT ANSWER --
+    // -- 2. FIRST PROMPT --
     if (prompts.isNotEmpty && prompts[0] != null) {
       content.add(_buildPremiumPromptCard(prompts[0]));
     }
 
-    // -- 3. ESSENTIALS CARD (Unified) --
+    // -- 3. ESSENTIALS --
     if (allEssentials.values.any((v) => v != null && v.isNotEmpty)) {
       content.add(_buildUnifiedEssentialsCard(allEssentials));
     }
 
-    // -- 4. WHAT I'M LOOKING FOR (Intent) --
+    // -- 4. INTENT --
     if (intent.isNotEmpty) {
       content.add(_buildIntentCard(intent));
     }
 
-    // -- 5. MY PASSIONS --
+    // -- 5. PASSIONS --
     if (allInterests.isNotEmpty) {
       content.add(
         Padding(
@@ -368,7 +406,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
-    // -- 6. THE MIX (Organic Order) --
+    // -- 6. THE MIX --
     if (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
     if (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
     if (remainingPrompts.isNotEmpty) content.add(_buildPremiumPromptCard(remainingPrompts.removeAt(0)));
@@ -380,8 +418,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
       content.add(_buildPremiumPromptCard(remainingPrompts.removeAt(0)));
     }
 
-    // Bottom Padding for Floating Buttons
-    content.add(const SizedBox(height: 120));
+    // Bottom Padding
+    content.add(const SizedBox(height: 140));
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -412,7 +450,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 style: TextStyle(
                   fontSize: 28, 
                   fontWeight: FontWeight.w800, 
-                  color: Colors.black87,
+                  color: kBlack,
                   letterSpacing: -0.5
                 ),
               ),
@@ -423,9 +461,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   border: Border.all(color: Colors.black.withOpacity(0.05)),
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.tune_rounded, color: Colors.black87, size: 24),
+                  icon: const Icon(Icons.tune_rounded, color: kBlack, size: 24),
                   onPressed: () {
-                    // Implement Filter logic here
+                    // Filter logic
                   },
                 ),
               ),
@@ -439,55 +477,36 @@ class _DiscoverPageState extends State<DiscoverPage> {
   Widget _buildFloatingButtons() {
     if (_profiles.isEmpty) return const SizedBox();
     
-    // Safely get the ID. Use 'id' from database.
     final currentProfileId = _profiles.first['id'].toString();
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, // Push to edges or use spaceEvenly
         children: [
+          // SPACER to center them better if using spaceBetween
+          const Spacer(flex: 1),
+
           // DISLIKE BUTTON
-          _buildActionButton(Icons.close_rounded, Colors.redAccent, 64, () {
-            _onSwipe(currentProfileId, 'dislike');
-          }),
-          
-          // SUPER LIKE BUTTON
-          _buildActionButton(Icons.star_rounded, Colors.blueAccent, 52, () {
-             _onSwipe(currentProfileId, 'super_like');
-          }),
+          _BouncingButton(
+            icon: Icons.close_rounded,
+            color: const Color(0xFFFF4B6A), // Premium Red/Pink
+            size: 70, // Larger size
+            onTap: () => _onSwipe(currentProfileId, 'dislike'),
+          ),
+
+          const Spacer(flex: 2), // Gap between buttons
 
           // LIKE BUTTON
-          _buildActionButton(Icons.favorite_rounded, const Color(0xFF00BFA5), 64, () {
-            _onSwipe(currentProfileId, 'like');
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(IconData icon, Color color, double size, VoidCallback onPressed) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+          _BouncingButton(
+            icon: Icons.favorite_rounded,
+            color: const Color(0xFF00C896), // Premium Teal/Green
+            size: 70, // Larger size
+            onTap: () => _onSwipe(currentProfileId, 'like'),
           ),
+
+          const Spacer(flex: 1),
         ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          customBorder: const CircleBorder(),
-          child: Icon(icon, color: color, size: size * 0.5),
-        ),
       ),
     );
   }
@@ -513,33 +532,18 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
     allData.forEach((key, value) {
       if (value != null && value.isNotEmpty) {
-        if (verticalKeys.contains(key)) {
-          verticalData[key] = value;
-        } else {
-          horizontalData[key] = value;
-        }
+        if (verticalKeys.contains(key)) verticalData[key] = value;
+        else horizontalData[key] = value;
       }
     });
 
     final Map<String, IconData> icons = {
-      'Height': Icons.height,
-      'Education': Icons.school,
-      'Job': Icons.work,
-      'Religion': Icons.church,
-      'Politics': Icons.gavel,
-      'Star Sign': Icons.auto_awesome,
-      'Kids': Icons.child_care,
-      'Pets': Icons.pets,
-      'Drink': Icons.local_bar,
-      'Smoke': Icons.smoking_rooms,
-      'Weed': Icons.grass,
-      'Location': Icons.location_on,
-      'Gender': Icons.person,
-      'Orientation': Icons.favorite,
-      'Pronouns': Icons.record_voice_over,
-      'Ethnicity': Icons.public,
-      'Languages': Icons.translate,
-      'Exercise': Icons.fitness_center,
+      'Height': Icons.height, 'Education': Icons.school, 'Job': Icons.work,
+      'Religion': Icons.church, 'Politics': Icons.gavel, 'Star Sign': Icons.auto_awesome,
+      'Kids': Icons.child_care, 'Pets': Icons.pets, 'Drink': Icons.local_bar,
+      'Smoke': Icons.smoking_rooms, 'Weed': Icons.grass, 'Location': Icons.location_on,
+      'Gender': Icons.person, 'Orientation': Icons.favorite, 'Pronouns': Icons.record_voice_over,
+      'Ethnicity': Icons.public, 'Languages': Icons.translate, 'Exercise': Icons.fitness_center,
     };
 
     return Container(
@@ -574,14 +578,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                       children: [
                         Icon(icons[key] ?? Icons.circle, color: kRose, size: 18),
                         const SizedBox(width: 8),
-                        Text(
-                          value,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold, 
-                            fontSize: 13, 
-                            color: Colors.black87
-                          ),
-                        ),
+                        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
                       ],
                     ),
                   );
@@ -590,10 +587,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
             ),
             const SizedBox(height: 16),
           ],
-
           if (horizontalData.isNotEmpty && verticalData.isNotEmpty)
             Divider(height: 1, thickness: 1, color: Colors.grey.shade100),
-
           if (verticalData.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -607,10 +602,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                           children: [
                             Container(
                               padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: kRose.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
+                              decoration: BoxDecoration(color: kRose.withOpacity(0.1), shape: BoxShape.circle),
                               child: Icon(icons[entry.key] ?? Icons.circle, size: 18, color: kRose),
                             ),
                             const SizedBox(width: 16),
@@ -627,14 +619,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
                           ],
                         ),
                       ),
-                      if (entry.key != verticalData.keys.last)
-                        Divider(height: 1, thickness: 1, color: Colors.grey.shade100),
+                      if (entry.key != verticalData.keys.last) Divider(height: 1, thickness: 1, color: Colors.grey.shade100),
                     ],
                   );
                 }).toList(),
               ),
             ),
-          
           const SizedBox(height: 8),
         ],
       ),
@@ -642,8 +632,11 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   Widget _buildMainPhotoCard({required String url, required String name, required int age}) {
+    // FIX: Make height dynamic so it fits on screen without blocking
+    final double cardHeight = MediaQuery.of(context).size.height * 0.65;
+
     return Container(
-      height: 600,
+      height: cardHeight,
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       decoration: _premiumShadowDecoration(),
@@ -658,13 +651,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.1), Colors.black.withOpacity(0.7)],
-                  stops: const [0.6, 0.8, 1.0],
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.1), Colors.black.withOpacity(0.8)],
+                  stops: const [0.5, 0.7, 1.0],
                 ),
               ),
             ),
             Positioned(
-              bottom: 30,
+              bottom: 60, // FIX: Move text up to avoid button overlap
               left: 24,
               child: Text(
                 "$name, $age",
@@ -713,16 +706,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "LOOKING FOR",
-                  style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0),
-                ),
+                Text("LOOKING FOR", style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
                 const SizedBox(height: 4),
-                Text(
-                  intent, 
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
-                  softWrap: true,
-                ),
+                Text(intent, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87), softWrap: true),
               ],
             ),
           )
@@ -772,7 +758,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   int _calculateAge(String? birthdayString) {
-    if (birthdayString == null) return 24; // Default age if missing
+    if (birthdayString == null) return 24; 
     try {
       final birthday = DateTime.parse(birthdayString);
       final now = DateTime.now();
@@ -784,5 +770,91 @@ class _DiscoverPageState extends State<DiscoverPage> {
     } catch (e) {
       return 24;
     }
+  }
+}
+
+// --- NEW WIDGET FOR BOUNCY BUTTON ---
+class _BouncingButton extends StatefulWidget {
+  final IconData icon;
+  final Color color;
+  final double size;
+  final VoidCallback onTap;
+
+  const _BouncingButton({
+    required this.icon,
+    required this.color,
+    required this.size,
+    required this.onTap,
+  });
+
+  @override
+  State<_BouncingButton> createState() => _BouncingButtonState();
+}
+
+class _BouncingButtonState extends State<_BouncingButton> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.8).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  void _onTapDown(TapDownDetails details) {
+    _controller.forward();
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    _controller.reverse();
+    widget.onTap();
+  }
+
+  void _onTapCancel() {
+    _controller.reverse();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: widget.color.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Icon(
+            widget.icon,
+            color: widget.color,
+            size: widget.size * 0.5,
+          ),
+        ),
+      ),
+    );
   }
 }
