@@ -128,35 +128,56 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  // ==========================================
+  // UI CODE BELOW (Updated to match App Theme)
+  // ==========================================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE5E5E5), // Light grey background like WhatsApp
+      backgroundColor: const Color(0xFFE9E6E1), // App's standard background
       appBar: AppBar(
+        titleSpacing: 0,
         title: Row(
           children: [
-            const CircleAvatar(
-              backgroundColor: Colors.grey,
-              radius: 18,
-              child: Icon(Icons.person, size: 24, color: Colors.white),
+            CircleAvatar(
+              backgroundColor: const Color(0xFFCD9D8F).withOpacity(0.2),
+              radius: 20,
+              child: const Icon(Icons.person, size: 22, color: Color(0xFFCD9D8F)),
             ),
-            const SizedBox(width: 10),
-            Text(widget.matchName, style: const TextStyle(fontSize: 18)),
+            const SizedBox(width: 12),
+            Text(
+              widget.matchName, 
+              style: const TextStyle(
+                fontSize: 20, 
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF2D2D2D), // Dark premium text
+                letterSpacing: -0.5,
+              ),
+            ),
           ],
         ),
         backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 1,
+        foregroundColor: const Color(0xFF2D2D2D),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            color: Colors.grey.withOpacity(0.15),
+            height: 1,
+          ),
+        ),
       ),
       body: Column(
         children: [
           Expanded(
             child: messages.isEmpty 
-              ? const Center(child: Text("Say Hello! 👋", style: TextStyle(color: Colors.grey))) 
+              ? _buildEmptyState() 
               : ListView.builder(
                   controller: _scrollController,
                   itemCount: messages.length,
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                   itemBuilder: (context, index) {
                     final msg = messages[index];
                     bool isMe = msg['isMe'];
@@ -165,43 +186,47 @@ class _ChatScreenState extends State<ChatScreen> {
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.only(left: 12, right: 12, top: 10, bottom: 8),
-                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.75,
+                        ),
                         decoration: BoxDecoration(
-                          color: isMe ? const Color(0xFFCD9D8F) : Colors.white, // Colors
+                          color: isMe ? const Color(0xFFCD9D8F) : Colors.white,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 2,
-                              offset: const Offset(0, 1),
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             )
                           ],
                           borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(12),
-                            topRight: const Radius.circular(12),
-                            bottomLeft: isMe ? const Radius.circular(12) : Radius.zero,
-                            bottomRight: isMe ? Radius.zero : const Radius.circular(12),
+                            topLeft: const Radius.circular(20),
+                            topRight: const Radius.circular(20),
+                            // Create the "chat tail" effect
+                            bottomLeft: isMe ? const Radius.circular(20) : const Radius.circular(4),
+                            bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(20),
                           ),
                         ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end, // Align time to right
-                          mainAxisSize: MainAxisSize.min, // Wrap content
+                          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               msg['message'],
                               style: TextStyle(
-                                color: isMe ? Colors.white : Colors.black87,
+                                color: isMe ? Colors.white : const Color(0xFF2D2D2D),
                                 fontSize: 16,
+                                height: 1.3,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            // ⏰ TIMESTAMP TEXT
+                            const SizedBox(height: 6),
                             Text(
                               time,
                               style: TextStyle(
                                 color: isMe ? Colors.white.withOpacity(0.7) : Colors.black38,
-                                fontSize: 10,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
@@ -217,35 +242,94 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFCD9D8F).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Text("👋", style: TextStyle(fontSize: 40)),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            "Say Hello to ${widget.matchName}!",
+            style: const TextStyle(
+              fontSize: 18, 
+              fontWeight: FontWeight.w600, 
+              color: Color(0xFF2D2D2D),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Be polite and start the conversation.",
+            style: TextStyle(color: Colors.black45, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMessageInput() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      color: Colors.white,
+      padding: EdgeInsets.only(
+        left: 16, 
+        right: 16, 
+        top: 12, 
+        // Adds extra padding at the bottom for iOS home bar / safe area
+        bottom: MediaQuery.of(context).padding.bottom > 0 
+            ? MediaQuery.of(context).padding.bottom 
+            : 16,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: TextField(
-              controller: _controller,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                hintText: "Type a message...",
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5), // Soft grey background for text field
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.grey.withOpacity(0.2)),
+              ),
+              child: TextField(
+                controller: _controller,
+                textCapitalization: TextCapitalization.sentences,
+                minLines: 1,
+                maxLines: 5, // Allows the text field to grow if they type a long message
+                style: const TextStyle(fontSize: 16, color: Color(0xFF2D2D2D)),
+                decoration: const InputDecoration(
+                  hintText: "Type a message...",
+                  hintStyle: TextStyle(color: Colors.black38),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          CircleAvatar(
-            backgroundColor: const Color(0xFFCD9D8F),
-            radius: 24,
-            child: IconButton(
-              icon: const Icon(Icons.send, color: Colors.white, size: 22),
-              onPressed: sendMessage,
+          const SizedBox(width: 12),
+          Container(
+            margin: const EdgeInsets.only(bottom: 2), // Align visually with the growing text field
+            child: CircleAvatar(
+              backgroundColor: const Color(0xFFCD9D8F),
+              radius: 24,
+              child: IconButton(
+                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+                onPressed: sendMessage,
+              ),
             ),
           ),
         ],

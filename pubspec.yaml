@@ -41,6 +41,7 @@ dependencies:
   http: ^1.1.0
   flutter_card_swiper: ^7.0.0
   socket_io_client: ^2.0.0
+  lottie: ^3.1.0
   flutter:
     sdk: flutter
 
@@ -70,6 +71,7 @@ flutter:
     - assets/Video/Video.mp4
     - assets/Video/Video_1.mp4
     - assets/Video/Video_2.mp4
+    - assets/lottie/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

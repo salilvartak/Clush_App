@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:video_player/video_player.dart';
+import 'package:lottie/lottie.dart'; // Replaced video_player with lottie
 import 'package:supabase_flutter/supabase_flutter.dart' hide User; 
 import 'firebase_options.dart';
 import 'basics_page.dart'; 
@@ -30,7 +30,7 @@ class AuraApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: VideoSplashScreen(),
+      home: LottieSplashScreen(), // Now pointing to the new Lottie screen
     );
   }
 }
@@ -56,7 +56,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
         } 
         
         if (snapshot.hasData) {
-          // Check if profile exists (Basics completed)
           return FutureBuilder<bool>(
             future: _checkProfileExists(snapshot.data!.uid),
             builder: (context, profileSnapshot) {
@@ -70,7 +69,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
               final bool profileExists = profileSnapshot.data ?? false;
 
               if (profileExists) {
-                // ALLOW ACCESS TO HOME PAGE (Verification check happens inside HomePage)
                 return const HomePage(); 
               } else {
                 return const BasicsPage(currentStep: 1, totalSteps: 6);
@@ -98,28 +96,24 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 }
 
-// --- VIDEO SPLASH SCREEN ---
-class VideoSplashScreen extends StatefulWidget {
-  const VideoSplashScreen({super.key});
+// --- LOTTIE SPLASH SCREEN ---
+class LottieSplashScreen extends StatefulWidget {
+  const LottieSplashScreen({super.key});
 
   @override
-  State<VideoSplashScreen> createState() => _VideoSplashScreenState();
+  State<LottieSplashScreen> createState() => _LottieSplashScreenState();
 }
 
-class _VideoSplashScreenState extends State<VideoSplashScreen> {
-  late VideoPlayerController _controller;
+class _LottieSplashScreenState extends State<LottieSplashScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.asset('assets/Video/Video.mp4')
-      ..initialize().then((_) {
-        setState(() {});
-        _controller.play();
-      });
-
-    _controller.addListener(() {
-      if (_controller.value.position == _controller.value.duration) {
+    _controller = AnimationController(vsync: this);
+    
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
         _finishSplash();
       }
     });
@@ -148,39 +142,132 @@ class _VideoSplashScreenState extends State<VideoSplashScreen> {
     super.dispose();
   }
 
-  @override
+ @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFFE9E6E1), 
       body: Center(
-        child: _controller.value.isInitialized
-            ? AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              )
-            : const CircularProgressIndicator(color: Colors.white),
+        child: Lottie.asset(
+          'assets/lottie/splash.json', // <-- CHANGE THIS TO .json!
+          controller: _controller,
+          onLoaded: (composition) {
+            _controller
+              ..duration = composition.duration
+              ..forward();
+          },
+        ),
       ),
     );
   }
 }
 
 // --- LOGIN SCREEN ---
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
+
+  String? _verificationId;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _otpController.dispose();
+    super.dispose();
+  }
+
   Future<User?> _signInWithGoogle(BuildContext context) async {
+    setState(() => _isLoading = true);
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return null;
+      if (googleUser == null) {
+        setState(() => _isLoading = false);
+        return null;
+      }
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       final OAuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      return await FirebaseAuth.instance.signInWithCredential(credential).then((cred) => cred.user);
+      return await FirebaseAuth.instance
+          .signInWithCredential(credential)
+          .then((cred) => cred.user);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sign in failed: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sign in failed: $e')));
+      }
+      setState(() => _isLoading = false);
       return null;
+    }
+  }
+
+  Future<void> _verifyPhoneNumber() async {
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a phone number')));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: phone.startsWith('+') ? phone : '+91$phone', 
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          await FirebaseAuth.instance.signInWithCredential(credential);
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          setState(() => _isLoading = false);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verification failed: ${e.message}')));
+          }
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          setState(() {
+            _verificationId = verificationId;
+            _isLoading = false;
+          });
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (mounted) {
+            setState(() {
+              _verificationId = verificationId;
+            });
+          }
+        },
+      );
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _signInWithOTP() async {
+    final otp = _otpController.text.trim();
+    if (otp.isEmpty || _verificationId == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+        verificationId: _verificationId!,
+        smsCode: otp,
+      );
+      await FirebaseAuth.instance.signInWithCredential(credential);
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid OTP. Please try again.')));
+      }
     }
   }
 
@@ -189,35 +276,235 @@ class LoginScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFE9E6E1),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            children: [
-              const SizedBox(height: 60),
-              Image.asset("assets/images/logo.png", height: 120, fit: BoxFit.contain),
-              const SizedBox(height: 50),
-              const Text("Welcome back", style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
-              const Spacer(), 
-              SizedBox(
-                width: double.infinity,
-                height: 60,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    await _signInWithGoogle(context);
-                  },
-                  icon: Image.network("https://cdn-icons-png.flaticon.com/512/2991/2991148.png", height: 22),
-                  label: const Text("Continue with Google", style: TextStyle(fontSize: 18, color: Colors.black87)),
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
+                ),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const SizedBox(height: 50),
+                        
+                        Hero(
+                          tag: 'app_logo',
+                          child: Image.asset("assets/images/logo.png", height: 100, fit: BoxFit.contain),
+                        ),
+                        const SizedBox(height: 40),
+                        
+                        const Text(
+                          "Welcome back", 
+                          style: TextStyle(
+                            fontSize: 32, 
+                            fontWeight: FontWeight.w800, 
+                            color: Color(0xFF2D2D2D),
+                            letterSpacing: -0.5,
+                          )
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _verificationId == null 
+                            ? "Sign in to continue discovering" 
+                            : "We've sent a code to your phone",
+                          style: const TextStyle(fontSize: 16, color: Colors.black54),
+                          textAlign: TextAlign.center,
+                        ),
+                        
+                        const Spacer(), 
+                        
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 400),
+                          switchInCurve: Curves.easeOutQuart,
+                          switchOutCurve: Curves.easeInQuart,
+                          transitionBuilder: (Widget child, Animation<double> animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0.0, 0.05),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: _verificationId == null 
+                              ? _buildPhoneInputState() 
+                              : _buildOTPInputState(),
+                        ),
+                        
+                        const SizedBox(height: 40),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 60),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // --- PHONE INPUT WIDGET ---
+  Widget _buildPhoneInputState() {
+    return Column(
+      key: const ValueKey('phone_state'),
+      children: [
+        TextField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            hintText: "Phone Number (e.g., +91...)",
+            hintStyle: const TextStyle(color: Colors.black38),
+            prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFFCD9D8F)),
+            filled: true,
+            fillColor: Colors.white,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(30.0),
+              borderSide: const BorderSide(color: Colors.white, width: 2),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(30.0),
+              borderSide: const BorderSide(color: Color(0xFFCD9D8F), width: 2),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 58,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _verifyPhoneNumber,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFCD9D8F),
+              elevation: 2,
+              shadowColor: const Color(0xFFCD9D8F).withOpacity(0.5),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0)),
+            ),
+            child: _isLoading 
+                ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text("Send OTP", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                    ],
+                  ),
+          ),
+        ),
+        
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 28.0),
+          child: Row(
+            children: [
+              Expanded(child: Divider(color: Colors.grey.shade400)),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: Text("OR", style: TextStyle(color: Colors.black45, fontWeight: FontWeight.bold, fontSize: 14)),
+              ),
+              Expanded(child: Divider(color: Colors.grey.shade400)),
             ],
           ),
         ),
-      ),
+        
+        SizedBox(
+          width: double.infinity,
+          height: 58,
+          child: OutlinedButton.icon(
+            onPressed: _isLoading ? null : () => _signInWithGoogle(context),
+            icon: Image.network("https://cdn-icons-png.flaticon.com/512/2991/2991148.png", height: 24),
+            label: const Text("Continue with Google", style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w600)),
+            style: OutlinedButton.styleFrom(
+              backgroundColor: Colors.white,
+              elevation: 1,
+              shadowColor: Colors.black12,
+              side: const BorderSide(color: Colors.transparent),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- OTP INPUT WIDGET ---
+  Widget _buildOTPInputState() {
+    return Column(
+      key: const ValueKey('otp_state'),
+      children: [
+        TextField(
+          controller: _otpController,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          maxLength: 6,
+          style: const TextStyle(fontSize: 24, letterSpacing: 12.0, fontWeight: FontWeight.w600, color: Color(0xFF2D2D2D)),
+          decoration: InputDecoration(
+            counterText: "",
+            hintText: "------",
+            hintStyle: const TextStyle(letterSpacing: 12.0, color: Colors.black26),
+            filled: true,
+            fillColor: Colors.white,
+            prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFFCD9D8F)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(30.0),
+              borderSide: const BorderSide(color: Colors.white, width: 2),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(30.0),
+              borderSide: const BorderSide(color: Color(0xFFCD9D8F), width: 2),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 58,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _signInWithOTP,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFCD9D8F),
+              elevation: 2,
+              shadowColor: const Color(0xFFCD9D8F).withOpacity(0.5),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0)),
+            ),
+            child: _isLoading 
+                ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline, color: Colors.white, size: 22),
+                      SizedBox(width: 8),
+                      Text("Verify Code", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextButton(
+          onPressed: () {
+            setState(() {
+              _verificationId = null;
+              _otpController.clear();
+            });
+          },
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFFCD9D8F),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+          child: const Text("Use a different number", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        )
+      ],
     );
   }
 }
