@@ -298,23 +298,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 40),
                         
-                        const Text(
-                          "Welcome back", 
-                          style: TextStyle(
-                            fontSize: 32, 
-                            fontWeight: FontWeight.w800, 
-                            color: Color(0xFF2D2D2D),
-                            letterSpacing: -0.5,
-                          )
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _verificationId == null 
-                            ? "Sign in to continue discovering" 
-                            : "We've sent a code to your phone",
-                          style: const TextStyle(fontSize: 16, color: Colors.black54),
-                          textAlign: TextAlign.center,
-                        ),
+                        
+                        
                         
                         const Spacer(), 
                         

@@ -42,6 +42,7 @@ dependencies:
   flutter_card_swiper: ^7.0.0
   socket_io_client: ^2.0.0
   lottie: ^3.1.0
+  flutter_launcher_icons: ^0.13.1
   flutter:
     sdk: flutter
 
@@ -68,6 +69,7 @@ dev_dependencies:
 flutter:
   assets:
     - assets/images/logo.png
+    - assets/images/app.png
     - assets/Video/Video.mp4
     - assets/Video/Video_1.mp4
     - assets/Video/Video_2.mp4
@@ -108,3 +110,8 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/app.png" # Point this to your new image
+  min_sdk_android: 21 # Required for newer Flutter versions
