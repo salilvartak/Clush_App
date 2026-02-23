@@ -111,6 +111,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
           .select()
           .eq('gender', targetGender)
           .not('id', 'in', uniqueIgnoreIds)
+          .or('is_paused.eq.false,is_paused.is.null') // <--- NEW: Exclude paused accounts
           .limit(20);
 
       if (mounted) {

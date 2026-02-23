@@ -39,7 +39,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // NEW: Fetch data before opening Edit Page
+  // Fetch data before opening Edit Page
   Future<void> _handleEditProfile() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
@@ -69,6 +69,145 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     } finally {
       if (mounted) setState(() => _isLoadingProfile = false);
+    }
+  }
+
+  // --- RETENTION & DELETION LOGIC ---
+  void _showRetentionDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Leaving so soon?", textAlign: TextAlign.center),
+        content: const Text(
+            "Are you sure you want to delete your account?\n\n"
+            "As a gift, stay with us and get 1 WEEK OF PREMIUM for FREE!",
+            textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+        actionsPadding: const EdgeInsets.all(16),
+        actions: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kRose,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _claimPremium();
+                },
+                child: const Text("Claim 1 Week Premium", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kRose,
+                  side: const BorderSide(color: kRose, width: 2),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _navTo(const PauseAccountPage());
+                },
+                child: const Text("Put Account on Hold", style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _confirmFinalDeletion();
+                },
+                child: const Text("Delete Anyway", style: TextStyle(color: Colors.red)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Future<void> _claimPremium() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    try {
+      // Update the user's profile in Supabase to grant premium
+      await Supabase.instance.client
+          .from('profiles')
+          .update({
+            'is_premium': true, 
+            'premium_expiry': DateTime.now().add(const Duration(days: 7)).toIso8601String()
+          })
+          .eq('id', userId);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("1 Week Premium Claimed! Enjoy your upgraded experience."),
+            backgroundColor: Colors.green,
+          )
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error claiming premium: $e")));
+    }
+  }
+
+  void _confirmFinalDeletion() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Final Confirmation"),
+        content: const Text("This action is permanent and cannot be undone. All your data, matches, and messages will be permanently lost. Are you absolutely sure?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx), 
+            child: const Text("Cancel")
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _deleteAccount();
+            }, 
+            child: const Text("Yes, Delete", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+          ),
+        ]
+      )
+    );
+  }
+
+  Future<void> _deleteAccount() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // 1. Delete from Supabase
+        await Supabase.instance.client.from('profiles').delete().eq('id', user.uid);
+        
+        // 2. Delete from Firebase Auth
+        await user.delete();
+      }
+      
+      if (mounted) {
+        // Navigate back to the very first screen (login/splash)
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error deleting account: $e. You may need to log out and log back in to perform this action."))
+        );
+      }
     }
   }
 
@@ -111,11 +250,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   // --- ACCOUNT ---
                   _buildSectionLabel("Account"),
                   _buildSectionContainer(children: [
-                    // NEW: Edit Profile Tile
                     _buildPremiumTile(
                       icon: Icons.edit_outlined,
                       title: "Edit Profile",
-                      // Show a spinner if we are currently fetching data
                       trailing: _isLoadingProfile 
                           ? const SizedBox(
                               width: 20, 
@@ -230,8 +367,22 @@ class _SettingsPageState extends State<SettingsPage> {
 
                   const SizedBox(height: 40),
 
-                  // --- LOGOUT BUTTON ---
+                  // --- LOGOUT & DELETE BUTTONS ---
                   _buildLogoutButton(),
+                  
+                  Center(
+                    child: TextButton(
+                      onPressed: _showRetentionDialog,
+                      child: const Text(
+                        "Delete Account",
+                        style: TextStyle(
+                          color: Colors.grey, 
+                          fontSize: 14, 
+                          decoration: TextDecoration.underline
+                        ),
+                      ),
+                    ),
+                  ),
                   
                   const SizedBox(height: 20),
                   

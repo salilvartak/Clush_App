@@ -2,24 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:lottie/lottie.dart'; // Replaced video_player with lottie
+import 'package:lottie/lottie.dart'; 
 import 'package:supabase_flutter/supabase_flutter.dart' hide User; 
 import 'firebase_options.dart';
 import 'basics_page.dart'; 
-import 'home_page.dart'; 
+import 'home_page.dart';
 
+// Import the notification service
+import 'services/notification_service.dart'; 
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // 1. Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // 2. Initialize Supabase FIRST
   await Supabase.initialize(
     url: 'https://roblwklgvyvjrgvyumqp.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvYmx3a2xndnl2anJndnl1bXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzOTY0OTgsImV4cCI6MjA4NTk3MjQ5OH0.7kpPNmAHnGthepUIimiw_HovLOVjfX5mIWcr8WH-NrQ',
   );
 
+  // Note: We DO NOT initialize notifications here anymore so we don't block the UI!
+  
   runApp(const AuraApp());
 }
 
@@ -30,7 +37,7 @@ class AuraApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: LottieSplashScreen(), // Now pointing to the new Lottie screen
+      home: LottieSplashScreen(), 
     );
   }
 }
@@ -44,6 +51,15 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
+  
+  @override
+  void initState() {
+    super.initState();
+    // 3. Initialize notifications AFTER the UI starts drawing
+    // This will prompt the user for permission without freezing the app
+    NotificationService().initNotifications();
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -148,7 +164,7 @@ class _LottieSplashScreenState extends State<LottieSplashScreen> with SingleTick
       backgroundColor: const Color(0xFFE9E6E1), 
       body: Center(
         child: Lottie.asset(
-          'assets/lottie/splash.json', // <-- CHANGE THIS TO .json!
+          'assets/lottie/splash.json', 
           controller: _controller,
           onLoaded: (composition) {
             _controller
@@ -297,9 +313,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Image.asset("assets/images/logo.png", height: 100, fit: BoxFit.contain),
                         ),
                         const SizedBox(height: 40),
-                        
-                        
-                        
                         
                         const Spacer(), 
                         

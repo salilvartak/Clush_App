@@ -59,7 +59,7 @@ class PhoneNumberPage extends StatelessWidget {
               children: [
                 Icon(Icons.phone, color: Colors.grey),
                 SizedBox(width: 12),
-                const Text("+1 (555) 123-4567", style: TextStyle(fontSize: 16)),
+                Text("+1 (555) 123-4567", style: TextStyle(fontSize: 16)),
               ],
             ),
           ),
@@ -114,30 +114,98 @@ class PauseAccountPage extends StatefulWidget {
 
 class _PauseAccountPageState extends State<PauseAccountPage> {
   bool isPaused = false;
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPauseStatus();
+  }
+
+  Future<void> _fetchPauseStatus() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('is_paused')
+          .eq('id', userId)
+          .single();
+
+      if (mounted) {
+        setState(() {
+          isPaused = data['is_paused'] ?? false;
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _togglePauseStatus(bool status) async {
+    setState(() => isPaused = status);
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'is_paused': status})
+          .eq('id', userId);
+          
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(status ? "Account is now on hold." : "Account is active again!"))
+        );
+      }
+    } catch (e) {
+      // Revert if API fails
+      setState(() => isPaused = !status);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to update status.")));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BaseSettingsPage(
       title: "Pause Account",
-      body: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-        child: Column(
-          children: [
-            Icon(isPaused ? Icons.pause_circle_filled : Icons.play_circle_fill, size: 64, color: isPaused ? Colors.red : const Color(0xFFCD9D8F)),
-            const SizedBox(height: 20),
-            Text(isPaused ? "Your account is paused" : "Your account is active", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            const Text("Pausing your account means you won't be shown to new people, but you can still chat with existing matches.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-            const SizedBox(height: 30),
-            SwitchListTile(
-              title: const Text("Pause my account"),
-              value: isPaused,
-              activeColor: const Color(0xFFCD9D8F),
-              onChanged: (v) => setState(() => isPaused = v),
+      body: isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+            child: Column(
+              children: [
+                Icon(
+                  isPaused ? Icons.pause_circle_filled : Icons.play_circle_fill, 
+                  size: 64, 
+                  color: isPaused ? Colors.red : const Color(0xFFCD9D8F)
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  isPaused ? "Your account is paused" : "Your account is active", 
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  "Pausing your account means you won't be shown to new people, but you can still chat with existing matches.", 
+                  textAlign: TextAlign.center, 
+                  style: TextStyle(color: Colors.grey)
+                ),
+                const SizedBox(height: 30),
+                SwitchListTile(
+                  title: const Text("Pause my account", style: TextStyle(fontWeight: FontWeight.bold)),
+                  value: isPaused,
+                  activeColor: const Color(0xFFCD9D8F),
+                  onChanged: _togglePauseStatus,
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 }
@@ -189,10 +257,7 @@ class TravelModePage extends StatelessWidget {
   }
 }
 
-// ================= PRIVACY & VERIFICATION (UPDATED) =================
-
-// ================= PRIVACY & VERIFICATION (UPDATED LOGIC) =================
-
+// ================= PRIVACY & VERIFICATION =================
 class VerificationPage extends StatefulWidget {
   const VerificationPage({super.key});
 
@@ -435,7 +500,6 @@ class _VerificationPageState extends State<VerificationPage> {
 }
 
 // ================= REMAINING PAGES =================
-
 class BlockListPage extends StatelessWidget {
   const BlockListPage({super.key});
   @override
