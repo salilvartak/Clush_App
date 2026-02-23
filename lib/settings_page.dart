@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // REQUIRED: To fetch data
+import 'package:supabase_flutter/supabase_flutter.dart'; 
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ ADDED
+import 'services/notification_service.dart'; // ✅ ADDED
+
 import 'main.dart'; 
 import 'setting_sub_pages.dart'; 
-import 'edit_profile_page.dart'; // REQUIRED: To navigate to editor
+import 'edit_profile_page.dart'; 
 
 const Color kRose = Color(0xFFCD9D8F);
 const Color kTan = Color(0xFFE9E6E1);
@@ -21,7 +24,27 @@ class _SettingsPageState extends State<SettingsPage> {
   bool activityStatus = true;
   bool notificationsEnabled = true;
   bool emailUpdates = true;
-  bool _isLoadingProfile = false; // To show loading state
+  bool _isLoadingProfile = false; 
+
+  // ✅ ADDED: Load saved preferences when the page opens
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+    });
+  }
+
+  // ✅ ADDED: Handle the Push Notification toggle
+  Future<void> _toggleNotifications(bool value) async {
+    setState(() => notificationsEnabled = value);
+    await NotificationService().toggleNotifications(value);
+  }
 
   Future<void> _logout() async {
     try {
@@ -47,7 +70,6 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _isLoadingProfile = true);
 
     try {
-      // 1. Fetch the profile data from Supabase
       final data = await Supabase.instance.client
           .from('profiles')
           .select()
@@ -56,7 +78,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
       if (!mounted) return;
 
-      // 2. Navigate to EditProfilePage with the required data
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -142,7 +163,6 @@ class _SettingsPageState extends State<SettingsPage> {
     if (userId == null) return;
 
     try {
-      // Update the user's profile in Supabase to grant premium
       await Supabase.instance.client
           .from('profiles')
           .update({
@@ -191,15 +211,11 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // 1. Delete from Supabase
         await Supabase.instance.client.from('profiles').delete().eq('id', user.uid);
-        
-        // 2. Delete from Firebase Auth
         await user.delete();
       }
       
       if (mounted) {
-        // Navigate back to the very first screen (login/splash)
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
@@ -222,7 +238,6 @@ class _SettingsPageState extends State<SettingsPage> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // 1. PREMIUM HEADER
           const SliverAppBar(
             backgroundColor: kTan,
             expandedHeight: 120,
@@ -239,7 +254,6 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
 
-          // 2. SETTINGS CONTENT
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -263,7 +277,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       onTap: _isLoadingProfile ? null : _handleEditProfile,
                     ),
                     _buildDivider(),
-                    
                     _buildPremiumTile(
                       icon: Icons.phone_outlined,
                       title: "Phone Number",
@@ -332,10 +345,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   // --- NOTIFICATIONS ---
                   _buildSectionLabel("Notifications"),
                   _buildSectionContainer(children: [
+                    // ✅ UPDATED: Changed from onTap to a trailing Switch
                     _buildPremiumTile(
                       icon: Icons.notifications_none,
                       title: "Push Notifications",
-                      onTap: () => _navTo(const NotificationsPage()),
+                      trailing: Switch.adaptive(
+                        value: notificationsEnabled,
+                        activeColor: kRose,
+                        onChanged: _toggleNotifications,
+                      ),
                     ),
                     _buildDivider(),
                     _buildPremiumTile(
