@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart'; // Typography
+import 'package:flutter_animate/flutter_animate.dart'; // Animations
 import 'profile_view_page.dart'; 
 import 'settings_page.dart';
+import 'dart:ui'; // For blur effects
 
 const Color kRose = Color(0xFFCD9D8F);
-const Color kTan = Color(0xFFE9E6E1);
+const Color kBlack = Color(0xFF2D2D2D);
+const Color kTan = Color(0xFFF8F9FA);
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -47,28 +51,32 @@ class ProfileTab extends StatelessWidget {
             // 1. EXTRACT VERIFICATION STATUS
             final bool isVerified = profile['is_verified'] ?? false; 
 
-            return Padding(
+            return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
+              physics: const BouncingScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("My Profile", style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
-                      IconButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const SettingsPage()),
-                          );
-                        },
-                        icon: const Icon(Icons.settings, color: Colors.black54),
-                        tooltip: "Settings",
+                      Text("My Profile", style: GoogleFonts.outfit(fontSize: 32, fontWeight: FontWeight.w800, color: kBlack, letterSpacing: -0.5)),
+                      Container(
+                        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]),
+                        child: IconButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const SettingsPage()),
+                            );
+                          },
+                          icon: const Icon(Icons.settings_rounded, color: kBlack),
+                          tooltip: "Settings",
+                        ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 20),
+                  ).animate().fade(duration: 400.ms).slideY(begin: -0.2, end: 0, curve: Curves.easeOutQuad),
+                  const SizedBox(height: 32),
                   
                   GestureDetector(
                     onTap: () {
@@ -78,10 +86,15 @@ class ProfileTab extends StatelessWidget {
                       );
                     },
                     // 2. PASS STATUS TO WIDGET
-                    child: _buildProfilePreviewCard(firstPhoto, name, age, isVerified),
+                    child: _buildProfilePreviewCard(firstPhoto, name, age, isVerified).animate().fade(duration: 600.ms, delay: 200.ms).scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1), curve: Curves.easeOutCubic),
                   ),
-                  const SizedBox(height: 20),
-                  const Center(child: Text("This is how you appear to others", style: TextStyle(color: Colors.grey))),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: Text(
+                      "This is how you appear to others", 
+                      style: GoogleFonts.outfit(color: Colors.black54, fontSize: 16, fontWeight: FontWeight.w500)
+                    ).animate().fade(duration: 600.ms, delay: 400.ms),
+                  ),
                 ],
               ),
             );
@@ -124,8 +137,8 @@ class ProfileTab extends StatelessWidget {
             ),
           ),
           Positioned(
-            bottom: 25,
-            left: 20,
+            bottom: 30,
+            left: 24,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -134,7 +147,15 @@ class ProfileTab extends StatelessWidget {
                   children: [
                     Text(
                       "$name, $age", 
-                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)
+                      style: GoogleFonts.outfit(
+                        color: Colors.white, 
+                        fontSize: 36, 
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
+                        shadows: [
+                           Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2)),
+                        ]
+                      )
                     ),
                     
                     // --- THE BLUE TICK ---
@@ -157,19 +178,25 @@ class ProfileTab extends StatelessWidget {
   }
 
   Widget _buildPreviewBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2), 
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.5))
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.visibility, color: Colors.white, size: 14),
-          SizedBox(width: 6),
-          Text("Preview", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-        ],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.15), 
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withOpacity(0.3))
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.visibility_rounded, color: Colors.white, size: 16),
+              const SizedBox(width: 6),
+              Text("Preview", style: GoogleFonts.outfit(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
       ),
     );
   }

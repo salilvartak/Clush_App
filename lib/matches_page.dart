@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' hide User; // Hide Supabase User to avoid conflict
-import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase to get the real User ID
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart'; // Typography
+import 'package:flutter_animate/flutter_animate.dart'; // Animations
 import 'chat_page.dart';
+import 'main.dart'; // For HeartLoader
+
+const Color kRose = Color(0xFFCD9D8F);
+const Color kBlack = Color(0xFF2D2D2D);
+const Color kTan = Color(0xFFF8F9FA);
 
 class MatchesPage extends StatefulWidget {
   const MatchesPage({super.key});
@@ -101,52 +108,92 @@ class _MatchesPageState extends State<MatchesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: kTan,
       appBar: AppBar(
-        title: const Text("Matches"),
-        backgroundColor: Colors.white,
+        title: Text(
+          "Matches",
+          style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w800, color: kBlack, letterSpacing: -0.5),
+        ),
+        backgroundColor: kTan,
         elevation: 0,
-        foregroundColor: Colors.black,
+        centerTitle: false,
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFCD9D8F)))
+          ? const Center(child: HeartLoader(size: 60))
           : matches.isEmpty
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.heart_broken, size: 60, color: Colors.grey[300]),
-                      const SizedBox(height: 10),
-                      const Text("No matches yet.", style: TextStyle(color: Colors.grey)),
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))
+                          ]
+                        ),
+                        child: Icon(Icons.favorite_border_rounded, size: 60, color: kRose.withOpacity(0.5)),
+                      ),
+                      const SizedBox(height: 24),
+                      Text("No matches yet.", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w600, color: kBlack)),
+                      const SizedBox(height: 8),
+                      Text("Keep swiping to find new people!", style: GoogleFonts.outfit(color: Colors.black54)),
                     ],
-                  ),
+                  ).animate().fade(duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
                 )
               : ListView.builder(
+                  padding: const EdgeInsets.only(top: 8, bottom: 24),
                   itemCount: matches.length,
                   itemBuilder: (context, index) {
                     final match = matches[index];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: const Color(0xFFCD9D8F),
-                        child: Text(match['display_name'][0].toUpperCase(), style: const TextStyle(color: Colors.white)),
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          )
+                        ],
                       ),
-                      title: Text(match['display_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: const Text("Tap to chat"),
-                      trailing: const Icon(Icons.chat_bubble_outline, color: Color(0xFFCD9D8F)),
-                      onTap: () {
-                        // Pass the Firebase ID as "myId"
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ChatScreen(
-                              myId: FirebaseAuth.instance.currentUser!.uid,
-                              matchId: match['match_uuid'],
-                              matchName: match['display_name'],
-                              myName: _myDisplayName ?? "Me", 
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        leading: CircleAvatar(
+                          radius: 26,
+                          backgroundColor: kRose.withOpacity(0.1),
+                          backgroundImage: match['photo_url'] != null ? NetworkImage(match['photo_url']) : null, // Assuming backend could return photo_url
+                          child: match['photo_url'] == null 
+                              ? Text(match['display_name'][0].toUpperCase(), style: GoogleFonts.outfit(color: kRose, fontSize: 20, fontWeight: FontWeight.bold))
+                              : null,
+                        ),
+                        title: Text(match['display_name'], style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: kBlack)),
+                        subtitle: Text("Tap to chat", style: GoogleFonts.outfit(color: Colors.black45)),
+                        trailing: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: kTan, shape: BoxShape.circle),
+                          child: const Icon(Icons.send_rounded, color: kRose, size: 20),
+                        ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(
+                                myId: FirebaseAuth.instance.currentUser!.uid,
+                                matchId: match['match_uuid'],
+                                matchName: match['display_name'],
+                                myName: _myDisplayName ?? "Me",
+                                matchPhotoUrl: match['photo_url'], 
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    );
+                          );
+                        },
+                      ),
+                    ).animate().fade(duration: 400.ms, delay: (50 * index).ms).slideX(begin: 0.1, end: 0, curve: Curves.easeOutQuad);
                   },
                 ),
     );

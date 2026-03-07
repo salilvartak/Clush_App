@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_fonts/google_fonts.dart'; // Typography
 import 'services/notification_service.dart';
 
 import 'main.dart'; 
@@ -10,7 +11,8 @@ import 'setting_sub_pages.dart';
 import 'edit_profile_page.dart'; 
 
 const Color kRose = Color(0xFFCD9D8F);
-const Color kTan = Color(0xFFE9E6E1);
+const Color kBlack = Color(0xFF2D2D2D);
+const Color kTan = Color(0xFFF8F9FA);
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -267,18 +269,18 @@ class _SettingsPageState extends State<SettingsPage> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          const SliverAppBar(
+          SliverAppBar(
             backgroundColor: kTan,
             expandedHeight: 120,
             floating: false,
             pinned: true,
             elevation: 0,
-            iconTheme: IconThemeData(color: Colors.black),
+            iconTheme: const IconThemeData(color: kBlack),
             flexibleSpace: FlexibleSpaceBar(
-              titlePadding: EdgeInsets.only(left: 20, bottom: 16),
+              titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
               title: Text(
                 "Settings",
-                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 28),
+                style: GoogleFonts.outfit(color: kBlack, fontWeight: FontWeight.w800, fontSize: 32, letterSpacing: -0.5),
               ),
             ),
           ),
@@ -420,11 +422,12 @@ class _SettingsPageState extends State<SettingsPage> {
                   Center(
                     child: TextButton(
                       onPressed: _showRetentionDialog,
-                      child: const Text(
+                      child: Text(
                         "Delete Account",
-                        style: TextStyle(
+                        style: GoogleFonts.outfit(
                           color: Colors.grey, 
-                          fontSize: 14, 
+                          fontSize: 15, 
+                          fontWeight: FontWeight.w500,
                           decoration: TextDecoration.underline
                         ),
                       ),
@@ -434,13 +437,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 20),
                   
                   // --- VERSION INFO ---
-                  const Center(
+                  Center(
                     child: Text(
                       "Version 1.0.0 (Build 24)",
-                      style: TextStyle(color: Colors.black38, fontSize: 12, fontWeight: FontWeight.w500),
+                      style: GoogleFonts.outfit(color: Colors.black38, fontSize: 13, fontWeight: FontWeight.w500),
                     ),
                   ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 50),
                 ],
               ),
             ),
@@ -454,14 +457,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildSectionLabel(String label) {
     return Padding(
-      padding: const EdgeInsets.only(left: 12, bottom: 10, top: 24),
+      padding: const EdgeInsets.only(left: 12, bottom: 12, top: 32),
       child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 14, 
-          fontWeight: FontWeight.bold, 
-          color: Colors.black.withOpacity(0.5),
-          letterSpacing: 0.5
+        label.toUpperCase(),
+        style: GoogleFonts.outfit(
+          fontSize: 13, 
+          fontWeight: FontWeight.w800, 
+          color: kRose,
+          letterSpacing: 1.5
         ),
       ),
     );
@@ -471,12 +474,12 @@ class _SettingsPageState extends State<SettingsPage> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -495,18 +498,18 @@ class _SettingsPageState extends State<SettingsPage> {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: kRose.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: kRose, size: 20),
+                child: Icon(icon, color: kRose, size: 22),
               ),
               const SizedBox(width: 16),
               
@@ -516,20 +519,20 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: GoogleFonts.outfit(
                         fontSize: 16, 
                         fontWeight: FontWeight.w600, 
-                        color: Colors.black87
+                        color: kBlack
                       ),
                     ),
                     if (subtitle != null) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 4),
                       Text(
                         subtitle,
-                        style: TextStyle(
-                          fontSize: 13, 
-                          color: Colors.black.withOpacity(0.4),
-                          fontWeight: FontWeight.w500
+                        style: GoogleFonts.outfit(
+                          fontSize: 14, 
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w400
                         ),
                       ),
                     ]
@@ -553,20 +556,20 @@ class _SettingsPageState extends State<SettingsPage> {
       height: 1, 
       thickness: 1, 
       color: Colors.grey.withOpacity(0.08), 
-      indent: 60,
+      indent: 64,
     );
   }
 
   Widget _buildPremiumBadge(String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         gradient: const LinearGradient(colors: [kRose, Color(0xFFFFC3A0)]),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+        style: GoogleFonts.outfit(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
       ),
     );
   }
@@ -578,27 +581,28 @@ class _SettingsPageState extends State<SettingsPage> {
           showDialog(
             context: context, 
             builder: (ctx) => AlertDialog(
-              title: const Text("Log Out?"),
-              content: const Text("Are you sure you want to log out?"),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Text("Log Out?", style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+              content: Text("Are you sure you want to log out?", style: GoogleFonts.outfit()),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text("Cancel", style: GoogleFonts.outfit(color: Colors.grey))),
                 TextButton(
                   onPressed: () {
                     Navigator.pop(ctx);
                     _logout();
                   }, 
-                  child: const Text("Log Out", style: TextStyle(color: Colors.red))
+                  child: Text("Log Out", style: GoogleFonts.outfit(color: Colors.red, fontWeight: FontWeight.bold))
                 ),
               ],
             )
           );
         },
-        child: const Text(
+        child: Text(
           "Log Out",
-          style: TextStyle(
+          style: GoogleFonts.outfit(
             color: Colors.redAccent, 
-            fontSize: 16, 
-            fontWeight: FontWeight.w600
+            fontSize: 18, 
+            fontWeight: FontWeight.w700
           ),
         ),
       ),

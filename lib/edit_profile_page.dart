@@ -5,10 +5,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:google_fonts/google_fonts.dart'; // Typography
 
 // --- Theme Constants (Matches ProfileViewPage) ---
 const Color kRose = Color(0xFFCD9D8F);
-const Color kTan = Color(0xFFE9E6E1);
+const Color kTan = Color(0xFFF8F9FA); // 0xFFF8F9FA for Off-White
 const Color kBlack = Color(0xFF2D2D2D);
 
 class EditProfilePage extends StatefulWidget {
@@ -226,18 +227,21 @@ class _EditProfilePageState extends State<EditProfilePage> {
       appBar: AppBar(
         backgroundColor: kTan,
         elevation: 0,
+        centerTitle: false,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: kBlack),
+          icon: const Icon(Icons.close_rounded, color: kBlack),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text("Edit Profile", style: TextStyle(color: kBlack, fontWeight: FontWeight.bold, fontSize: 18)),
-        centerTitle: true,
+        title: Text(
+          "Edit Profile",
+          style: GoogleFonts.outfit(color: kBlack, fontWeight: FontWeight.w800, fontSize: 24, letterSpacing: -0.5),
+        ),
         actions: [
           TextButton(
             onPressed: _isLoading ? null : _saveProfile,
             child: _isLoading 
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kRose))
-              : const Text("Save", style: TextStyle(color: kRose, fontWeight: FontWeight.bold, fontSize: 16)),
+              : Text("Save", style: GoogleFonts.outfit(color: kRose, fontWeight: FontWeight.w700, fontSize: 16)),
           )
         ],
       ),
@@ -249,10 +253,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
           children: [
             // A. PHOTOS
             _buildSectionHeader("My Photos"),
+            const SizedBox(height: 8),
             _buildPhotoGrid(),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Text("Tap to replace. Dragging not supported yet.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Text(
+                "Tap to replace. Dragging not supported yet.", 
+                style: GoogleFonts.outfit(color: Colors.grey.shade500, fontSize: 13, fontWeight: FontWeight.w500)
+              ),
             ),
 
             // B. THE ESSENTIALS
@@ -335,8 +343,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Text(title.toUpperCase(), style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Text(
+        title.toUpperCase(), 
+        style: GoogleFonts.outfit(color: kRose, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.5)
+      ),
     );
   }
 
@@ -345,14 +356,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 16, offset: const Offset(0, 6))],
       ),
       child: Column(children: children),
     );
   }
 
-  Widget _buildDivider() => const Divider(height: 1, indent: 20, endIndent: 20);
+  Widget _buildDivider() => Divider(height: 1, thickness: 1, color: Colors.grey.withOpacity(0.08), indent: 24, endIndent: 24);
 
   // --- Photos Grid ---
   Widget _buildPhotoGrid() {
@@ -362,7 +373,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3, childAspectRatio: 0.7, crossAxisSpacing: 10, mainAxisSpacing: 10
+          crossAxisCount: 3, childAspectRatio: 0.7, crossAxisSpacing: 12, mainAxisSpacing: 12
         ),
         itemCount: 6,
         itemBuilder: (context, index) {
@@ -372,24 +383,24 @@ class _EditProfilePageState extends State<EditProfilePage> {
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
               ),
               child: item != null
                   ? ClipRRect(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(20),
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
                           item is File ? Image.file(item, fit: BoxFit.cover) : Image.network(item, fit: BoxFit.cover),
                           Positioned(
-                            bottom: 5, right: 5,
-                            child: CircleAvatar(backgroundColor: Colors.white, radius: 12, child: Icon(Icons.edit, size: 14, color: kRose)),
+                            bottom: 6, right: 6,
+                            child: CircleAvatar(backgroundColor: Colors.white.withOpacity(0.9), radius: 14, child: const Icon(Icons.edit_rounded, size: 16, color: kRose)),
                           )
                         ],
                       ),
                     )
-                  : Icon(Icons.add, color: Colors.grey[300], size: 30),
+                  : Icon(Icons.add_rounded, color: Colors.grey.shade300, size: 36),
             ),
           );
         },
@@ -402,13 +413,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         child: Wrap(
           children: [
-            ListTile(leading: const Icon(Icons.photo_library), title: const Text("Gallery"), onTap: () { Navigator.pop(ctx); _pickImage(index, ImageSource.gallery); }),
-            ListTile(leading: const Icon(Icons.camera_alt), title: const Text("Camera"), onTap: () { Navigator.pop(ctx); _pickImage(index, ImageSource.camera); }),
+            ListTile(leading: const Icon(Icons.photo_library_rounded), title: Text("Gallery", style: GoogleFonts.outfit(fontWeight: FontWeight.w500)), onTap: () { Navigator.pop(ctx); _pickImage(index, ImageSource.gallery); }),
+            ListTile(leading: const Icon(Icons.camera_alt_rounded), title: Text("Camera", style: GoogleFonts.outfit(fontWeight: FontWeight.w500)), onTap: () { Navigator.pop(ctx); _pickImage(index, ImageSource.camera); }),
             if (_photos[index] != null)
-              ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Remove", style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(ctx); setState(() => _photos[index] = null); }),
+              ListTile(leading: const Icon(Icons.delete_rounded, color: Colors.red), title: Text("Remove", style: GoogleFonts.outfit(color: Colors.red, fontWeight: FontWeight.w500)), onTap: () { Navigator.pop(ctx); setState(() => _photos[index] = null); }),
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -424,15 +436,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Widget _buildTextFieldRow(String label, TextEditingController controller) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: Row(
         children: [
-          SizedBox(width: 80, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.grey))),
+          SizedBox(width: 90, child: Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15))),
           Expanded(
             child: TextField(
               controller: controller,
               decoration: const InputDecoration(border: InputBorder.none, isDense: true),
-              style: const TextStyle(fontWeight: FontWeight.w600, color: kBlack),
+              style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: kBlack, fontSize: 16),
               textAlign: TextAlign.end,
             ),
           ),
@@ -445,14 +457,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+            Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15)),
             const Spacer(),
-            Text(value ?? "Add", style: TextStyle(fontWeight: FontWeight.w600, color: value == null ? kRose : kBlack)),
-            const SizedBox(width: 8),
-            Icon(Icons.chevron_right, size: 18, color: Colors.grey[400]),
+            Text(value ?? "Add", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: value == null ? kRose : kBlack, fontSize: 16)),
+            const SizedBox(width: 12),
+            Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[400]),
           ],
         ),
       ),
@@ -463,14 +475,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+            Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15)),
             const Spacer(),
-            Text("${values.length} selected", style: const TextStyle(fontWeight: FontWeight.w600, color: kBlack)),
-            const SizedBox(width: 8),
-            Icon(Icons.chevron_right, size: 18, color: Colors.grey[400]),
+            Text("${values.length} selected", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: kBlack, fontSize: 16)),
+            const SizedBox(width: 12),
+            Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[400]),
           ],
         ),
       ),
@@ -482,18 +494,18 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return InkWell(
       onTap: _fetchCurrentLocation, // Tap to fetch GPS location
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           children: [
-            const Text("Location", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+            Text("Location", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15)),
             const Spacer(),
-            Icon(Icons.location_on, size: 16, color: kRose),
-            const SizedBox(width: 4),
+            Icon(Icons.location_on_rounded, size: 16, color: kRose),
+            const SizedBox(width: 6),
             Expanded(
                 child: Text(_location ?? "Tap to update", 
                 textAlign: TextAlign.end,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w600, color: kBlack)
+                style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: kBlack, fontSize: 16)
               ),
             ),
           ],
@@ -522,19 +534,20 @@ class _EditProfilePageState extends State<EditProfilePage> {
          _showChipModal("Education Level", educationOptions, _educationLevel, (v) => setState(() => _educationLevel = v));
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         child: Row(
           children: [
-            const SizedBox(width: 80, child: Text("Education", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey))),
+            SizedBox(width: 90, child: Text("Education", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15))),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(_educationLevel ?? "Select Level", style: TextStyle(fontWeight: FontWeight.w600, color: _educationLevel == null ? kRose : kBlack)),
+                  Text(_educationLevel ?? "Select Level", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: _educationLevel == null ? kRose : kBlack, fontSize: 16)),
                   TextField(
                     controller: _schoolController,
                     textAlign: TextAlign.end,
-                    decoration: const InputDecoration(hintText: "School Name (Optional)", border: InputBorder.none, isDense: true, hintStyle: TextStyle(color: Colors.grey, fontSize: 13)),
+                    decoration: InputDecoration(hintText: "School Name (Optional)", border: InputBorder.none, isDense: true, hintStyle: GoogleFonts.outfit(color: Colors.grey, fontSize: 14)),
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w500, color: kBlack, fontSize: 14),
                   )
                 ],
               ),
@@ -550,29 +563,39 @@ class _EditProfilePageState extends State<EditProfilePage> {
   void _showChipModal(String title, List<String> options, String? current, Function(String) onSelect) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
         return Container(
-          padding: const EdgeInsets.all(20),
-          height: 400,
+          padding: const EdgeInsets.all(24),
+          height: 450,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
+              Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800, color: kBlack)),
+              const SizedBox(height: 24),
               Expanded(
                 child: SingleChildScrollView(
                   child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
+                    spacing: 12,
+                    runSpacing: 12,
                     children: options.map((opt) {
                       final isSelected = current == opt;
                       return ChoiceChip(
                         label: Text(opt),
                         selected: isSelected,
                         selectedColor: kRose,
-                        backgroundColor: Colors.grey[100],
-                        labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+                        backgroundColor: Colors.white,
+                        showCheckmark: false,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(color: isSelected ? kRose : Colors.grey.shade300, width: 1.5)
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        labelStyle: GoogleFonts.outfit(
+                          color: isSelected ? Colors.white : kBlack,
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: 15
+                        ),
                         onSelected: (_) {
                           onSelect(opt);
                           Navigator.pop(context);
@@ -593,37 +616,47 @@ class _EditProfilePageState extends State<EditProfilePage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Container(
-              padding: const EdgeInsets.all(20),
-              height: MediaQuery.of(context).size.height * 0.7,
+              padding: const EdgeInsets.all(24),
+              height: MediaQuery.of(context).size.height * 0.75,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Done", style: TextStyle(color: kRose)))
+                      Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800, color: kBlack)),
+                      TextButton(onPressed: () => Navigator.pop(context), child: Text("Done", style: GoogleFonts.outfit(color: kRose, fontWeight: FontWeight.w700, fontSize: 16)))
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   Expanded(
                     child: SingleChildScrollView(
                       child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                        spacing: 12,
+                        runSpacing: 12,
                         children: options.map((opt) {
                           final isSelected = current.contains(opt);
                           return FilterChip(
                             label: Text(opt),
                             selected: isSelected,
                             selectedColor: kRose,
-                            backgroundColor: Colors.grey[100],
-                            labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+                            backgroundColor: Colors.white,
+                            showCheckmark: false,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(color: isSelected ? kRose : Colors.grey.shade300, width: 1.5)
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            labelStyle: GoogleFonts.outfit(
+                              color: isSelected ? Colors.white : kBlack,
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                              fontSize: 15
+                            ),
                             onSelected: (_) {
                               setModalState(() {
                                 setState(() { // Update parent state
@@ -648,30 +681,31 @@ class _EditProfilePageState extends State<EditProfilePage> {
   void _showHeightPicker() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
         return StatefulBuilder(builder: (context, setModalState) {
           final list = _isFeet ? heightFeet : heightCm;
           return Container(
-            padding: const EdgeInsets.all(20),
-            height: 350,
+            padding: const EdgeInsets.all(24),
+            height: 400,
             child: Column(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _buildToggleBtn("Feet", _isFeet, () => setModalState(() => _isFeet = true)),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 16),
                     _buildToggleBtn("CM", !_isFeet, () => setModalState(() => _isFeet = false)),
                   ],
                 ),
+                const SizedBox(height: 24),
                 Expanded(
                   child: ListWheelScrollView.useDelegate(
                     itemExtent: 50,
                     perspective: 0.003,
                     onSelectedItemChanged: (i) => setState(() => _height = list[i]),
                     childDelegate: ListWheelChildBuilderDelegate(
-                      builder: (c, i) => Center(child: Text(list[i], style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+                      builder: (c, i) => Center(child: Text(list[i], style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w700, color: kBlack))),
                       childCount: list.length,
                     ),
                   ),
@@ -688,9 +722,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        decoration: BoxDecoration(color: active ? kRose : Colors.grey[200], borderRadius: BorderRadius.circular(20)),
-        child: Text(txt, style: TextStyle(color: active ? Colors.white : Colors.black)),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+        decoration: BoxDecoration(
+          color: active ? kRose : Colors.white, 
+          border: Border.all(color: active ? kRose : Colors.grey.shade300, width: 1.5),
+          borderRadius: BorderRadius.circular(24)
+        ),
+        child: Text(txt, style: GoogleFonts.outfit(color: active ? Colors.white : Colors.grey.shade600, fontWeight: FontWeight.w700)),
       ),
     );
   }
@@ -703,17 +741,21 @@ class _EditProfilePageState extends State<EditProfilePage> {
         return GestureDetector(
           onTap: () => _editPrompt(index),
           child: Container(
-             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-             padding: const EdgeInsets.all(16),
-             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+             padding: const EdgeInsets.all(20),
+             decoration: BoxDecoration(
+               color: Colors.white, 
+               borderRadius: BorderRadius.circular(24),
+               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+             ),
              child: p == null 
-               ? Row(children: const [Icon(Icons.add, color: kRose), SizedBox(width: 8), Text("Add a Prompt", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))])
+               ? Row(children: [const Icon(Icons.add_circle_outline_rounded, color: kRose), const SizedBox(width: 12), Text("Add a Prompt", style: GoogleFonts.outfit(color: Colors.grey.shade500, fontWeight: FontWeight.w600, fontSize: 16))])
                : Column(
                    crossAxisAlignment: CrossAxisAlignment.start,
                    children: [
-                     Text((p['question'] ?? '').toUpperCase(), style: const TextStyle(color: kRose, fontSize: 10, fontWeight: FontWeight.bold)),
-                     const SizedBox(height: 4),
-                     Text(p['answer'] ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                     Text((p['question'] ?? '').toUpperCase(), style: GoogleFonts.outfit(color: kRose, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                     const SizedBox(height: 8),
+                     Text(p['answer'] ?? '', style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w600, color: kBlack, height: 1.3)),
                    ],
                  ),
           ),
@@ -733,18 +775,29 @@ class _EditProfilePageState extends State<EditProfilePage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
-        padding: const EdgeInsets.all(20),
+        height: MediaQuery.of(context).size.height * 0.85,
+        padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Choose a Question", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Choose a Prompt", style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 24, color: kBlack)),
+                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx))
+              ],
+            ),
+            const SizedBox(height: 16),
             Expanded(
-              child: ListView.builder(
+              child: ListView.separated(
                 itemCount: questions.length,
+                separatorBuilder: (c, i) => Divider(color: Colors.grey.withOpacity(0.1)),
                 itemBuilder: (context, i) => ListTile(
-                  title: Text(questions[i]),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                  title: Text(questions[i], style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600, color: kBlack)),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
                   onTap: () {
                     Navigator.pop(ctx);
                     _showAnswerDialog(index, questions[i]);
@@ -763,13 +816,27 @@ class _EditProfilePageState extends State<EditProfilePage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(question, style: const TextStyle(fontSize: 14)),
-        content: TextField(controller: ctrl, maxLines: 3, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder())),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(question, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: kBlack)),
+        content: TextField(
+          controller: ctrl, 
+          maxLines: 4, 
+          autofocus: true, 
+          style: GoogleFonts.outfit(fontSize: 16),
+          decoration: InputDecoration(
+            hintText: "Enter your answer...",
+            hintStyle: GoogleFonts.outfit(color: Colors.grey),
+            filled: true,
+            fillColor: Colors.grey.shade100,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+          )
+        ),
         actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text("Cancel", style: GoogleFonts.outfit(color: Colors.grey))),
           TextButton(onPressed: () {
             if(ctrl.text.isNotEmpty) setState(() => _prompts[index] = {'question': question, 'answer': ctrl.text});
             Navigator.pop(ctx);
-          }, child: const Text("Save", style: TextStyle(color: kRose)))
+          }, child: Text("Save", style: GoogleFonts.outfit(color: kRose, fontWeight: FontWeight.w700)))
         ],
       ),
     );

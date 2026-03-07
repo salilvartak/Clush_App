@@ -9,6 +9,9 @@ import 'basics_page.dart';
 import 'home_page.dart';
 import 'dart:ui';
 
+import 'package:google_fonts/google_fonts.dart'; // <-- Added for typography
+import 'package:flutter_animate/flutter_animate.dart'; // <-- Added for animations
+
 // Import the notification service
 import 'services/notification_service.dart'; 
 
@@ -38,9 +41,17 @@ class AuraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: AnimatedSplashScreen(), // <-- Changed from LottieSplashScreen
+      theme: ThemeData(
+        useMaterial3: true,
+        fontFamily: GoogleFonts.outfit().fontFamily,
+        textTheme: GoogleFonts.outfitTextTheme(
+          Theme.of(context).textTheme,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF8F9FA), // A sleek off-white
+      ),
+      home: const AnimatedSplashScreen(),
     );
   }
 }
@@ -430,54 +441,60 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       key: const ValueKey('phone_state'),
       children: [
-        TextField(
-          controller: _phoneController,
-          keyboardType: TextInputType.phone,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-          decoration: InputDecoration(
-            hintText: "Phone Number (e.g., +91...)",
-            hintStyle: const TextStyle(color: Colors.black38),
-            prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFFCD9D8F)),
-            filled: true,
-            fillColor: Colors.white,
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(30.0),
-              borderSide: const BorderSide(color: Colors.white, width: 2),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24.0),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+            decoration: InputDecoration(
+              hintText: "Phone Number (e.g., +91...)",
+              hintStyle: const TextStyle(color: Colors.black38, fontSize: 16),
+              prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFFCD9D8F)),
+              filled: true,
+              fillColor: Colors.transparent, // Let the container drive the color
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24.0), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(30.0),
-              borderSide: const BorderSide(color: Color(0xFFCD9D8F), width: 2),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
-          height: 58,
+          height: 60,
           child: ElevatedButton(
             onPressed: _isLoading ? null : _verifyPhoneNumber,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFCD9D8F),
-              elevation: 2,
-              shadowColor: const Color(0xFFCD9D8F).withOpacity(0.5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0)),
+              elevation: 8,
+              shadowColor: const Color(0xFFCD9D8F).withOpacity(0.4),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
             ),
             child: _isLoading 
-                ? const HeartLoader(size: 26, color: Colors.white) // <-- Replaced with HeartLoader
+                ? const HeartLoader(size: 26, color: Colors.white) 
                 : const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text("Send OTP", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                      Text("Continue", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                      SizedBox(width: 12),
+                      Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 22),
                     ],
                   ),
           ),
-        ),
+        ).animate().fade(duration: 400.ms, delay: 200.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
         
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 28.0),
+          padding: const EdgeInsets.symmetric(vertical: 32.0),
           child: Row(
             children: [
               Expanded(child: Divider(color: Colors.grey.shade400)),
@@ -492,20 +509,20 @@ class _LoginScreenState extends State<LoginScreen> {
         
         SizedBox(
           width: double.infinity,
-          height: 58,
+          height: 60,
           child: OutlinedButton.icon(
             onPressed: _isLoading ? null : () => _signInWithGoogle(context),
-            icon: Image.network("https://cdn-icons-png.flaticon.com/512/2991/2991148.png", height: 24),
-            label: const Text("Continue with Google", style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w600)),
+            icon: Image.network("https://cdn-icons-png.flaticon.com/512/2991/2991148.png", height: 26),
+            label: const Text("Continue with Google", style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w600, letterSpacing: 0.2)),
             style: OutlinedButton.styleFrom(
               backgroundColor: Colors.white,
-              elevation: 1,
-              shadowColor: Colors.black12,
+              elevation: 4,
+              shadowColor: Colors.black.withOpacity(0.05),
               side: const BorderSide(color: Colors.transparent),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
             ),
           ),
-        ),
+        ).animate().fade(duration: 400.ms, delay: 300.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
       ],
     );
   }
@@ -515,54 +532,60 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       key: const ValueKey('otp_state'),
       children: [
-        TextField(
-          controller: _otpController,
-          keyboardType: TextInputType.number,
-          textAlign: TextAlign.center,
-          maxLength: 6,
-          style: const TextStyle(fontSize: 24, letterSpacing: 12.0, fontWeight: FontWeight.w600, color: Color(0xFF2D2D2D)),
-          decoration: InputDecoration(
-            counterText: "",
-            hintText: "------",
-            hintStyle: const TextStyle(letterSpacing: 12.0, color: Colors.black26),
-            filled: true,
-            fillColor: Colors.white,
-            prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFFCD9D8F)),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(30.0),
-              borderSide: const BorderSide(color: Colors.white, width: 2),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24.0),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: _otpController,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            maxLength: 6,
+            style: const TextStyle(fontSize: 28, letterSpacing: 14.0, fontWeight: FontWeight.bold, color: Color(0xFF2D2D2D)),
+            decoration: InputDecoration(
+              counterText: "",
+              hintText: "------",
+              hintStyle: const TextStyle(letterSpacing: 14.0, color: Colors.black26),
+              filled: true,
+              fillColor: Colors.transparent,
+              prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFFCD9D8F)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24.0), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(30.0),
-              borderSide: const BorderSide(color: Color(0xFFCD9D8F), width: 2),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
-          height: 58,
+          height: 60,
           child: ElevatedButton(
             onPressed: _isLoading ? null : _signInWithOTP,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFCD9D8F),
-              elevation: 2,
-              shadowColor: const Color(0xFFCD9D8F).withOpacity(0.5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0)),
+              elevation: 8,
+              shadowColor: const Color(0xFFCD9D8F).withOpacity(0.4),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
             ),
             child: _isLoading 
-                ? const HeartLoader(size: 26, color: Colors.white) // <-- Replaced with HeartLoader
+                ? const HeartLoader(size: 26, color: Colors.white)
                 : const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.check_circle_outline, color: Colors.white, size: 22),
-                      SizedBox(width: 8),
-                      Text("Verify Code", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+                      Icon(Icons.check_circle_outline, color: Colors.white, size: 24),
+                      SizedBox(width: 12),
+                      Text("Verify Code", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                     ],
                   ),
           ),
-        ),
+        ).animate().fade(duration: 400.ms, delay: 200.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
         const SizedBox(height: 16),
         TextButton(
           onPressed: () {
@@ -572,11 +595,11 @@ class _LoginScreenState extends State<LoginScreen> {
             });
           },
           style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFFCD9D8F),
+            foregroundColor: Colors.black54,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
           child: const Text("Use a different number", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-        )
+        ).animate().fade(duration: 400.ms, delay: 300.ms),
       ],
     );
   }

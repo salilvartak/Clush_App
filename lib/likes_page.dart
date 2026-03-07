@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart'; // Typography
+import 'package:flutter_animate/flutter_animate.dart'; // Animations
 import 'services/matching_service.dart';
+import 'main.dart'; // For HeartLoader
 
 const Color kRose = Color(0xFFCD9D8F);
+const Color kBlack = Color(0xFF2D2D2D);
+const Color kTan = Color(0xFFF8F9FA);
 
 class LikesPage extends StatefulWidget {
   const LikesPage({super.key});
@@ -65,24 +70,29 @@ class _LikesPageState extends State<LikesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE9E6E1), // kTan
+      backgroundColor: kTan, 
       appBar: AppBar(
-        title: const Text("Likes You", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-        backgroundColor: Colors.transparent,
+        title: Text(
+          "Likes You", 
+          style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w800, color: kBlack, letterSpacing: -0.5)
+        ),
+        backgroundColor: kTan,
         elevation: 0,
         centerTitle: false,
       ),
       body: _isLoading 
-          ? const Center(child: CircularProgressIndicator(color: kRose))
+          ? const Center(child: HeartLoader(size: 60))
           : _likedByUsers.isEmpty
             ? _buildEmptyState()
             : ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.only(top: 8, bottom: 24, left: 16, right: 16),
                 itemCount: _likedByUsers.length,
                 itemBuilder: (context, index) {
                   final user = _likedByUsers[index];
-                  // Ensure we have a valid key for lists
-                  return _buildUserTile(user, key: ValueKey(user['id'])); 
+                  return _buildUserTile(user, key: ValueKey(user['id']))
+                      .animate()
+                      .fade(duration: 400.ms, delay: (50 * index).ms)
+                      .slideX(begin: 0.1, end: 0, curve: Curves.easeOutQuad);
                 },
               ),
     );
@@ -93,19 +103,29 @@ class _LikesPageState extends State<LikesPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.favorite_border, size: 60, color: Colors.grey.shade400),
-          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))
+              ]
+            ),
+            child: Icon(Icons.favorite_border_rounded, size: 60, color: kRose.withOpacity(0.5)),
+          ),
+          const SizedBox(height: 24),
           Text(
             "No pending likes",
-            style: TextStyle(fontSize: 18, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+            style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w600, color: kBlack),
           ),
           const SizedBox(height: 8),
           Text(
             "Go swipe to find more matches!",
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+            style: GoogleFonts.outfit(fontSize: 16, color: Colors.black54),
           ),
         ],
-      ),
+      ).animate().fade(duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
     );
   }
 
@@ -123,17 +143,17 @@ class _LikesPageState extends State<LikesPage> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 35,
+            radius: 36,
             backgroundImage: NetworkImage(photoUrl),
-            backgroundColor: Colors.grey.shade200,
+            backgroundColor: kRose.withOpacity(0.1),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -142,12 +162,12 @@ class _LikesPageState extends State<LikesPage> {
               children: [
                 Text(
                   "$name, $age",
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: kBlack),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   user['job_title'] ?? "No job title",
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                  style: GoogleFonts.outfit(fontSize: 14, color: Colors.black54),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -155,13 +175,20 @@ class _LikesPageState extends State<LikesPage> {
             ),
           ),
           // Action Buttons
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.redAccent),
-            onPressed: () => _handleReject(userId),
+          Container(
+            decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
+            child: IconButton(
+              icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 22),
+              onPressed: () => _handleReject(userId),
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.favorite, color: Color(0xFF00BFA5)),
-            onPressed: () => _handleAccept(userId),
+          const SizedBox(width: 8),
+          Container(
+            decoration: BoxDecoration(color: const Color(0xFF00BFA5).withOpacity(0.1), shape: BoxShape.circle),
+            child: IconButton(
+              icon: const Icon(Icons.favorite_rounded, color: Color(0xFF00BFA5), size: 22),
+              onPressed: () => _handleAccept(userId),
+            ),
           ),
         ],
       ),

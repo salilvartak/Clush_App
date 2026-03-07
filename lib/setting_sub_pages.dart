@@ -5,7 +5,10 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_fonts/google_fonts.dart'; // Typography
 import 'main.dart'; // Imports kTan & kRose
+
+const Color kBlack = Color(0xFF2D2D2D);
 
 // --- GENERIC TEMPLATE FOR SUB-PAGES ---
 class BaseSettingsPage extends StatelessWidget {
@@ -17,17 +20,18 @@ class BaseSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE9E6E1), // kTan
+      backgroundColor: const Color(0xFFF8F9FA), // kTan
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFF8F9FA),
         elevation: 0,
+        centerTitle: false,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: kBlack),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           title,
-          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          style: GoogleFonts.outfit(color: kBlack, fontWeight: FontWeight.w800, fontSize: 24, letterSpacing: -0.5),
         ),
       ),
       body: SafeArea(
@@ -284,29 +288,30 @@ class _PauseAccountPageState extends State<PauseAccountPage> {
       body: isLoading 
         ? const Center(child: CircularProgressIndicator())
         : Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))]),
             child: Column(
               children: [
                 Icon(
-                  isPaused ? Icons.pause_circle_filled : Icons.play_circle_fill, 
-                  size: 64, 
-                  color: isPaused ? Colors.red : const Color(0xFFCD9D8F)
+                  isPaused ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded, 
+                  size: 80, 
+                  color: isPaused ? Colors.redAccent : const Color(0xFFCD9D8F)
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
                 Text(
                   isPaused ? "Your account is paused" : "Your account is active", 
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)
+                  style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w700, color: kBlack)
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   "Pausing your account means you won't be shown to new people, but you can still chat with existing matches.", 
                   textAlign: TextAlign.center, 
-                  style: TextStyle(color: Colors.grey)
+                  style: GoogleFonts.outfit(color: Colors.grey.shade600, fontSize: 16)
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 40),
                 SwitchListTile(
-                  title: const Text("Pause my account", style: TextStyle(fontWeight: FontWeight.bold)),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text("Pause my account", style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 18)),
                   value: isPaused,
                   activeColor: const Color(0xFFCD9D8F),
                   onChanged: _togglePauseStatus,

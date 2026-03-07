@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart'; // Typography
 import 'dart:ui'; // For blur effects
 
 const Color kRose = Color(0xFFCD9D8F);
-const Color kTan = Color(0xFFE9E6E1);
+const Color kBlack = Color(0xFF2D2D2D);
+const Color kTan = Color(0xFFF8F9FA);
 
 class ProfileViewPage extends StatelessWidget {
   final Map<String, dynamic> profile;
@@ -138,24 +140,27 @@ class ProfileViewPage extends StatelessWidget {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
-                  height: 90,
+                  height: 100,
                   color: kTan.withOpacity(0.85),
                   padding: const EdgeInsets.fromLTRB(16, 48, 16, 0),
                   alignment: Alignment.centerLeft,
                   child: Row(
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87, size: 22),
-                        onPressed: () => Navigator.pop(context),
+                      Container(
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle, border: Border.all(color: Colors.black.withOpacity(0.05))),
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: kBlack, size: 22),
+                          onPressed: () => Navigator.pop(context),
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      const Text(
+                      const SizedBox(width: 12),
+                      Text(
                         "Preview",
-                        style: TextStyle(
-                          fontSize: 20, 
-                          fontWeight: FontWeight.w700, 
-                          color: Colors.black87,
-                          letterSpacing: 0.5
+                        style: GoogleFonts.outfit(
+                          fontSize: 22, 
+                          fontWeight: FontWeight.w800, 
+                          color: kBlack,
+                          letterSpacing: -0.5
                         ),
                       ),
                     ],
@@ -169,9 +174,12 @@ class ProfileViewPage extends StatelessWidget {
     );
   }
 
-  // --- WIDGET HELPERS (Unchanged) ---
+  // --- WIDGET HELPERS ---
   Widget _buildSectionTitle(String title) {
-    return Text(title.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: kRose, letterSpacing: 1.5));
+    return Text(
+      title.toUpperCase(), 
+      style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w800, color: kRose, letterSpacing: 1.5)
+    );
   }
 
   Widget _buildUnifiedEssentialsCard(Map<String, String?> allData) {
@@ -199,33 +207,33 @@ class ProfileViewPage extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Padding(padding: EdgeInsets.fromLTRB(20, 24, 20, 16)),
           if (horizontalData.isNotEmpty) ...[
-            SizedBox(height: 60, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16), physics: const BouncingScrollPhysics(), itemCount: horizontalData.length, itemBuilder: (context, index) { String key = horizontalData.keys.elementAt(index); String value = horizontalData[key]!; return Container(margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)), child: Row(children: [Icon(icons[key] ?? Icons.circle, color: kRose, size: 18), const SizedBox(width: 8), Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87))])); })),
+            SizedBox(height: 60, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16), physics: const BouncingScrollPhysics(), itemCount: horizontalData.length, itemBuilder: (context, index) { String key = horizontalData.keys.elementAt(index); String value = horizontalData[key]!; return Container(margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)), child: Row(children: [Icon(icons[key] ?? Icons.circle, color: kRose, size: 18), const SizedBox(width: 8), Text(value, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13, color: kBlack))])); })),
             const SizedBox(height: 16),
           ],
           if (horizontalData.isNotEmpty && verticalData.isNotEmpty) Divider(height: 1, thickness: 1, color: Colors.grey.shade100),
-          if (verticalData.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8), child: Column(children: verticalData.entries.map((entry) { return Column(children: [Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Row(children: [Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: kRose.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icons[entry.key] ?? Icons.circle, size: 18, color: kRose)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(entry.key.toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)), const SizedBox(height: 2), Text(entry.value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87))]))])), if (entry.key != verticalData.keys.last) Divider(height: 1, thickness: 1, color: Colors.grey.shade100)]); }).toList())),
+          if (verticalData.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8), child: Column(children: verticalData.entries.map((entry) { return Column(children: [Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Row(children: [Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: kRose.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icons[entry.key] ?? Icons.circle, size: 18, color: kRose)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(entry.key.toUpperCase(), style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w800, letterSpacing: 0.5)), const SizedBox(height: 4), Text(entry.value, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600, color: kBlack))]))])), if (entry.key != verticalData.keys.last) Divider(height: 1, thickness: 1, color: Colors.grey.shade100)]); }).toList())),
           const SizedBox(height: 8),
       ]),
     );
   }
 
   Widget _buildMainPhotoCard({required String url, required String name, required int age}) {
-    return Container(height: 600, width: double.infinity, margin: const EdgeInsets.fromLTRB(16, 100, 16, 16), decoration: _premiumShadowDecoration(), child: ClipRRect(borderRadius: BorderRadius.circular(30), child: Stack(fit: StackFit.expand, children: [Image.network(url, fit: BoxFit.cover), Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.1), Colors.black.withOpacity(0.7)], stops: const [0.6, 0.8, 1.0]))), Positioned(bottom: 30, left: 24, child: Text("$name, $age", style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, shadows: [Shadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 2))])))])));
+    return Container(height: 600, width: double.infinity, margin: const EdgeInsets.fromLTRB(16, 110, 16, 16), decoration: _premiumShadowDecoration(), child: ClipRRect(borderRadius: BorderRadius.circular(32), child: Stack(fit: StackFit.expand, children: [Image.network(url, fit: BoxFit.cover), Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.2), Colors.black.withOpacity(0.85)], stops: const [0.5, 0.75, 1.0]))), Positioned(bottom: 30, left: 24, child: Text("$name, $age", style: GoogleFonts.outfit(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, letterSpacing: -0.5, shadows: [Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))])))])));
   }
   Widget _buildSecondaryPhotoCard(String url) {
-    return Container(height: 500, width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: _premiumShadowDecoration(), child: ClipRRect(borderRadius: BorderRadius.circular(30), child: Image.network(url, fit: BoxFit.cover)));
+    return Container(height: 500, width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: _premiumShadowDecoration(), child: ClipRRect(borderRadius: BorderRadius.circular(32), child: Image.network(url, fit: BoxFit.cover)));
   }
   Widget _buildIntentCard(String intent) {
-    return Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), padding: const EdgeInsets.all(24), decoration: _premiumShadowDecoration(), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: kRose.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.search_rounded, color: kRose, size: 28)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("LOOKING FOR", style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0)), const SizedBox(height: 4), Text(intent, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87), softWrap: true)]))]));
+    return Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), padding: const EdgeInsets.all(24), decoration: _premiumShadowDecoration(), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: kRose.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.search_rounded, color: kRose, size: 28)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("LOOKING FOR", style: GoogleFonts.outfit(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0)), const SizedBox(height: 6), Text(intent, style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: kBlack), softWrap: true)]))]));
   }
   Widget _buildPremiumPromptCard(Map<String, dynamic> prompt) {
-    return Container(width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36), decoration: _premiumShadowDecoration(), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text((prompt['question'] as String).toUpperCase(), style: const TextStyle(color: kRose, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.0)), const SizedBox(height: 16), Text(prompt['answer'], style: const TextStyle(fontSize: 24, height: 1.3, fontWeight: FontWeight.w600, color: Colors.black87))]));
+    return Container(width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36), decoration: _premiumShadowDecoration(), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text((prompt['question'] as String).toUpperCase(), style: GoogleFonts.outfit(color: kRose, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.0)), const SizedBox(height: 16), Text(prompt['answer'], style: GoogleFonts.outfit(fontSize: 26, height: 1.3, fontWeight: FontWeight.w600, color: kBlack, letterSpacing: -0.5))]));
   }
   Widget _buildPremiumChip(String label) {
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.black.withOpacity(0.06)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))]), child: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black.withOpacity(0.8))));
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.black.withOpacity(0.04)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))]), child: Text(label, style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w600, color: kBlack)));
   }
   BoxDecoration _premiumShadowDecoration() {
-    return BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, spreadRadius: 0, offset: const Offset(0, 10))]);
+    return BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 12))]);
   }
   int _calculateAge(String? birthdayString) {
     if (birthdayString == null) return 0;

@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart'; // Typography
+import 'package:flutter_animate/flutter_animate.dart'; // Animations
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'services/matching_service.dart';
+
+// Global color references
+const Color kRose = Color(0xFFCD9D8F);
+const Color kBlack = Color(0xFF2D2D2D);
+const Color kTan = Color(0xFFF8F9FA); // Sleek off-white for background
 
 class ChatScreen extends StatefulWidget {
   final String myId;       // My Supabase UUID
   final String matchId;    // Their Supabase UUID
   final String myName;     // My Name (e.g. "Salil")
   final String matchName;  // Their Name (e.g. "Rahul")
+  final String? matchPhotoUrl;
 
   const ChatScreen({
     Key? key,
@@ -14,6 +22,7 @@ class ChatScreen extends StatefulWidget {
     required this.matchId,
     required this.myName,
     required this.matchName,
+    this.matchPhotoUrl,
   }) : super(key: key);
 
   @override
@@ -133,22 +142,33 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE5E5E5), // Light grey background like WhatsApp
+      backgroundColor: kTan, 
       appBar: AppBar(
         title: Row(
           children: [
-            const CircleAvatar(
-              backgroundColor: Colors.grey,
-              radius: 18,
-              child: Icon(Icons.person, size: 24, color: Colors.white),
+            CircleAvatar(
+              backgroundColor: Colors.grey.shade300,
+              backgroundImage: widget.matchPhotoUrl != null ? NetworkImage(widget.matchPhotoUrl!) : null,
+              radius: 20,
+              child: widget.matchPhotoUrl == null ? const Icon(Icons.person, size: 24, color: Colors.white) : null,
             ),
-            const SizedBox(width: 10),
-            Text(widget.matchName, style: const TextStyle(fontSize: 18)),
+            const SizedBox(width: 12),
+            Text(
+              widget.matchName, 
+              style: GoogleFonts.outfit(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: kBlack,
+                letterSpacing: -0.3,
+              )
+            ),
           ],
         ),
         backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 1,
+        foregroundColor: kBlack,
+        elevation: 0,
+        scrolledUnderElevation: 8,
+        shadowColor: Colors.black.withOpacity(0.1),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.black54),
@@ -178,61 +198,90 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Expanded(
             child: messages.isEmpty 
-              ? const Center(child: Text("Say Hello! 👋", style: TextStyle(color: Colors.grey))) 
+              ? Center(
+                  child: Text(
+                    "Say Hello! 👋", 
+                    style: GoogleFonts.outfit(color: Colors.grey.shade400, fontSize: 20, fontWeight: FontWeight.w600)
+                  ).animate().fade(duration: 800.ms, delay: 200.ms)
+                ) 
               : ListView.builder(
                   controller: _scrollController,
                   itemCount: messages.length,
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                   itemBuilder: (context, index) {
                     final msg = messages[index];
                     bool isMe = msg['isMe'];
                     String time = msg['timestamp'] ?? "";
 
+                    // Calculate border radius logic for consecutive messages
+                    bool isNextSame = false;
+                    bool isPrevSame = false;
+                    
+                    if (index < messages.length - 1) {
+                      isNextSame = messages[index + 1]['isMe'] == isMe;
+                    }
+                    if (index > 0) {
+                      isPrevSame = messages[index - 1]['isMe'] == isMe;
+                    }
+
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.only(left: 12, right: 12, top: 10, bottom: 8),
+                        margin: EdgeInsets.only(
+                          top: isPrevSame ? 2 : 12, // Tighter grouping for consecutive messages
+                          bottom: isNextSame ? 2 : 8,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                         decoration: BoxDecoration(
-                          color: isMe ? const Color(0xFFCD9D8F) : Colors.white, // Colors
+                          // the outgoing message gets a subtle gradient
+                          gradient: isMe ? const LinearGradient(
+                            colors: [Color(0xFFE5B5A5), kRose],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ) : null,
+                          color: isMe ? null : Colors.white,
                           boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 2,
-                              offset: const Offset(0, 1),
-                            )
+                            if (!isMe)
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.03),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              )
                           ],
                           borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(12),
-                            topRight: const Radius.circular(12),
-                            bottomLeft: isMe ? const Radius.circular(12) : Radius.zero,
-                            bottomRight: isMe ? Radius.zero : const Radius.circular(12),
+                            topLeft: Radius.circular((isMe || !isPrevSame) ? 20 : 6),
+                            topRight: Radius.circular((!isMe || !isPrevSame) ? 20 : 6),
+                            bottomLeft: Radius.circular((isMe || !isNextSame) ? 20 : 6),
+                            bottomRight: Radius.circular((!isMe || !isNextSame) ? 20 : 6),
                           ),
                         ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end, // Align time to right
-                          mainAxisSize: MainAxisSize.min, // Wrap content
+                          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               msg['message'],
-                              style: TextStyle(
+                              style: GoogleFonts.outfit(
                                 color: isMe ? Colors.white : Colors.black87,
                                 fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                height: 1.3,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             // ⏰ TIMESTAMP TEXT
                             Text(
                               time,
-                              style: TextStyle(
-                                color: isMe ? Colors.white.withOpacity(0.7) : Colors.black38,
-                                fontSize: 10,
+                              style: GoogleFonts.outfit(
+                                color: isMe ? Colors.white.withOpacity(0.8) : Colors.black45,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w400,
                               ),
                             ),
                           ],
                         ),
-                      ),
+                      ).animate().fade(duration: 300.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
                     );
                   },
                 ),
@@ -245,36 +294,66 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageInput() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      color: Colors.white,
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                hintText: "Type a message...",
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          )
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: kTan, // Using the app background color for the input field to make it seamlessly recess
+                  borderRadius: BorderRadius.circular(30),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: TextField(
+                  controller: _controller,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: GoogleFonts.outfit(fontSize: 16),
+                  decoration: InputDecoration(
+                    hintText: "Type a message...",
+                    hintStyle: GoogleFonts.outfit(color: Colors.black38),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          CircleAvatar(
-            backgroundColor: const Color(0xFFCD9D8F),
-            radius: 24,
-            child: IconButton(
-              icon: const Icon(Icons.send, color: Colors.white, size: 22),
-              onPressed: sendMessage,
+            const SizedBox(width: 12),
+            GestureDetector(
+              onTap: sendMessage,
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [kRose, Color(0xFFFFC3A0)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: kRose.withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
+                ),
+                child: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

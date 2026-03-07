@@ -52,6 +52,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   firebase_messaging: ^14.9.4
   shared_preferences: ^2.5.4
+  google_fonts: ^8.0.2
+  flutter_animate: ^4.5.2
   
 
 dev_dependencies:
