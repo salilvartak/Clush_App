@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'services/matching_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String myId;       // My Supabase UUID
@@ -23,6 +24,7 @@ class _ChatScreenState extends State<ChatScreen> {
   late IO.Socket socket;
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController(); // Auto-scroll
+  final MatchingService _matchingService = MatchingService();
   List<Map<String, dynamic>> messages = [];
   String? privateRoom; // The secure "UUID_UUID" room ID
 
@@ -147,6 +149,30 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 1,
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.black54),
+            onSelected: (value) {
+              if (value == 'block') {
+                _showBlockConfirmation();
+              } else if (value == 'report') {
+                _showReportDialog();
+              }
+            },
+            itemBuilder: (BuildContext context) {
+              return [
+                const PopupMenuItem<String>(
+                  value: 'report',
+                  child: Text('Report User'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'block',
+                  child: Text('Block User', style: TextStyle(color: Colors.red)),
+                ),
+              ];
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -249,6 +275,118 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // --- ACTIONS ---
+
+  void _showBlockConfirmation() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Block User?'),
+        content: Text('Are you sure you want to block ${widget.matchName}? This action cannot be undone and will unmatch you.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(ctx); // close dialog
+              final success = await _matchingService.blockUser(widget.matchId);
+              if (success && mounted) {
+                _showThemedToast('${widget.matchName} blocked', isError: false);
+                Navigator.pop(context); // close chat screen completely
+              } else if (mounted) {
+                _showThemedToast('Failed to block. Try again.', isError: true);
+              }
+            },
+            child: const Text('Block', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReportDialog() {
+    final List<String> reasons = [
+      "Inappropriate messages",
+      "Fake profile / Spam",
+      "Harassment",
+      "Other"
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Report User",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                ...reasons.map((reason) => ListTile(
+                      title: Text(reason),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () async {
+                        Navigator.pop(ctx); // close bottom sheet
+                        final success = await _matchingService.reportUser(
+                            widget.matchId, reason);
+                        if (success && mounted) {
+                          _showThemedToast('Report submitted. User has been blocked.', isError: false);
+                          Navigator.pop(context); // Close chat completely
+                        } else if (mounted) {
+                          _showThemedToast('Failed to report.', isError: true);
+                        }
+                      },
+                    )),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- REUSABLE THEMED TOAST ---
+  void _showThemedToast(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? Colors.redAccent : const Color(0xFFCD9D8F), // kRose
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        elevation: 10,
+        duration: const Duration(seconds: 3),
       ),
     );
   }

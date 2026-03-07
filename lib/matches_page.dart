@@ -41,7 +41,24 @@ class _MatchesPageState extends State<MatchesPage> {
         _myDisplayName = "Me";
       }
 
-      // 2. Fetch Matches (Using user_a and user_b)
+      // 2. Fetch Blocked Users
+      final List<String> blockedIds = [];
+      try {
+        final blocksData = await _supabase
+            .from('blocks')
+            .select('blocker_id, blocked_id')
+            .or('blocker_id.eq.$myId,blocked_id.eq.$myId');
+
+        for (var b in blocksData) {
+          final b1 = b['blocker_id'].toString();
+          final b2 = b['blocked_id'].toString();
+          blockedIds.add(b1 == myId ? b2 : b1);
+        }
+      } catch (e) {
+        print("Error fetching blocks for matches view: $e");
+      }
+
+      // 3. Fetch Matches (Using user_a and user_b)
       final data = await _supabase
           .from('matches')
           .select('''
@@ -60,7 +77,7 @@ class _MatchesPageState extends State<MatchesPage> {
         // If I am 'user_b', then the match is 'profile_a'
         final otherProfile = isUserA_Me ? match['profile_b'] : match['profile_a'];
 
-        if (otherProfile != null) {
+        if (otherProfile != null && !blockedIds.contains(otherProfile['id'])) {
           loadedMatches.add({
             'match_uuid': otherProfile['id'],
             'display_name': otherProfile['full_name'],

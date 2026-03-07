@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+
 class MatchingService {
   final SupabaseClient _client = Supabase.instance.client;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -82,4 +83,51 @@ class MatchingService {
       return [];
     }
   }
-}
+
+  // --- BLOCK & REPORT FOR MATCHES / DISCOVER ---
+
+  Future<bool> blockUser(String targetUserId) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return false;
+
+    try {
+      // 1. Insert into blocks table
+      await _client.from('blocks').insert({
+        'blocker_id': myId,
+        'blocked_id': targetUserId,
+      });
+
+      // 2. Remove from matches table if they were matched
+      await _client
+          .from('matches')
+          .delete()
+          .or('and(user_a.eq.$myId,user_b.eq.$targetUserId),and(user_a.eq.$targetUserId,user_b.eq.$myId)');
+
+      return true;
+    } catch (e) {
+      print('Error blocking user: $e');
+      return false;
+    }
+  }
+
+  Future<bool> reportUser(String targetUserId, String reason) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return false;
+
+    try {
+      await _client.from('reports').insert({
+        'reporter_id': myId,
+        'reported_id': targetUserId,
+        'reason': reason,
+      });
+
+      // Automatically block them too
+      await blockUser(targetUserId);
+
+      return true;
+    } catch (e) {
+      print('Error reporting user: $e');
+      return false;
+    }
+  }
+}

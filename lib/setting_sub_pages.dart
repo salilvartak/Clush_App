@@ -676,22 +676,170 @@ class _VerificationPageState extends State<VerificationPage> {
 }
 
 // ================= REMAINING PAGES =================
-class BlockListPage extends StatelessWidget {
+class BlockListPage extends StatefulWidget {
   const BlockListPage({super.key});
+
+  @override
+  State<BlockListPage> createState() => _BlockListPageState();
+}
+
+class _BlockListPageState extends State<BlockListPage> {
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _blockedUsers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBlockedUsers();
+  }
+
+  Future<void> _fetchBlockedUsers() async {
+    try {
+      final myId = FirebaseAuth.instance.currentUser?.uid;
+      if (myId == null) return;
+
+      // Fetch from blocks table and join with profiles table to get the name and photo
+      final response = await Supabase.instance.client
+          .from('blocks')
+          .select('''
+            blocked_id,
+            profiles!blocks_blocked_id_fkey(full_name, photo_urls)
+          ''')
+          .eq('blocker_id', myId);
+
+      final List<Map<String, dynamic>> loadedUsers = [];
+      for (var row in (response as List)) {
+        final profile = row['profiles'];
+        if (profile != null) {
+          loadedUsers.add({
+            'blocked_id': row['blocked_id'],
+            'full_name': profile['full_name'] ?? 'Unknown',
+            'photo_url': (profile['photo_urls'] != null && (profile['photo_urls'] as List).isNotEmpty)
+                ? profile['photo_urls'][0]
+                : null,
+          });
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _blockedUsers = loadedUsers;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print("Error fetching blocked users: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _unblockUser(String blockedId, String name) async {
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unblock User?'),
+        content: Text('Are you sure you want to unblock $name? You will be able to see each other in Discover again.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true), 
+            child: const Text('Unblock', style: TextStyle(color: Color(0xFFCD9D8F), fontWeight: FontWeight.bold))
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final myId = FirebaseAuth.instance.currentUser?.uid;
+      if (myId == null) return;
+
+      await Supabase.instance.client
+          .from('blocks')
+          .delete()
+          .match({'blocker_id': myId, 'blocked_id': blockedId});
+
+      if (mounted) {
+        setState(() {
+          _blockedUsers.removeWhere((u) => u['blocked_id'] == blockedId);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$name unblocked'), 
+          backgroundColor: const Color(0xFFCD9D8F),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      print('Error unblocking: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to unblock'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const BaseSettingsPage(
+        title: "Blocked Users",
+        body: Center(child: CircularProgressIndicator(color: Color(0xFFCD9D8F))),
+      );
+    }
+
+    if (_blockedUsers.isEmpty) {
+      return BaseSettingsPage(
+        title: "Blocked Users",
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 100),
+              Icon(Icons.block, size: 60, color: Colors.grey.shade400),
+              const SizedBox(height: 20),
+              const Text("No blocked users yet", style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 10),
+              const Text("Select 'Block' from a user's profile to add them here.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+    }
+
     return BaseSettingsPage(
       title: "Blocked Users",
-      body: Center(
-        child: Column(
-          children: [
-            const SizedBox(height: 100),
-            Icon(Icons.block, size: 60, color: Colors.grey.shade400),
-            const SizedBox(height: 20),
-            const Text("No blocked users yet", style: TextStyle(color: Colors.grey)),
-            const SizedBox(height: 10),
-            const Text("Select 'Block' from a user's profile to add them here.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-          ],
+      body: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        ),
+        child: ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _blockedUsers.length,
+          separatorBuilder: (context, index) => const Divider(height: 1, indent: 64),
+          itemBuilder: (context, index) {
+            final user = _blockedUsers[index];
+            return ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.grey[200],
+                backgroundImage: user['photo_url'] != null ? NetworkImage(user['photo_url']) : null,
+                child: user['photo_url'] == null ? const Icon(Icons.person, color: Colors.grey) : null,
+              ),
+              title: Text(user['full_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+              trailing: TextButton(
+                onPressed: () => _unblockUser(user['blocked_id'], user['full_name']),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFCD9D8F),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xFFCD9D8F))),
+                ),
+                child: const Text('Unblock', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            );
+          },
         ),
       ),
     );

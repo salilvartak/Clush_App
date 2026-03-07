@@ -73,6 +73,25 @@ class _DiscoverPageState extends State<DiscoverPage> {
         print("Matches check failed: $e");
       }
 
+      // Get IDs from 'blocks' table (Blocked users)
+      try {
+        final blocksResponse = await Supabase.instance.client
+            .from('blocks')
+            .select('blocker_id, blocked_id')
+            .or('blocker_id.eq.$myId,blocked_id.eq.$myId');
+
+        final List<String> blockedIds = (blocksResponse as List).map((e) {
+          final b1 = e['blocker_id'].toString();
+          final b2 = e['blocked_id'].toString();
+          return b1 == myId ? b2 : b1;
+        }).toList();
+        
+        ignoreIds.addAll(blockedIds);
+      } catch (e) {
+        print("Blocks check failed: $e");
+      }
+
+
       // Get My Gender
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
@@ -446,22 +465,174 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   letterSpacing: -0.5
                 ),
               ),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.5),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.black.withOpacity(0.05)),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.tune_rounded, color: kBlack, size: 24),
-                  onPressed: () {
-                    // Filter logic
-                  },
-                ),
+              Row(
+                children: [
+                  if (_profiles.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.5),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.black.withOpacity(0.05)),
+                      ),
+                      child: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_horiz, color: kBlack, size: 24),
+                        onSelected: (value) {
+                          if (value == 'block') {
+                            _showBlockConfirmation(_profiles.first);
+                          } else if (value == 'report') {
+                            _showReportDialog(_profiles.first);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'report',
+                            child: Text('Report User'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'block',
+                            child: Text('Block User', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.black.withOpacity(0.05)),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.tune_rounded, color: kBlack, size: 24),
+                      onPressed: () {
+                        // Filter logic
+                      },
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // --- ACTIONS ---
+
+  void _showBlockConfirmation(Map<String, dynamic> profile) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Block User?'),
+        content: Text('Are you sure you want to block ${profile['full_name']}? They will be removed from your Discover feed.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(ctx); 
+              final success = await _matchingService.blockUser(profile['id']);
+              if (success && mounted) {
+                _showThemedToast('${profile['full_name']} blocked', isError: false);
+                // Remove from feed
+                setState(() {
+                  _profiles.removeAt(0);
+                });
+              } else if (mounted) {
+                _showThemedToast('Failed to block. Try again.', isError: true);
+              }
+            },
+            child: const Text('Block', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReportDialog(Map<String, dynamic> profile) {
+    final List<String> reasons = [
+      "Inappropriate photos",
+      "Inappropriate bio/prompts",
+      "Fake profile / Spam",
+      "Underage",
+      "Other"
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Report ${profile['full_name']}",
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                ...reasons.map((reason) => ListTile(
+                      title: Text(reason),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () async {
+                        Navigator.pop(ctx); 
+                        final success = await _matchingService.reportUser(
+                            profile['id'], reason);
+                        if (success && mounted) {
+                          _showThemedToast('Report submitted. This user has also been blocked.', isError: false);
+                          // Remove from feed since they are now blocked
+                          setState(() {
+                            _profiles.removeAt(0);
+                          });
+                        } else if (mounted) {
+                          _showThemedToast('Failed to report.', isError: true);
+                        }
+                      },
+                    )),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- REUSABLE THEMED TOAST ---
+  void _showThemedToast(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? Colors.redAccent : kRose,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        elevation: 10,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
