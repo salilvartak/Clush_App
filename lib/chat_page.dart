@@ -114,9 +114,59 @@ class _ChatScreenState extends State<ChatScreen> {
       'room': privateRoom,
       'sender': widget.myName, 
       'message': text,
+      'timestamp': DateTime.now().toIso8601String(),
     });
 
     _controller.clear();
+  }
+
+  bool _shouldShowTimeHeader(int index) {
+    if (index == 0) return true;
+    
+    String? currentStr = messages[index]['timestamp'];
+    String? prevStr = messages[index - 1]['timestamp'];
+    
+    if (currentStr == null || prevStr == null || currentStr == 'Now' || prevStr == 'Now') return true;
+
+    DateTime? current = DateTime.tryParse(currentStr);
+    DateTime? prev = DateTime.tryParse(prevStr);
+
+    if (current == null || prev == null) {
+      return currentStr != prevStr;
+    }
+
+    return current.difference(prev).inMinutes.abs() >= 5;
+  }
+
+  String _formatDateGroup(String? timestampStr) {
+    if (timestampStr == null || timestampStr.isEmpty || timestampStr == 'Now') {
+      DateTime now = DateTime.now();
+      String timeStr = "${now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour)}:${now.minute.toString().padLeft(2, '0')} ${now.hour >= 12 ? 'PM' : 'AM'}";
+      return "Today, $timeStr";
+    }
+    
+    DateTime? msgTime = DateTime.tryParse(timestampStr);
+    if (msgTime == null) return timestampStr;
+    msgTime = msgTime.toLocal();
+
+    DateTime now = DateTime.now();
+    DateTime today = DateTime(now.year, now.month, now.day);
+    DateTime msgDate = DateTime(msgTime.year, msgTime.month, msgTime.day);
+    Duration diff = today.difference(msgDate);
+
+    String timeStr = "${msgTime.hour > 12 ? msgTime.hour - 12 : (msgTime.hour == 0 ? 12 : msgTime.hour)}:${msgTime.minute.toString().padLeft(2, '0')} ${msgTime.hour >= 12 ? 'PM' : 'AM'}";
+
+    if (diff.inDays == 0) {
+      return "Today, $timeStr";
+    } else if (diff.inDays == 1) {
+      return "Yesterday, $timeStr";
+    } else if (diff.inDays < 7) {
+      List<String> days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      return "${days[msgTime.weekday - 1]}, $timeStr";
+    } else {
+      List<String> months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return "${msgTime.day} ${months[msgTime.month - 1]}, $timeStr";
+    }
   }
   
   void _scrollToBottom() {
@@ -213,75 +263,81 @@ class _ChatScreenState extends State<ChatScreen> {
                     bool isMe = msg['isMe'];
                     String time = msg['timestamp'] ?? "";
 
+                    bool showHeader = _shouldShowTimeHeader(index);
+                    String headerText = showHeader ? _formatDateGroup(time) : "";
+
                     // Calculate border radius logic for consecutive messages
                     bool isNextSame = false;
                     bool isPrevSame = false;
                     
                     if (index < messages.length - 1) {
-                      isNextSame = messages[index + 1]['isMe'] == isMe;
+                      bool nextShowsHeader = _shouldShowTimeHeader(index + 1);
+                      isNextSame = !nextShowsHeader && (messages[index + 1]['isMe'] == isMe);
                     }
                     if (index > 0) {
-                      isPrevSame = messages[index - 1]['isMe'] == isMe;
+                      isPrevSame = !showHeader && (messages[index - 1]['isMe'] == isMe);
                     }
 
-                    return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: EdgeInsets.only(
-                          top: isPrevSame ? 2 : 12, // Tighter grouping for consecutive messages
-                          bottom: isNextSame ? 2 : 8,
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                        decoration: BoxDecoration(
-                          // the outgoing message gets a subtle gradient
-                          gradient: isMe ? const LinearGradient(
-                            colors: [Color(0xFFE5B5A5), kRose],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ) : null,
-                          color: isMe ? null : Colors.white,
-                          boxShadow: [
-                            if (!isMe)
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.03),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              )
-                          ],
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular((isMe || !isPrevSame) ? 20 : 6),
-                            topRight: Radius.circular((!isMe || !isPrevSame) ? 20 : 6),
-                            bottomLeft: Radius.circular((isMe || !isNextSame) ? 20 : 6),
-                            bottomRight: Radius.circular((!isMe || !isNextSame) ? 20 : 6),
+                    return Column(
+                      children: [
+                        if (showHeader)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 24, bottom: 8),
+                            child: Text(
+                              headerText,
+                              style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black38,
+                              ),
+                            ).animate().fade(duration: 300.ms),
+                          ),
+                        Align(
+                          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              top: isPrevSame ? 2 : 12, // Tighter grouping for consecutive messages
+                              bottom: isNextSame ? 2 : 8,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                              decoration: BoxDecoration(
+                                // the outgoing message gets a subtle gradient
+                                gradient: isMe ? const LinearGradient(
+                                  colors: [Color(0xFFE5B5A5), kRose],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ) : null,
+                                color: isMe ? null : Colors.white,
+                                boxShadow: [
+                                  if (!isMe)
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.03),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    )
+                                ],
+                                borderRadius: BorderRadius.only(
+                                  topLeft: Radius.circular((isMe || !isPrevSame) ? 20 : 6),
+                                  topRight: Radius.circular((!isMe || !isPrevSame) ? 20 : 6),
+                                  bottomLeft: Radius.circular((isMe || !isNextSame) ? 20 : 6),
+                                  bottomRight: Radius.circular((!isMe || !isNextSame) ? 20 : 6),
+                                ),
+                              ),
+                              child: Text(
+                                msg['message'],
+                                style: GoogleFonts.outfit(
+                                  color: isMe ? Colors.white : Colors.black87,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ).animate().fade(duration: 300.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
                           ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              msg['message'],
-                              style: GoogleFonts.outfit(
-                                color: isMe ? Colors.white : Colors.black87,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                height: 1.3,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            // ⏰ TIMESTAMP TEXT
-                            Text(
-                              time,
-                              style: GoogleFonts.outfit(
-                                color: isMe ? Colors.white.withOpacity(0.8) : Colors.black45,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ).animate().fade(duration: 300.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
+                      ],
                     );
                   },
                 ),

@@ -26,6 +26,15 @@ class _DiscoverPageState extends State<DiscoverPage> {
   // Track swipe direction for animation
   String _lastSwipeDirection = 'like';
 
+  // Filter States
+  bool _isPremium = false;
+  RangeValues _filterAge = const RangeValues(18, 60);
+  double _filterDistance = 50; // Placeholder for UI
+  String _filterIntent = 'Default'; // 'Men', 'Women', 'Everyone', 'Default'
+  String? _filterReligion;
+  RangeValues _filterHeight = const RangeValues(100, 250);
+  String? _filterEthnicity;
+
   @override
   void initState() {
     super.initState();
@@ -92,10 +101,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
       }
 
 
-      // Get My Gender
+      // Get My Profile Info
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
-          .select('gender')
+          .select('gender, is_premium')
           .eq('id', myId)
           .maybeSingle();
 
@@ -110,6 +119,20 @@ class _DiscoverPageState extends State<DiscoverPage> {
       }
 
       final myGender = myProfileResponse['gender'] as String?;
+      
+      if (mounted) {
+        setState(() {
+          final premiumVal = myProfileResponse['is_premium'];
+          if (premiumVal is bool) {
+             _isPremium = premiumVal;
+          } else if (premiumVal is String) {
+             _isPremium = premiumVal.toLowerCase() == 'true';
+          } else {
+             _isPremium = false;
+          }
+        });
+      }
+
       String targetGender;
 
       if (myGender?.toLowerCase() == 'woman') {
@@ -123,17 +146,54 @@ class _DiscoverPageState extends State<DiscoverPage> {
       // Fetch Profiles with Exclusion Filter
       final uniqueIgnoreIds = ignoreIds.toSet().toList();
 
-      final response = await Supabase.instance.client
+      var query = Supabase.instance.client
           .from('profiles')
           .select()
-          .eq('gender', targetGender)
           .not('id', 'in', uniqueIgnoreIds)
-          .or('is_paused.eq.false,is_paused.is.null') 
-          .limit(20);
+          .or('is_paused.eq.false,is_paused.is.null');
+
+      if (_filterIntent != 'Default' && _filterIntent != 'Everyone') {
+        query = query.eq('gender', _filterIntent == 'Men' ? 'Man' : 'Woman');
+      } else if (_filterIntent == 'Default') {
+        query = query.eq('gender', targetGender);
+      } // If 'Everyone', don't filter by gender
+
+      // Age Filter (Convert Age to Birthday Dates)
+      DateTime now = DateTime.now();
+      DateTime minDate = DateTime(now.year - _filterAge.start.round(), now.month, now.day);
+      DateTime maxDate = DateTime(now.year - _filterAge.end.round() - 1, now.month, now.day + 1);
+      
+      query = query.lte('birthday', minDate.toIso8601String()).gte('birthday', maxDate.toIso8601String());
+
+      if (_filterReligion != null && _filterReligion!.isNotEmpty && _filterReligion != 'Any') {
+        query = query.eq('religion', _filterReligion!);
+      }
+      if (_filterEthnicity != null && _filterEthnicity!.isNotEmpty && _filterEthnicity != 'Any') {
+        query = query.eq('ethnicity', _filterEthnicity!);
+      }
+
+      final response = await query.limit(40);
+
+      // Post-query filtering for height
+      List<Map<String, dynamic>> filteredProfiles = List<Map<String, dynamic>>.from(response);
+
+      if (_filterHeight.start > 100 || _filterHeight.end < 250) {
+        filteredProfiles = filteredProfiles.where((p) {
+          if (p['height'] == null) return false;
+          final match = RegExp(r'\d+').firstMatch(p['height'].toString());
+          if (match != null) {
+            int h = int.parse(match.group(0)!);
+            // Height logic assumes cm. If parsed value is something small (like 5 for 5'10"), it skips strict filtering.
+            if (h < 40) return true; 
+            return h >= _filterHeight.start && h <= _filterHeight.end;
+          }
+          return true;
+        }).toList();
+      }
 
       if (mounted) {
         setState(() {
-          _profiles = List<Map<String, dynamic>>.from(response);
+          _profiles = filteredProfiles.take(20).toList();
           _isLoading = false;
         });
       }
@@ -260,9 +320,19 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
 
     if (_profiles.isEmpty) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: kTan,
-        body: Center(child: Text("No more profiles found!", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+        body: Stack(
+          children: [
+            const Center(child: Text("No more profiles found!", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _buildHeader(context),
+            ),
+          ],
+        ),
       );
     }
 
@@ -504,9 +574,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     ),
                     child: IconButton(
                       icon: const Icon(Icons.tune_rounded, color: kBlack, size: 24),
-                      onPressed: () {
-                        // Filter logic
-                      },
+                      onPressed: () => _showFiltersModal(),
                     ),
                   ),
                 ],
@@ -918,6 +986,35 @@ class _DiscoverPageState extends State<DiscoverPage> {
     );
   }
 
+  void _showFiltersModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _FilterBottomSheet(
+        initialAge: _filterAge,
+        initialDistance: _filterDistance,
+        initialIntent: _filterIntent,
+        initialReligion: _filterReligion,
+        initialHeight: _filterHeight,
+        initialEthnicity: _filterEthnicity,
+        isPremium: _isPremium,
+        onApply: (age, dist, intent, rel, ht, eth) {
+          setState(() {
+            _filterAge = age;
+            _filterDistance = dist;
+            _filterIntent = intent;
+            _filterReligion = rel;
+            _filterHeight = ht;
+            _filterEthnicity = eth;
+            _isLoading = true;
+          });
+          _fetchProfiles();
+        },
+      ),
+    );
+  }
+
   int _calculateAge(String? birthdayString) {
     if (birthdayString == null) return 24; 
     try {
@@ -931,6 +1028,292 @@ class _DiscoverPageState extends State<DiscoverPage> {
     } catch (e) {
       return 24;
     }
+  }
+}
+
+class _FilterBottomSheet extends StatefulWidget {
+  final RangeValues initialAge;
+  final double initialDistance;
+  final String initialIntent;
+  final String? initialReligion;
+  final RangeValues initialHeight;
+  final String? initialEthnicity;
+  final bool isPremium;
+  final Function(RangeValues, double, String, String?, RangeValues, String?) onApply;
+
+  const _FilterBottomSheet({
+    required this.initialAge,
+    required this.initialDistance,
+    required this.initialIntent,
+    required this.initialReligion,
+    required this.initialHeight,
+    required this.initialEthnicity,
+    required this.isPremium,
+    required this.onApply,
+  });
+
+  @override
+  State<_FilterBottomSheet> createState() => _FilterBottomSheetState();
+}
+
+class _FilterBottomSheetState extends State<_FilterBottomSheet> {
+  late RangeValues _age;
+  late double _dist;
+  late String _intent;
+  String? _rel;
+  late RangeValues _ht;
+  String? _eth;
+
+  final List<String> _intents = ['Men', 'Women', 'Everyone', 'Default'];
+  final List<String> _religions = ['Any', 'Christian', 'Muslim', 'Hindu', 'Buddhist', 'Jewish', 'Spiritual', 'Atheist', 'Other'];
+  final List<String> _ethnicities = ['Any', 'Asian', 'Black', 'Hispanic/Latino', 'Middle Eastern', 'White', 'Mixed', 'Other'];
+
+  @override
+  void initState() {
+    super.initState();
+    _age = widget.initialAge;
+    _dist = widget.initialDistance;
+    _intent = widget.initialIntent;
+    _rel = widget.initialReligion;
+    _ht = widget.initialHeight;
+    _eth = widget.initialEthnicity;
+  }
+
+  void _showPremiumLockDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.star_rounded, color: Colors.amber, size: 28),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Premium Required', 
+                style: TextStyle(fontWeight: FontWeight.bold),
+                softWrap: true,
+              )
+            ),
+          ],
+        ),
+        content: const Text('Unlock advanced filters like Religion, Height, and Ethnicity by upgrading to Clush Premium.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Maybe Later', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kRose,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              // Navigate to Premium page logic here
+            },
+            child: const Text('Upgrade\nNow', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, height: 1.1)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      child: Column(
+        children: [
+          // Handle
+          Container(
+            width: 40,
+            height: 5,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)),
+          ),
+          const Text("Filters", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: kBlack)),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              physics: const BouncingScrollPhysics(),
+              children: [
+                _buildSectionHeader("FREE FILTERS"),
+                const SizedBox(height: 16),
+                
+                // Intent Filter
+                const Text("Interested In", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: _intents.map((i) => ChoiceChip(
+                    label: Text(i),
+                    selected: _intent == i,
+                    selectedColor: kRose.withOpacity(0.2),
+                    labelStyle: TextStyle(color: _intent == i ? kRose : Colors.black87, fontWeight: FontWeight.bold),
+                    onSelected: (val) {
+                      if (val) setState(() => _intent = i);
+                    },
+                  )).toList(),
+                ),
+                const SizedBox(height: 24),
+
+                // Age Filter
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("Age Range", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                    Text("${_age.start.round()} - ${_age.end.round()}", style: const TextStyle(fontWeight: FontWeight.bold, color: kRose)),
+                  ],
+                ),
+                RangeSlider(
+                  values: _age,
+                  min: 18,
+                  max: 100,
+                  activeColor: kRose,
+                  inactiveColor: kRose.withOpacity(0.2),
+                  onChanged: (val) => setState(() => _age = val),
+                ),
+                const SizedBox(height: 16),
+
+                // Distance Filter
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("Maximum Distance", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                    Text("${_dist.round()} km", style: const TextStyle(fontWeight: FontWeight.bold, color: kRose)),
+                  ],
+                ),
+                Slider(
+                  value: _dist,
+                  min: 5,
+                  max: 100,
+                  activeColor: kRose,
+                  inactiveColor: kRose.withOpacity(0.2),
+                  onChanged: (val) => setState(() => _dist = val),
+                ),
+                const SizedBox(height: 32),
+
+                // PREMIUM FILTERS
+                Row(
+                  children: [
+                    _buildSectionHeader("PREMIUM FILTERS "),
+                    if (!widget.isPremium) const Icon(Icons.lock, size: 14, color: Colors.amber),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Religion Filter
+                _buildPremiumDropdown("Religion", _religions, _rel, (v) => setState(() => _rel = v)),
+                const SizedBox(height: 24),
+
+                // Ethnicity Filter
+                _buildPremiumDropdown("Ethnicity", _ethnicities, _eth, (v) => setState(() => _eth = v)),
+                const SizedBox(height: 24),
+
+                // Height Filter
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("Height Range (cm)", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Colors.black54)),
+                    Text("${_ht.start.round()} - ${_ht.end.round()}", style: TextStyle(fontWeight: FontWeight.bold, color: widget.isPremium ? kRose : Colors.grey)),
+                  ],
+                ),
+                AbsorbPointer(
+                  absorbing: !widget.isPremium,
+                  child: GestureDetector(
+                    onTap: widget.isPremium ? null : _showPremiumLockDialog,
+                    child: RangeSlider(
+                      values: _ht,
+                      min: 100,
+                      max: 250,
+                      activeColor: widget.isPremium ? kRose : Colors.grey.shade300,
+                      inactiveColor: widget.isPremium ? kRose.withOpacity(0.2) : Colors.grey.shade100,
+                      onChanged: (val) => setState(() => _ht = val),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 40),
+              ],
+            ),
+          ),
+          
+          // Apply Button
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kRose,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  elevation: 0,
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onApply(_age, _dist, _intent, _rel, _ht, _eth);
+                },
+                child: const Text("Apply Filters", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Text(
+      title,
+      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2),
+    );
+  }
+
+  Widget _buildPremiumDropdown(String label, List<String> options, String? value, Function(String?) onChanged) {
+    return GestureDetector(
+      onTap: widget.isPremium ? null : _showPremiumLockDialog,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Colors.black54)),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: widget.isPremium ? Colors.white : Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                isExpanded: true,
+                value: value ?? 'Any',
+                icon: Icon(widget.isPremium ? Icons.keyboard_arrow_down : Icons.lock, color: widget.isPremium ? Colors.grey : Colors.amber),
+                items: options.map((String val) {
+                  return DropdownMenuItem<String>(
+                    value: val,
+                    child: Text(val, style: TextStyle(color: widget.isPremium ? Colors.black87 : Colors.grey)),
+                  );
+                }).toList(),
+                onChanged: widget.isPremium ? onChanged : (_) => _showPremiumLockDialog(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
