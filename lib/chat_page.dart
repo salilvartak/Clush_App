@@ -3,6 +3,12 @@ import 'package:google_fonts/google_fonts.dart'; // Typography
 import 'package:flutter_animate/flutter_animate.dart'; // Animations
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'services/matching_service.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'services/crypto_service.dart';
 
 // Global color references
 const Color kRose = Color(0xFFCD9D8F);
@@ -36,6 +42,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final MatchingService _matchingService = MatchingService();
   List<Map<String, dynamic>> messages = [];
   String? privateRoom; // The secure "UUID_UUID" room ID
+  late CryptoService _crypto;
+  bool _isUploadingMedia = false;
 
   // 🔴 IMPORTANT: Check if this URL is still active in Terminal 2!
   final String serverUrl = 'https://nina-unpumped-linus.ngrok-free.dev';
@@ -64,6 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
     socket.onConnect((_) {
       print('✅ Connected to Server');
       privateRoom = getRoomId(widget.myId, widget.matchId);
+      _crypto = CryptoService(privateRoom!);
       print("🔐 Joining Secure Room: $privateRoom");
 
       socket.emit('join_room', {
@@ -76,11 +85,21 @@ class _ChatScreenState extends State<ChatScreen> {
     socket.on('load_history', (data) {
       if (mounted) {
         setState(() {
-          messages = List<Map<String, dynamic>>.from(data.map((msg) => {
-            'sender': msg['sender'],
-            'message': msg['message'],
-            'timestamp': msg['timestamp'] ?? '', // <--- NEW: Get Time
-            'isMe': msg['sender'] == widget.myName,
+          messages = List<Map<String, dynamic>>.from(data.map((msg) {
+            String decryptedString = _crypto.decryptPayload(msg['message']);
+            Map<String, dynamic> parsed;
+            try {
+              parsed = jsonDecode(decryptedString);
+            } catch (e) {
+              parsed = {"type": "text", "data": decryptedString};
+            }
+            return {
+              'sender': msg['sender'],
+              'type': parsed['type'] ?? 'text',
+              'data': parsed['data'] ?? '[Encrypted Message]',
+              'timestamp': msg['timestamp'] ?? '',
+              'isMe': msg['sender'] == widget.myName,
+            };
           }));
         });
         _scrollToBottom();
@@ -91,10 +110,18 @@ class _ChatScreenState extends State<ChatScreen> {
     socket.on('receive_message', (data) {
       if (mounted) {
         setState(() {
+          String decryptedString = _crypto.decryptPayload(data['message']);
+          Map<String, dynamic> parsed;
+          try {
+             parsed = jsonDecode(decryptedString);
+          } catch (e) {
+             parsed = {"type": "text", "data": decryptedString};
+          }
           messages.add({
             'sender': data['sender'],
-            'message': data['message'],
-            'timestamp': data['timestamp'] ?? 'Now', // <--- NEW: Get Time
+            'type': parsed['type'] ?? 'text',
+            'data': parsed['data'] ?? '[Encrypted]',
+            'timestamp': data['timestamp'] ?? 'Now',
             'isMe': data['sender'] == widget.myName,
           });
         });
@@ -110,14 +137,70 @@ class _ChatScreenState extends State<ChatScreen> {
     String text = _controller.text.trim();
     if (text.isEmpty || privateRoom == null) return;
 
+    String jsonPayload = jsonEncode({
+      "type": "text",
+      "data": text
+    });
+    String gibberish = _crypto.encryptPayload(jsonPayload);
+
     socket.emit('send_message', {
       'room': privateRoom,
       'sender': widget.myName, 
-      'message': text,
+      'message': gibberish,
       'timestamp': DateTime.now().toIso8601String(),
     });
 
     _controller.clear();
+  }
+
+  // --- SENDING E2EE IMAGES ---
+  Future<void> sendEncryptedImage() async {
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image == null) return;
+
+    setState(() => _isUploadingMedia = true);
+
+    try {
+      Uint8List rawBytes = await image.readAsBytes();
+      Uint8List encryptedBytes = _crypto.encryptBytes(rawBytes);
+
+      String fileName = 'secure_media/${DateTime.now().millisecondsSinceEpoch}.enc';
+      await Supabase.instance.client.storage
+          .from('chat_bucket') 
+          .uploadBinary(fileName, encryptedBytes);
+          
+      String publicUrl = Supabase.instance.client.storage.from('chat_bucket').getPublicUrl(fileName);
+
+      String jsonPayload = jsonEncode({
+        "type": "image",
+        "data": publicUrl
+      });
+      String gibberish = _crypto.encryptPayload(jsonPayload);
+
+      socket.emit('send_message', {
+        'room': privateRoom, 
+        'sender': widget.myName,
+        'message': gibberish, 
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      print("Encryption/Upload Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+      }
+    } finally {
+      if(mounted) setState(() => _isUploadingMedia = false);
+    }
+  }
+
+  // --- DECRYPTING & DOWNLOADING IMAGES ON THE FLY ---
+  Future<Uint8List> fetchAndDecryptMedia(String url) async {
+    final response = await http.get(Uri.parse(url));
+    if (response.statusCode == 200) {
+      return _crypto.decryptBytes(response.bodyBytes);
+    }
+    throw Exception('Failed to load media');
   }
 
   bool _shouldShowTimeHeader(int index) {
@@ -202,15 +285,32 @@ class _ChatScreenState extends State<ChatScreen> {
               radius: 20,
               child: widget.matchPhotoUrl == null ? const Icon(Icons.person, size: 24, color: Colors.white) : null,
             ),
-            const SizedBox(width: 12),
-            Text(
-              widget.matchName, 
-              style: GoogleFonts.outfit(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: kBlack,
-                letterSpacing: -0.3,
-              )
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.lock, size: 12, color: Colors.green),
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.matchName, 
+                      style: GoogleFonts.outfit(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: kBlack,
+                        letterSpacing: -0.3,
+                        height: 1.1,
+                      )
+                    ),
+                  ],
+                ),
+                Text(
+                  "E2E Encrypted",
+                  style: GoogleFonts.outfit(fontSize: 10, color: Colors.green, fontWeight: FontWeight.w600),
+                )
+              ],
             ),
           ],
         ),
@@ -325,15 +425,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   bottomRight: Radius.circular((!isMe || !isNextSame) ? 20 : 6),
                                 ),
                               ),
-                              child: Text(
-                                msg['message'],
-                                style: GoogleFonts.outfit(
-                                  color: isMe ? Colors.white : Colors.black87,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.3,
-                                ),
-                              ),
+                              child: _buildMessageContent(msg, isMe),
                             ).animate().fade(duration: 300.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
                           ),
                         ),
@@ -365,6 +457,10 @@ class _ChatScreenState extends State<ChatScreen> {
         top: false,
         child: Row(
           children: [
+            IconButton(
+              icon: const Icon(Icons.add_photo_alternate_rounded, color: Colors.grey),
+              onPressed: sendEncryptedImage, 
+            ),
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -524,5 +620,37 @@ class _ChatScreenState extends State<ChatScreen> {
         duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  Widget _buildMessageContent(Map<String, dynamic> msg, bool isMe) {
+    if (msg['type'] == 'text') {
+      return Text(
+        msg['data'],
+        style: GoogleFonts.outfit(
+          color: isMe ? Colors.white : Colors.black87,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          height: 1.3,
+        ),
+      );
+    } 
+    else if (msg['type'] == 'image') {
+      return FutureBuilder<Uint8List>(
+        future: fetchAndDecryptMedia(msg['data']),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const SizedBox(height: 150, width: 150, child: Center(child: CircularProgressIndicator(color: Colors.white)));
+          }
+          if (snapshot.hasError || !snapshot.hasData) {
+            return const SizedBox(height: 150, width: 150, child: Icon(Icons.broken_image, color: Colors.white, size: 50));
+          }
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(snapshot.data!, height: 200, width: 200, fit: BoxFit.cover),
+          );
+        },
+      );
+    }
+    return const SizedBox();
   }
 }
