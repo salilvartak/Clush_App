@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; 
-import 'package:shared_preferences/shared_preferences.dart'; // ✅ ADDED
-import 'services/notification_service.dart'; // ✅ ADDED
+import 'package:shared_preferences/shared_preferences.dart';
+import 'services/notification_service.dart';
 
 import 'main.dart'; 
 import 'setting_sub_pages.dart'; 
@@ -26,7 +26,11 @@ class _SettingsPageState extends State<SettingsPage> {
   bool emailUpdates = true;
   bool _isLoadingProfile = false; 
 
-  // ✅ ADDED: Load saved preferences when the page opens
+  // Dynamic user data
+  String? _userEmail;
+  String? _userPhone;
+  String? _userLocation;
+
   @override
   void initState() {
     super.initState();
@@ -35,12 +39,37 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final user = FirebaseAuth.instance.currentUser;
+    
+    String? fetchedLocation;
+    String? fetchedPhone = user?.phoneNumber;
+
+    if (user != null) {
+      try {
+        final data = await Supabase.instance.client
+            .from('profiles')
+            .select('location, phone')
+            .eq('id', user.uid)
+            .maybeSingle();
+            
+        fetchedLocation = data?['location'];
+        // Fallback to Supabase phone if Firebase Auth doesn't have it
+        if (fetchedPhone == null || fetchedPhone.isEmpty) {
+          fetchedPhone = data?['phone'];
+        }
+      } catch (e) {
+        print("Error fetching user data: $e");
+      }
+    }
+
     setState(() {
       notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+      _userEmail = user?.email;
+      _userPhone = fetchedPhone;
+      _userLocation = fetchedLocation;
     });
   }
 
-  // ✅ ADDED: Handle the Push Notification toggle
   Future<void> _toggleNotifications(bool value) async {
     setState(() => notificationsEnabled = value);
     await NotificationService().toggleNotifications(value);
@@ -62,7 +91,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // Fetch data before opening Edit Page
   Future<void> _handleEditProfile() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
@@ -93,7 +121,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // --- RETENTION & DELETION LOGIC ---
   void _showRetentionDialog() {
     showDialog(
       context: context,
@@ -227,8 +254,10 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  void _navTo(Widget page) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => page));
+  // Updated _navTo to reload settings upon returning
+  Future<void> _navTo(Widget page) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => page));
+    _loadSettings();
   }
 
   @override
@@ -280,13 +309,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     _buildPremiumTile(
                       icon: Icons.phone_outlined,
                       title: "Phone Number",
-                      subtitle: "Verified",
+                      subtitle: (_userPhone != null && _userPhone!.isNotEmpty) ? _userPhone : "Not provided",
                       onTap: () => _navTo(const PhoneNumberPage()),
                     ),
                     _buildDivider(),
                     _buildPremiumTile(
                       icon: Icons.email_outlined,
                       title: "Email Address",
+                      subtitle: (_userEmail != null && _userEmail!.isNotEmpty) ? _userEmail : "Not provided",
                       onTap: () => _navTo(const EmailAddressPage()),
                     ),
                     _buildDivider(),
@@ -303,7 +333,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     _buildPremiumTile(
                       icon: Icons.location_on_outlined,
                       title: "Location",
-                      subtitle: "San Francisco, CA",
+                      subtitle: (_userLocation != null && _userLocation!.isNotEmpty) ? _userLocation : "Not set",
                       onTap: () => _navTo(const CurrentLocationPage()),
                     ),
                     _buildDivider(),
@@ -345,7 +375,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   // --- NOTIFICATIONS ---
                   _buildSectionLabel("Notifications"),
                   _buildSectionContainer(children: [
-                    // ✅ UPDATED: Changed from onTap to a trailing Switch
                     _buildPremiumTile(
                       icon: Icons.notifications_none,
                       title: "Push Notifications",

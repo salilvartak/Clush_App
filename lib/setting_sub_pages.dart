@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:convert'; // REQUIRED: For jsonDecode
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -41,8 +41,74 @@ class BaseSettingsPage extends StatelessWidget {
 }
 
 // ================= ACCOUNT PAGES =================
-class PhoneNumberPage extends StatelessWidget {
+
+class PhoneNumberPage extends StatefulWidget {
   const PhoneNumberPage({super.key});
+
+  @override
+  State<PhoneNumberPage> createState() => _PhoneNumberPageState();
+}
+
+class _PhoneNumberPageState extends State<PhoneNumberPage> {
+  final TextEditingController _phoneController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPhoneNumber();
+  }
+
+  Future<void> _fetchPhoneNumber() async {
+    final user = FirebaseAuth.instance.currentUser;
+    String? phone = user?.phoneNumber;
+
+    // Fallback to supabase if Firebase Auth is empty
+    if (user != null && (phone == null || phone.isEmpty)) {
+      try {
+        final data = await Supabase.instance.client
+            .from('profiles')
+            .select('phone')
+            .eq('id', user.uid)
+            .maybeSingle();
+        phone = data?['phone'];
+      } catch (e) {
+        print("Error fetching phone from Supabase: $e");
+      }
+    }
+
+    if (mounted && phone != null) {
+      setState(() {
+        _phoneController.text = phone!;
+      });
+    }
+  }
+
+  Future<void> _savePhoneNumber() async {
+    setState(() => _isLoading = true);
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        // Save preferred contact number in Supabase
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'phone': _phoneController.text})
+            .eq('id', userId);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Phone number saved!"))
+          );
+          Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BaseSettingsPage(
@@ -50,26 +116,26 @@ class PhoneNumberPage extends StatelessWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Current Phone Number", style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text("Update your phone number", style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: const Row(
-              children: [
-                Icon(Icons.phone, color: Colors.grey),
-                SizedBox(width: 12),
-                Text("+1 (555) 123-4567", style: TextStyle(fontSize: 16)),
-              ],
+          TextField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+              labelText: "Phone Number",
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              prefixIcon: const Icon(Icons.phone_outlined),
             ),
           ),
           const SizedBox(height: 20),
-          const Text("Update your phone number. We will send a verification code to the new number.", style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 20),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCD9D8F), foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
-            onPressed: () {},
-            child: const Text("Update Number"),
+            onPressed: _isLoading ? null : _savePhoneNumber,
+            child: _isLoading 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Text("Save Number"),
           ),
         ],
       ),
@@ -77,8 +143,46 @@ class PhoneNumberPage extends StatelessWidget {
   }
 }
 
-class EmailAddressPage extends StatelessWidget {
+class EmailAddressPage extends StatefulWidget {
   const EmailAddressPage({super.key});
+
+  @override
+  State<EmailAddressPage> createState() => _EmailAddressPageState();
+}
+
+class _EmailAddressPageState extends State<EmailAddressPage> {
+  final TextEditingController _emailController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill email from Firebase Auth
+    _emailController.text = FirebaseAuth.instance.currentUser?.email ?? '';
+  }
+
+  Future<void> _saveEmail() async {
+    setState(() => _isLoading = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && _emailController.text.isNotEmpty) {
+        // Updates Firebase Authentication Email (Sends a verification link)
+        await user.verifyBeforeUpdateEmail(_emailController.text);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Verification email sent! Check your inbox to confirm the change."))
+          );
+          Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BaseSettingsPage(
@@ -86,6 +190,8 @@ class EmailAddressPage extends StatelessWidget {
       body: Column(
         children: [
            TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
             decoration: InputDecoration(
               labelText: "Email",
               filled: true,
@@ -97,8 +203,10 @@ class EmailAddressPage extends StatelessWidget {
           const SizedBox(height: 20),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCD9D8F), foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
-            onPressed: () {},
-            child: const Text("Save Email"),
+            onPressed: _isLoading ? null : _saveEmail,
+            child: _isLoading 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Text("Save Email"),
           ),
         ],
       ),
@@ -211,24 +319,107 @@ class _PauseAccountPageState extends State<PauseAccountPage> {
 }
 
 // ================= LOCATION PAGES =================
-class CurrentLocationPage extends StatelessWidget {
+
+class CurrentLocationPage extends StatefulWidget {
   const CurrentLocationPage({super.key});
+
+  @override
+  State<CurrentLocationPage> createState() => _CurrentLocationPageState();
+}
+
+class _CurrentLocationPageState extends State<CurrentLocationPage> {
+  final TextEditingController _locationController = TextEditingController();
+  bool _isLoading = true;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLocation();
+  }
+
+  Future<void> _fetchLocation() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
+
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('location')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (mounted && data != null) {
+        setState(() {
+          _locationController.text = data['location'] ?? '';
+        });
+      }
+    } catch (e) {
+      print("Error fetching location: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveLocation() async {
+    setState(() => _isSaving = true);
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'location': _locationController.text})
+            .eq('id', userId);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Location updated successfully!"))
+          );
+          Navigator.pop(context); // Return to settings page
+        }
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error saving location: $e")));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BaseSettingsPage(
       title: "Location",
-      body: Column(
-        children: [
-          Container(
-            height: 200,
-            width: double.infinity,
-            decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(20)),
-            child: const Center(child: Icon(Icons.map, size: 50, color: Colors.grey)),
-          ),
-          const SizedBox(height: 20),
-          const ListTile(tileColor: Colors.white, leading: Icon(Icons.my_location, color: Color(0xFFCD9D8F)), title: Text("My Current Location"), subtitle: Text("San Francisco, CA")),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFCD9D8F)))
+          : Column(
+              children: [
+                Container(
+                  height: 200,
+                  width: double.infinity,
+                  decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(20)),
+                  child: const Center(child: Icon(Icons.map, size: 50, color: Colors.grey)),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _locationController,
+                  decoration: InputDecoration(
+                    labelText: "My Current Location",
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    prefixIcon: const Icon(Icons.my_location, color: Color(0xFFCD9D8F)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFCD9D8F), foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 50)),
+                  onPressed: _isSaving ? null : _saveLocation,
+                  child: _isSaving 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text("Save Location"),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -277,10 +468,9 @@ class _VerificationPageState extends State<VerificationPage> {
   @override
   void initState() {
     super.initState();
-    _checkVerificationStatus(); // Check if already verified on load
+    _checkVerificationStatus(); 
   }
 
-  // 1. CHECK IF USER IS ALREADY VERIFIED
   Future<void> _checkVerificationStatus() async {
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -288,7 +478,7 @@ class _VerificationPageState extends State<VerificationPage> {
 
       final data = await Supabase.instance.client
           .from('profiles')
-          .select('photo_urls, is_verified') // Fetch verified status
+          .select('photo_urls, is_verified')
           .eq('id', userId)
           .single();
 
@@ -296,7 +486,7 @@ class _VerificationPageState extends State<VerificationPage> {
       final bool verified = data['is_verified'] ?? false;
 
       setState(() {
-        _isVerified = verified; // Lock screen if true
+        _isVerified = verified; 
         if (photos.isNotEmpty) _profileImageUrl = photos[0];
         _isFetchingProfile = false;
       });
@@ -306,7 +496,6 @@ class _VerificationPageState extends State<VerificationPage> {
     }
   }
 
-  // 2. Record Video Logic
   Future<void> _recordVideo() async {
     final XFile? video = await _picker.pickVideo(
       source: ImageSource.camera,
@@ -318,7 +507,6 @@ class _VerificationPageState extends State<VerificationPage> {
     }
   }
 
-  // 3. API Call Logic
   Future<void> _submitVerification() async {
     if (_profileImageUrl == null || _videoFile == null) return;
 
@@ -327,11 +515,9 @@ class _VerificationPageState extends State<VerificationPage> {
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown_user';
       
-      // A. Download Profile Image
       final imageResponse = await http.get(Uri.parse(_profileImageUrl!));
       if (imageResponse.statusCode != 200) throw Exception("Failed to download profile photo");
 
-      // B. Prepare Request
       var uri = Uri.parse('https://nina-unpumped-linus.ngrok-free.dev/verify'); 
       var request = http.MultipartRequest('POST', uri);
 
@@ -343,28 +529,23 @@ class _VerificationPageState extends State<VerificationPage> {
       ));
       request.files.add(await http.MultipartFile.fromPath('video', _videoFile!.path));
 
-      // C. Send & Parse
       var response = await request.send();
       final respStr = await response.stream.bytesToString();
-      final data = jsonDecode(respStr); // Parse the JSON you showed me
+      final data = jsonDecode(respStr); 
 
       print("📩 Server Response: $data");
 
-      // D. HANDLE THE LOGIC
       bool isMatch = data['match'] == true;
       double score = (data['score'] is num) ? (data['score'] as num).toDouble() : 0.0;
 
       if (isMatch) {
-        // --- CASE 1: SUCCESS ---
-        // 1. Update Supabase
         await Supabase.instance.client
             .from('profiles')
-            .update({'is_verified': true}) // Mark as Verified in DB
+            .update({'is_verified': true}) 
             .eq('id', userId);
 
-        // 2. Update Local State
         setState(() {
-          _isVerified = true; // Lock the screen
+          _isVerified = true; 
         });
 
         if (mounted) {
@@ -373,9 +554,8 @@ class _VerificationPageState extends State<VerificationPage> {
           );
         }
       } else {
-        // --- CASE 2: FAILED ---
         if (mounted) {
-          _showFailDialog(score); // Show custom fail dialog
+          _showFailDialog(score); 
         }
       }
 
@@ -411,7 +591,6 @@ class _VerificationPageState extends State<VerificationPage> {
 
   @override
   Widget build(BuildContext context) {
-    // --- IF VERIFIED: SHOW SUCCESS SCREEN & LOCK ---
     if (_isVerified) {
       return BaseSettingsPage(
         title: "Identity Verification",
@@ -420,7 +599,7 @@ class _VerificationPageState extends State<VerificationPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(height: 50),
-              const Icon(Icons.verified, size: 100, color: Colors.blue), // Blue Tick
+              const Icon(Icons.verified, size: 100, color: Colors.blue),
               const SizedBox(height: 20),
               const Text("You are Verified!", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
@@ -431,7 +610,6 @@ class _VerificationPageState extends State<VerificationPage> {
       );
     }
 
-    // --- IF NOT VERIFIED: SHOW NORMAL UI ---
     return BaseSettingsPage(
       title: "Identity Verification",
       body: Column(
@@ -441,8 +619,7 @@ class _VerificationPageState extends State<VerificationPage> {
           const Text("Get the Blue Tick", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 32),
 
-          // Step 1: Profile Photo
-           Container(
+          Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
             child: Row(
@@ -462,7 +639,6 @@ class _VerificationPageState extends State<VerificationPage> {
 
           const SizedBox(height: 16),
 
-          // Step 2: Record Video
           GestureDetector(
             onTap: _recordVideo,
             child: Container(

@@ -22,6 +22,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
   List<Map<String, dynamic>> _profiles = [];
   bool _isLoading = true;
   String? _errorMessage;
+  
+  // Track swipe direction for animation
+  String _lastSwipeDirection = 'like';
 
   @override
   void initState() {
@@ -29,11 +32,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
     _fetchProfiles();
   }
 
-  /// FETCHING LOGIC:
-  /// 1. Get IDs of people I've already swiped on (Likes/Dislikes).
-  /// 2. Get IDs of people I have already MATCHED with.
-  /// 3. Get my own gender.
-  /// 4. Fetch new profiles that match my target gender AND are not in the "swiped" or "matched" list.
   Future<void> _fetchProfiles() async {
     try {
       final myId = FirebaseAuth.instance.currentUser?.uid;
@@ -42,11 +40,11 @@ class _DiscoverPageState extends State<DiscoverPage> {
         return;
       }
 
-      // --- STEP 1: Initialize Exclusion List (Always ignore myself) ---
+      // Initialize Exclusion List (Always ignore myself)
       final List<String> ignoreIds = [];
       ignoreIds.add(myId);
 
-      // --- STEP 2: Get IDs from 'likes' table (Pending swipes) ---
+      // Get IDs from 'likes' table (Pending swipes)
       final alreadySwipedResponse = await Supabase.instance.client
           .from('likes')
           .select('target_user_id')
@@ -57,7 +55,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
           .toList();
       ignoreIds.addAll(swipedIds);
 
-      // --- STEP 3: Get IDs from 'matches' table (Confirmed matches) ---
+      // Get IDs from 'matches' table (Confirmed matches)
       try {
         final matchesResponse = await Supabase.instance.client
             .from('matches')
@@ -72,10 +70,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
         
         ignoreIds.addAll(matchedIds);
       } catch (e) {
-        print("Matches check failed (continuing with swipes only): $e");
+        print("Matches check failed: $e");
       }
 
-      // --- STEP 4: Get My Gender ---
+      // Get My Gender
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
           .select('gender')
@@ -103,7 +101,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
         targetGender = 'Woman'; 
       }
 
-      // --- STEP 5: Fetch Profiles with Exclusion Filter ---
+      // Fetch Profiles with Exclusion Filter
       final uniqueIgnoreIds = ignoreIds.toSet().toList();
 
       final response = await Supabase.instance.client
@@ -111,7 +109,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
           .select()
           .eq('gender', targetGender)
           .not('id', 'in', uniqueIgnoreIds)
-          .or('is_paused.eq.false,is_paused.is.null') // <--- NEW: Exclude paused accounts
+          .or('is_paused.eq.false,is_paused.is.null') 
           .limit(20);
 
       if (mounted) {
@@ -130,22 +128,19 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
   }
 
-  void _removeCurrentProfile() {
-    setState(() {
-      if (_profiles.isNotEmpty) {
-        _profiles.removeAt(0);
-      }
-    });
-  }
-
   // --- SWIPE LOGIC ---
   void _onSwipe(String targetUserId, String swipeType) async {
     if (_profiles.isEmpty) return;
     
     final droppedProfile = _profiles.first;
     
-    // Optimistic UI update
-    _removeCurrentProfile();
+    // Optimistic UI update with direction tracking
+    setState(() {
+      _lastSwipeDirection = swipeType;
+      if (_profiles.isNotEmpty) {
+        _profiles.removeAt(0);
+      }
+    });
 
     // Call Backend
     bool isMatch = false;
@@ -260,26 +255,50 @@ class _DiscoverPageState extends State<DiscoverPage> {
         children: [
           // 1. SCROLLABLE PROFILE CONTENT (Animated Transition)
           AnimatedSwitcher(
-            duration: const Duration(milliseconds: 400),
-            switchInCurve: Curves.easeOutBack,
-            switchOutCurve: Curves.easeInBack,
+            duration: const Duration(milliseconds: 500),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
             transitionBuilder: (Widget child, Animation<double> animation) {
-              // Custom Slide and Fade Transition
-              final offsetAnimation = Tween<Offset>(
-                begin: const Offset(0.0, 0.1), // Slide up slightly on entry
-                end: Offset.zero,
-              ).animate(animation);
+              // Determine if this widget is the incoming new profile or the outgoing old one
+              final isIncoming = child.key == ValueKey(profile['id'] ?? profile['full_name']);
               
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: offsetAnimation,
-                  child: child,
-                ),
-              );
+              if (isIncoming) {
+                // Incoming profile: Fades in and scales up slightly
+                final scaleAnimation = Tween<double>(begin: 0.95, end: 1.0).animate(animation);
+                final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(animation);
+                
+                return FadeTransition(
+                  opacity: fadeAnimation,
+                  child: ScaleTransition(scale: scaleAnimation, child: child),
+                );
+              } else {
+                // Outgoing profile: Slides out left or right and fades
+                final isLike = _lastSwipeDirection == 'like';
+                final outOffset = Tween<Offset>(
+                  // X offset positive (right) for like, negative (left) for dislike
+                  begin: isLike ? const Offset(1.5, 0.1) : const Offset(-1.5, 0.1),
+                  end: Offset.zero,
+                ).animate(animation);
+                
+                // Add a slight rotation for that classic swipe feel
+                final rotationAnimation = Tween<double>(
+                  begin: isLike ? 0.1 : -0.1, 
+                  end: 0.0
+                ).animate(animation);
+
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: outOffset, 
+                    child: RotationTransition(
+                      turns: rotationAnimation,
+                      child: child,
+                    ),
+                  ),
+                );
+              }
             },
             child: KeyedSubtree(
-              // Key ensures Flutter knows this is a NEW widget when profile changes
               key: ValueKey(profile['id'] ?? profile['full_name']),
               child: _buildProfileContent(profile),
             ),
@@ -308,23 +327,19 @@ class _DiscoverPageState extends State<DiscoverPage> {
   // ================= CONTENT BUILDER =================
 
   Widget _buildProfileContent(Map<String, dynamic> profile) {
-    // 1. Extract Data safely
     final List photoUrls = profile['photo_urls'] ?? [];
     final List prompts = profile['prompts'] ?? [];
     
-    // Interests
     final List interests = profile['interests'] ?? [];
     final List foods = profile['foods'] ?? [];
     final List places = profile['places'] ?? [];
     final allInterests = [...interests, ...foods, ...places];
 
-    // Basic Info
     final String name = profile['full_name'] ?? 'User';
     final String? birthdayString = profile['birthday'];
     final int age = _calculateAge(birthdayString);
     final String intent = profile['intent'] ?? '';
 
-    // Essentials Data
     final Map<String, String?> allEssentials = {
       'Height': profile['height'],
       'Education': profile['education'],
@@ -346,11 +361,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
       'Exercise': profile['exercise'],
     };
 
-    // 2. Prepare Lists
     List<String> remainingPhotos = [];
-    if (photoUrls.length > 1) {
-      remainingPhotos.addAll(List<String>.from(photoUrls.sublist(1)));
-    }
+    if (photoUrls.length > 1) remainingPhotos.addAll(List<String>.from(photoUrls.sublist(1)));
 
     List<Map<String, dynamic>> remainingPrompts = [];
     if (prompts.length > 1) {
@@ -359,34 +371,19 @@ class _DiscoverPageState extends State<DiscoverPage> {
       }
     }
 
-    // 3. Build Content List
     List<Widget> content = [];
-    
     content.add(const SizedBox(height: 100)); // Header Spacer
 
-    // -- 1. FIRST IMAGE CARD --
     if (photoUrls.isNotEmpty) {
       content.add(_buildMainPhotoCard(url: photoUrls[0], name: name, age: age));
     } else {
        content.add(_buildMainPhotoCard(url: 'https://via.placeholder.com/600x800', name: name, age: age));
     }
 
-    // -- 2. FIRST PROMPT --
-    if (prompts.isNotEmpty && prompts[0] != null) {
-      content.add(_buildPremiumPromptCard(prompts[0]));
-    }
+    if (prompts.isNotEmpty && prompts[0] != null) content.add(_buildPremiumPromptCard(prompts[0]));
+    if (allEssentials.values.any((v) => v != null && v.isNotEmpty)) content.add(_buildUnifiedEssentialsCard(allEssentials));
+    if (intent.isNotEmpty) content.add(_buildIntentCard(intent));
 
-    // -- 3. ESSENTIALS --
-    if (allEssentials.values.any((v) => v != null && v.isNotEmpty)) {
-      content.add(_buildUnifiedEssentialsCard(allEssentials));
-    }
-
-    // -- 4. INTENT --
-    if (intent.isNotEmpty) {
-      content.add(_buildIntentCard(intent));
-    }
-
-    // -- 5. PASSIONS --
     if (allInterests.isNotEmpty) {
       content.add(
         Padding(
@@ -407,20 +404,14 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
-    // -- 6. THE MIX --
     if (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
     if (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
     if (remainingPrompts.isNotEmpty) content.add(_buildPremiumPromptCard(remainingPrompts.removeAt(0)));
     
-    while (remainingPhotos.isNotEmpty) {
-      content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
-    }
-    while (remainingPrompts.isNotEmpty) {
-      content.add(_buildPremiumPromptCard(remainingPrompts.removeAt(0)));
-    }
+    while (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
+    while (remainingPrompts.isNotEmpty) content.add(_buildPremiumPromptCard(remainingPrompts.removeAt(0)));
 
-    // Bottom Padding
-    content.add(const SizedBox(height: 140));
+    content.add(const SizedBox(height: 140)); // Bottom Padding
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -483,26 +474,25 @@ class _DiscoverPageState extends State<DiscoverPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 40),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween, // Push to edges or use spaceEvenly
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, 
         children: [
-          // SPACER to center them better if using spaceBetween
           const Spacer(flex: 1),
 
-          // DISLIKE BUTTON
+          // THEMED DISLIKE BUTTON (Muted Dark Gray)
           _BouncingButton(
             icon: Icons.close_rounded,
-            color: const Color(0xFFFF4B6A), // Premium Red/Pink
-            size: 70, // Larger size
+            color: kBlack.withOpacity(0.8),
+            size: 65, 
             onTap: () => _onSwipe(currentProfileId, 'dislike'),
           ),
 
-          const Spacer(flex: 2), // Gap between buttons
+          const Spacer(flex: 2),
 
-          // LIKE BUTTON
+          // THEMED LIKE BUTTON (Brand Rose)
           _BouncingButton(
             icon: Icons.favorite_rounded,
-            color: const Color(0xFF00C896), // Premium Teal/Green
-            size: 70, // Larger size
+            color: kRose, 
+            size: 65, 
             onTap: () => _onSwipe(currentProfileId, 'like'),
           ),
 
@@ -633,7 +623,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   Widget _buildMainPhotoCard({required String url, required String name, required int age}) {
-    // FIX: Make height dynamic so it fits on screen without blocking
     final double cardHeight = MediaQuery.of(context).size.height * 0.65;
 
     return Container(
@@ -658,7 +647,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
               ),
             ),
             Positioned(
-              bottom: 60, // FIX: Move text up to avoid button overlap
+              bottom: 60, 
               left: 24,
               child: Text(
                 "$name, $age",
@@ -774,7 +763,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 }
 
-// --- NEW WIDGET FOR BOUNCY BUTTON ---
+// --- NEW WIDGET FOR THEMED BOUNCY BUTTON ---
 class _BouncingButton extends StatefulWidget {
   final IconData icon;
   final Color color;
@@ -841,18 +830,19 @@ class _BouncingButtonState extends State<_BouncingButton> with SingleTickerProvi
           decoration: BoxDecoration(
             color: Colors.white,
             shape: BoxShape.circle,
+            border: Border.all(color: widget.color.withOpacity(0.2), width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: widget.color.withOpacity(0.2),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+                color: widget.color.withOpacity(0.12),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
           child: Icon(
             widget.icon,
             color: widget.color,
-            size: widget.size * 0.5,
+            size: widget.size * 0.45,
           ),
         ),
       ),
