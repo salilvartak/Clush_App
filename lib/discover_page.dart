@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui'; // For blur effects
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'services/matching_service.dart'; 
+import 'services/matching_service.dart';
 
-const Color kRose = Color(0xFFCD9D8F);
-const Color kTan = Color(0xFFE9E6E1);
-const Color kBlack = Color(0xFF2C2C2C);
+// ─── REFINED PALETTE ──────────────────────────────────────────────────────────
+const Color kRose       = Color(0xFFB87E72);      // Deep muted rose
+const Color kRoseLight  = Color(0xFFD4A99F);      // Soft petal
+const Color kRosePale   = Color(0xFFF5EAE7);      // Blush wash
+const Color kCream      = Color(0xFFFAF7F4);      // Warm parchment bg
+const Color kParchment  = Color(0xFFF0EBE5);      // Card surface
+const Color kBone       = Color(0xFFE5DED7);      // Card border / divider
+const Color kInk        = Color(0xFF1C1714);      // Near-black text
+const Color kInkMuted   = Color(0xFF6B5E57);      // Secondary text
+const Color kGold       = Color(0xFFC9A96E);      // Accent gold
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -18,19 +26,19 @@ class DiscoverPage extends StatefulWidget {
 class _DiscoverPageState extends State<DiscoverPage> {
   // Service for handling likes/matches
   final MatchingService _matchingService = MatchingService();
-  
+
   List<Map<String, dynamic>> _profiles = [];
   bool _isLoading = true;
   String? _errorMessage;
-  
+
   // Track swipe direction for animation
   String _lastSwipeDirection = 'like';
 
   // Filter States
   bool _isPremium = false;
   RangeValues _filterAge = const RangeValues(18, 60);
-  double _filterDistance = 50; // Placeholder for UI
-  String _filterIntent = 'Default'; // 'Men', 'Women', 'Everyone', 'Default'
+  double _filterDistance = 50;
+  String _filterIntent = 'Default';
   String? _filterReligion;
   RangeValues _filterHeight = const RangeValues(100, 250);
   String? _filterEthnicity;
@@ -49,11 +57,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
         return;
       }
 
-      // Initialize Exclusion List (Always ignore myself)
       final List<String> ignoreIds = [];
       ignoreIds.add(myId);
 
-      // Get IDs from 'likes' table (Pending swipes)
       final alreadySwipedResponse = await Supabase.instance.client
           .from('likes')
           .select('target_user_id')
@@ -64,11 +70,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
           .toList();
       ignoreIds.addAll(swipedIds);
 
-      // Get IDs from 'matches' table (Confirmed matches)
       try {
         final matchesResponse = await Supabase.instance.client
             .from('matches')
-            .select('user_a, user_b') 
+            .select('user_a, user_b')
             .or('user_a.eq.$myId,user_b.eq.$myId');
 
         final List<String> matchedIds = (matchesResponse as List).map((e) {
@@ -76,13 +81,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
           final u2 = e['user_b'].toString();
           return u1 == myId ? u2 : u1;
         }).toList();
-        
+
         ignoreIds.addAll(matchedIds);
       } catch (e) {
         print("Matches check failed: $e");
       }
 
-      // Get IDs from 'blocks' table (Blocked users)
       try {
         final blocksResponse = await Supabase.instance.client
             .from('blocks')
@@ -94,14 +98,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
           final b2 = e['blocked_id'].toString();
           return b1 == myId ? b2 : b1;
         }).toList();
-        
+
         ignoreIds.addAll(blockedIds);
       } catch (e) {
         print("Blocks check failed: $e");
       }
 
-
-      // Get My Profile Info
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
           .select('gender, is_premium')
@@ -119,31 +121,29 @@ class _DiscoverPageState extends State<DiscoverPage> {
       }
 
       final myGender = myProfileResponse['gender'] as String?;
-      
+
       if (mounted) {
         setState(() {
           final premiumVal = myProfileResponse['is_premium'];
           if (premiumVal is bool) {
-             _isPremium = premiumVal;
+            _isPremium = premiumVal;
           } else if (premiumVal is String) {
-             _isPremium = premiumVal.toLowerCase() == 'true';
+            _isPremium = premiumVal.toLowerCase() == 'true';
           } else {
-             _isPremium = false;
+            _isPremium = false;
           }
         });
       }
 
       String targetGender;
-
       if (myGender?.toLowerCase() == 'woman') {
         targetGender = 'Man';
       } else if (myGender?.toLowerCase() == 'man') {
         targetGender = 'Woman';
       } else {
-        targetGender = 'Woman'; 
+        targetGender = 'Woman';
       }
 
-      // Fetch Profiles with Exclusion Filter
       final uniqueIgnoreIds = ignoreIds.toSet().toList();
 
       var query = Supabase.instance.client
@@ -156,13 +156,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
         query = query.eq('gender', _filterIntent == 'Men' ? 'Man' : 'Woman');
       } else if (_filterIntent == 'Default') {
         query = query.eq('gender', targetGender);
-      } // If 'Everyone', don't filter by gender
+      }
 
-      // Age Filter (Convert Age to Birthday Dates)
       DateTime now = DateTime.now();
       DateTime minDate = DateTime(now.year - _filterAge.start.round(), now.month, now.day);
       DateTime maxDate = DateTime(now.year - _filterAge.end.round() - 1, now.month, now.day + 1);
-      
+
       query = query.lte('birthday', minDate.toIso8601String()).gte('birthday', maxDate.toIso8601String());
 
       if (_filterReligion != null && _filterReligion!.isNotEmpty && _filterReligion != 'Any') {
@@ -174,7 +173,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
       final response = await query.limit(40);
 
-      // Post-query filtering for height
       List<Map<String, dynamic>> filteredProfiles = List<Map<String, dynamic>>.from(response);
 
       if (_filterHeight.start > 100 || _filterHeight.end < 250) {
@@ -183,8 +181,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
           final match = RegExp(r'\d+').firstMatch(p['height'].toString());
           if (match != null) {
             int h = int.parse(match.group(0)!);
-            // Height logic assumes cm. If parsed value is something small (like 5 for 5'10"), it skips strict filtering.
-            if (h < 40) return true; 
+            if (h < 40) return true;
             return h >= _filterHeight.start && h <= _filterHeight.end;
           }
           return true;
@@ -210,10 +207,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
   // --- SWIPE LOGIC ---
   void _onSwipe(String targetUserId, String swipeType) async {
     if (_profiles.isEmpty) return;
-    
+
     final droppedProfile = _profiles.first;
-    
-    // Optimistic UI update with direction tracking
+
     setState(() {
       _lastSwipeDirection = swipeType;
       if (_profiles.isNotEmpty) {
@@ -221,19 +217,17 @@ class _DiscoverPageState extends State<DiscoverPage> {
       }
     });
 
-    // Call Backend
     bool isMatch = false;
     try {
       if (swipeType == 'like') {
         isMatch = await _matchingService.swipeRight(targetUserId);
       } else if (swipeType == 'dislike') {
         await _matchingService.swipeLeft(targetUserId);
-      } 
+      }
     } catch (e) {
       print("Error recording swipe: $e");
     }
 
-    // Show Match Dialog
     if (isMatch && mounted) {
       _showMatchDialog(droppedProfile);
     }
@@ -243,6 +237,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
+      barrierColor: kInk.withOpacity(0.6),
       builder: (context) {
         final photoUrl = (profile['photo_urls'] != null && (profile['photo_urls'] as List).isNotEmpty)
             ? profile['photo_urls'][0]
@@ -250,50 +245,116 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(20),
+          insetPadding: const EdgeInsets.all(24),
           child: Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, 10))],
+              color: kCream,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: kBone, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: kInk.withOpacity(0.18),
+                  blurRadius: 40,
+                  offset: const Offset(0, 16),
+                )
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("IT'S A MATCH!", 
-                  style: TextStyle(color: kRose, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 1.0)
+                // Decorative top line
+                Container(
+                  width: 40,
+                  height: 2,
+                  color: kGold,
+                  margin: const EdgeInsets.only(bottom: 20),
                 ),
-                const SizedBox(height: 24),
-                CircleAvatar(
-                  radius: 60,
-                  backgroundImage: NetworkImage(photoUrl),
-                  backgroundColor: Colors.grey[200],
+                Text(
+                  "A PERFECT MATCH",
+                  style: GoogleFonts.domine(
+                    color: kRose,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 3.5,
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+                Text(
+                  "It's Mutual",
+                  style: GoogleFonts.domine(
+                    color: kInk,
+                    fontSize: 36,
+                    fontWeight: FontWeight.w300,
+                    letterSpacing: -0.5,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kBone, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: kRose.withOpacity(0.2),
+                        blurRadius: 20,
+                        spreadRadius: 4,
+                      )
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: Image.network(photoUrl, fit: BoxFit.cover),
+                  ),
+                ),
+                const SizedBox(height: 20),
                 Text(
                   "You and ${profile['full_name']} like each other.",
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16, color: Colors.black54),
+                  style: GoogleFonts.domine(
+                    fontSize: 18,
+                    color: kInkMuted,
+                    fontStyle: FontStyle.italic,
+                    height: 1.4,
+                  ),
                 ),
                 const SizedBox(height: 32),
                 SizedBox(
                   width: double.infinity,
-                  height: 50,
+                  height: 52,
                   child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context), 
+                    onPressed: () => Navigator.pop(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: kRose,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                       elevation: 0,
                     ),
-                    child: const Text("SEND A MESSAGE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      "Send a Message",
+                      style: GoogleFonts.dmSans(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text("KEEP SWIPING", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    "Keep Discovering",
+                    style: GoogleFonts.dmSans(
+                      color: kInkMuted,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -306,29 +367,92 @@ class _DiscoverPageState extends State<DiscoverPage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: kTan,
-        body: Center(child: CircularProgressIndicator(color: kRose)),
+      return Scaffold(
+        backgroundColor: kCream,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  color: kRose,
+                  strokeWidth: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                "Finding your people…",
+                style: GoogleFonts.domine(
+                  color: kInkMuted,
+                  fontSize: 16,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
     if (_errorMessage != null) {
       return Scaffold(
-        backgroundColor: kTan,
-        body: Center(child: Text(_errorMessage!, textAlign: TextAlign.center)),
+        backgroundColor: kCream,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              _errorMessage!,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 15),
+            ),
+          ),
+        ),
       );
     }
 
     if (_profiles.isEmpty) {
       return Scaffold(
-        backgroundColor: kTan,
+        backgroundColor: kCream,
         body: Stack(
           children: [
-            const Center(child: Text("No more profiles found!", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: kRosePale,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.favorite_border_rounded, color: kRose, size: 32),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "You've seen everyone",
+                    style: GoogleFonts.domine(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w300,
+                      color: kInk,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Check back soon for new profiles",
+                    style: GoogleFonts.dmSans(
+                      fontSize: 14,
+                      color: kInkMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
+              top: 0, left: 0, right: 0,
               child: _buildHeader(context),
             ),
           ],
@@ -339,7 +463,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     final profile = _profiles.first;
 
     return Scaffold(
-      backgroundColor: kTan,
+      backgroundColor: kCream,
       body: Stack(
         children: [
           // 1. SCROLLABLE PROFILE CONTENT (Animated Transition)
@@ -348,37 +472,29 @@ class _DiscoverPageState extends State<DiscoverPage> {
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
             transitionBuilder: (Widget child, Animation<double> animation) {
-              // Determine if this widget is the incoming new profile or the outgoing old one
               final isIncoming = child.key == ValueKey(profile['id'] ?? profile['full_name']);
-              
+
               if (isIncoming) {
-                // Incoming profile: Fades in and scales up slightly
                 final scaleAnimation = Tween<double>(begin: 0.95, end: 1.0).animate(animation);
                 final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(animation);
-                
                 return FadeTransition(
                   opacity: fadeAnimation,
                   child: ScaleTransition(scale: scaleAnimation, child: child),
                 );
               } else {
-                // Outgoing profile: Slides out left or right and fades
                 final isLike = _lastSwipeDirection == 'like';
                 final outOffset = Tween<Offset>(
-                  // X offset positive (right) for like, negative (left) for dislike
                   begin: isLike ? const Offset(1.5, 0.1) : const Offset(-1.5, 0.1),
                   end: Offset.zero,
                 ).animate(animation);
-                
-                // Add a slight rotation for that classic swipe feel
                 final rotationAnimation = Tween<double>(
-                  begin: isLike ? 0.1 : -0.1, 
-                  end: 0.0
+                  begin: isLike ? 0.1 : -0.1,
+                  end: 0.0,
                 ).animate(animation);
-
                 return FadeTransition(
                   opacity: animation,
                   child: SlideTransition(
-                    position: outOffset, 
+                    position: outOffset,
                     child: RotationTransition(
                       turns: rotationAnimation,
                       child: child,
@@ -395,17 +511,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
           // 2. HEADER
           Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
+            top: 0, left: 0, right: 0,
             child: _buildHeader(context),
           ),
 
           // 3. FLOATING ACTION BUTTONS
           Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
+            bottom: 40, left: 0, right: 0,
             child: _buildFloatingButtons(),
           ),
         ],
@@ -418,18 +530,21 @@ class _DiscoverPageState extends State<DiscoverPage> {
   Widget _buildProfileContent(Map<String, dynamic> profile) {
     final List photoUrls = profile['photo_urls'] ?? [];
     final List prompts = profile['prompts'] ?? [];
-    
+
     final List interests = profile['interests'] ?? [];
     final List foods = profile['foods'] ?? [];
     final List places = profile['places'] ?? [];
     final allInterests = [...interests, ...foods, ...places];
 
-    final String name = profile['full_name'] ?? 'User';
+    final String name = profile['fullName'] ?? profile['full_name'] ?? 'User';
     final String? birthdayString = profile['birthday'];
     final int age = _calculateAge(birthdayString);
     final String intent = profile['intent'] ?? '';
+    final bool isVerified = profile['is_verified'] ?? true;
 
     final Map<String, String?> allEssentials = {
+      'Age': age > 0 ? age.toString() : null,
+      'Looking For': intent.isNotEmpty ? intent : null,
       'Height': profile['height'],
       'Education': profile['education'],
       'Job': profile['job_title'],
@@ -441,7 +556,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
       'Drink': profile['drink'],
       'Smoke': profile['smoke'],
       'Weed': profile['weed'],
-      'Location': profile['location'],
+      'Location': (() { final loc = profile['location'] as String?; if (loc == null) return null; final idx = loc.indexOf('('); return idx != -1 ? loc.substring(0, idx).trim().split(',').take(2).join(',').trim() : loc; })(),
       'Gender': profile['gender'],
       'Orientation': profile['sexual_orientation'],
       'Pronouns': profile['pronouns'],
@@ -451,41 +566,139 @@ class _DiscoverPageState extends State<DiscoverPage> {
     };
 
     List<String> remainingPhotos = [];
-    if (photoUrls.length > 1) remainingPhotos.addAll(List<String>.from(photoUrls.sublist(1)));
+    if (photoUrls.length > 1) {
+      remainingPhotos.addAll(List<String>.from(photoUrls.sublist(1)));
+    }
 
     List<Map<String, dynamic>> remainingPrompts = [];
-    if (prompts.length > 1) {
-      for (var p in prompts.sublist(1)) {
+    if (prompts.isNotEmpty) {
+      for (var p in prompts) {
         if (p != null) remainingPrompts.add(p as Map<String, dynamic>);
       }
     }
 
-    List<Widget> content = [];
-    content.add(const SizedBox(height: 100)); // Header Spacer
+    List<Widget> contentList = [];
 
+    // Header spacer
+    contentList.add(const SizedBox(height: 106));
+
+    // ── Name, Age, Verification ──────────────────────────────────────────────
+    contentList.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+            // Removed active badge from here, moving below the name
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          name,
+                          style: GoogleFonts.domine(
+                            fontSize: 38,
+                            fontWeight: FontWeight.w300,
+                            color: kInk,
+                            letterSpacing: -1.0,
+                            height: 1.0,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isVerified) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 28, // Increased background size
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: kRosePale,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.verified_rounded, color: kRose, size: 22), // Increased icon size
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Moved Active indicator pill here
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: kRose,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    "Active Today",
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      color: kRose,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Thin decorative rule under the name
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Container(width: 32, height: 1, color: kGold),
+                const SizedBox(width: 8),
+                Container(width: 8, height: 1, color: kBone),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // 1st Image
     if (photoUrls.isNotEmpty) {
-      content.add(_buildMainPhotoCard(url: photoUrls[0], name: name, age: age));
+      contentList.add(_buildPhotoCard(photoUrls[0], isFirst: true));
     } else {
-       content.add(_buildMainPhotoCard(url: 'https://via.placeholder.com/600x800', name: name, age: age));
+      contentList.add(_buildPhotoCard('https://via.placeholder.com/600x800', isFirst: true));
     }
 
-    if (prompts.isNotEmpty && prompts[0] != null) content.add(_buildPremiumPromptCard(prompts[0]));
-    if (allEssentials.values.any((v) => v != null && v.isNotEmpty)) content.add(_buildUnifiedEssentialsCard(allEssentials));
-    if (intent.isNotEmpty) content.add(_buildIntentCard(intent));
+    // Essentials card
+    if (allEssentials.values.any((v) => v != null && v.isNotEmpty)) {
+      contentList.add(_buildUnifiedEssentialsCard(allEssentials));
+    }
 
+    // Interests/Hobbies
     if (allInterests.isNotEmpty) {
-      content.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      contentList.add(
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), // Increased vertical padding
+          padding: const EdgeInsets.all(24),
+          decoration: _cardDecoration(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSectionTitle("My Passions"),
-              const SizedBox(height: 12),
+              _buildCardLabel("Hobbies & Interests"),
+              const SizedBox(height: 16),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: allInterests.map((e) => _buildPremiumChip(e.toString())).toList(),
+                spacing: 10,
+                runSpacing: 10,
+                children: allInterests.map((e) => _buildChip(e.toString())).toList(),
               ),
             ],
           ),
@@ -493,94 +706,196 @@ class _DiscoverPageState extends State<DiscoverPage> {
       );
     }
 
-    if (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
-    if (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
-    if (remainingPrompts.isNotEmpty) content.add(_buildPremiumPromptCard(remainingPrompts.removeAt(0)));
-    
-    while (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
-    while (remainingPrompts.isNotEmpty) content.add(_buildPremiumPromptCard(remainingPrompts.removeAt(0)));
+    // 1st Prompt
+    if (remainingPrompts.isNotEmpty) {
+      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
+    }
 
-    content.add(const SizedBox(height: 140)); // Bottom Padding
+    // 2nd Image
+    if (remainingPhotos.isNotEmpty) {
+      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
+    }
+
+    // 3rd Image
+    if (remainingPhotos.isNotEmpty) {
+      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
+    }
+
+    // 2nd Prompt
+    if (remainingPrompts.isNotEmpty) {
+      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
+    }
+
+    // 4th Image
+    if (remainingPhotos.isNotEmpty) {
+      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
+    }
+
+    // 3rd Prompt
+    if (remainingPrompts.isNotEmpty) {
+      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
+    }
+
+    while (remainingPhotos.isNotEmpty) {
+      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
+    }
+
+    while (remainingPrompts.isNotEmpty) {
+      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
+    }
+
+    // Block / Report footer
+    contentList.add(
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(child: Divider(color: kBone, thickness: 1)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: kGold.withOpacity(0.6),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                Expanded(child: Divider(color: kBone, thickness: 1)),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildTextAction(
+                  Icons.flag_outlined,
+                  "Report",
+                  () => _showReportDialog(profile),
+                ),
+                Container(width: 1, height: 20, color: kBone),
+                _buildTextAction(
+                  Icons.block_outlined,
+                  "Block",
+                  () => _showBlockConfirmation(profile),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    contentList.add(const SizedBox(height: 140));
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: content,
+        children: contentList,
       ),
     );
   }
 
-  // ================= HEADER & FOOTER =================
+  Widget _buildTextAction(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: kInkMuted.withOpacity(0.6), size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: GoogleFonts.dmSans(
+              color: kInkMuted.withOpacity(0.6),
+              fontWeight: FontWeight.w500,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ================= HEADER =================
 
   Widget _buildHeader(BuildContext context) {
     return ClipRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
           height: 100,
-          color: kTan.withOpacity(0.85),
-          padding: const EdgeInsets.fromLTRB(24, 48, 24, 12),
-          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: kCream.withOpacity(0.88),
+            border: Border(
+              bottom: BorderSide(color: kBone, width: 0.5),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 48, 16, 12),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "Discover",
-                style: TextStyle(
-                  fontSize: 28, 
-                  fontWeight: FontWeight.w800, 
-                  color: kBlack,
-                  letterSpacing: -0.5
+              GestureDetector(
+                onTap: () => _showFiltersModal(),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: kParchment,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: kBone, width: 1),
+                  ),
+                  child: const Icon(Icons.tune_rounded, color: kInk, size: 18),
                 ),
               ),
-              Row(
-                children: [
-                  if (_profiles.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.5),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.black.withOpacity(0.05)),
-                      ),
-                      child: PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_horiz, color: kBlack, size: 24),
-                        onSelected: (value) {
-                          if (value == 'block') {
-                            _showBlockConfirmation(_profiles.first);
-                          } else if (value == 'report') {
-                            _showReportDialog(_profiles.first);
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(
-                            value: 'report',
-                            child: Text('Report User'),
-                          ),
-                          const PopupMenuItem(
-                            value: 'block',
-                            child: Text('Block User', style: TextStyle(color: Colors.red)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.5),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.black.withOpacity(0.05)),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.tune_rounded, color: kBlack, size: 24),
-                      onPressed: () => _showFiltersModal(),
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  children: [
+                    _buildFilterChip('Age', () => _showFiltersModal()),
+                    _buildFilterChip('Intentions', () => _showFiltersModal()),
+                    _buildFilterChip('Height', () => _showFiltersModal()),
+                  ],
+                ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: kParchment,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: kBone, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: kInk,
+              ),
+            ),
+            const SizedBox(width: 3),
+            const Icon(Icons.keyboard_arrow_down_rounded, color: kRose, size: 16),
+          ],
         ),
       ),
     );
@@ -591,30 +906,52 @@ class _DiscoverPageState extends State<DiscoverPage> {
   void _showBlockConfirmation(Map<String, dynamic> profile) {
     showDialog(
       context: context,
+      barrierColor: kInk.withOpacity(0.5),
       builder: (ctx) => AlertDialog(
-        title: const Text('Block User?'),
-        content: Text('Are you sure you want to block ${profile['full_name']}? They will be removed from your Discover feed.'),
+        backgroundColor: kCream,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: kBone),
+        ),
+        title: Text(
+          'Block ${profile['full_name']}?',
+          style: GoogleFonts.domine(
+            fontSize: 22,
+            fontWeight: FontWeight.w500,
+            color: kInk,
+          ),
+        ),
+        content: Text(
+          'They will be removed from your Discover feed and won\'t be able to see you.',
+          style: GoogleFonts.dmSans(
+            fontSize: 14,
+            color: kInkMuted,
+            height: 1.5,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.dmSans(color: kInkMuted, fontWeight: FontWeight.w500),
+            ),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          TextButton(
             onPressed: () async {
-              Navigator.pop(ctx); 
+              Navigator.pop(ctx);
               final success = await _matchingService.blockUser(profile['id']);
               if (success && mounted) {
                 _showThemedToast('${profile['full_name']} blocked', isError: false);
-                // Remove from feed
-                setState(() {
-                  _profiles.removeAt(0);
-                });
+                setState(() { _profiles.removeAt(0); });
               } else if (mounted) {
                 _showThemedToast('Failed to block. Try again.', isError: true);
               }
             },
-            child: const Text('Block', style: TextStyle(color: Colors.white)),
+            child: Text(
+              'Block',
+              style: GoogleFonts.dmSans(color: Colors.red.shade400, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -632,41 +969,82 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Report ${profile['full_name']}",
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                ...reasons.map((reason) => ListTile(
-                      title: Text(reason),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: () async {
-                        Navigator.pop(ctx); 
-                        final success = await _matchingService.reportUser(
-                            profile['id'], reason);
-                        if (success && mounted) {
-                          _showThemedToast('Report submitted. This user has also been blocked.', isError: false);
-                          // Remove from feed since they are now blocked
-                          setState(() {
-                            _profiles.removeAt(0);
-                          });
-                        } else if (mounted) {
-                          _showThemedToast('Failed to report.', isError: true);
-                        }
-                      },
-                    )),
-              ],
+        return Container(
+          decoration: BoxDecoration(
+            color: kCream,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(top: BorderSide(color: kBone, width: 0.5)),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: kBone,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    "Report",
+                    style: GoogleFonts.domine(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w500,
+                      color: kInk,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    profile['full_name'] ?? '',
+                    style: GoogleFonts.domine(
+                      fontSize: 18,
+                      fontStyle: FontStyle.italic,
+                      color: kInkMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ...reasons.asMap().entries.map((entry) {
+                    final isLast = entry.key == reasons.length - 1;
+                    return Column(
+                      children: [
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            entry.value,
+                            style: GoogleFonts.dmSans(
+                              color: kInk,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: kInkMuted),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            final success = await _matchingService.reportUser(profile['id'], entry.value);
+                            if (success && mounted) {
+                              _showThemedToast('Report submitted. User has been blocked.', isError: false);
+                              setState(() { _profiles.removeAt(0); });
+                            } else if (mounted) {
+                              _showThemedToast('Failed to report.', isError: true);
+                            }
+                          },
+                        ),
+                        if (!isLast) Divider(height: 1, color: kBone),
+                      ],
+                    );
+                  }),
+                ],
+              ),
             ),
           ),
         );
@@ -674,7 +1052,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
     );
   }
 
-  // --- REUSABLE THEMED TOAST ---
   void _showThemedToast(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -683,23 +1060,28 @@ class _DiscoverPageState extends State<DiscoverPage> {
             Icon(
               isError ? Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
+              size: 18,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 message,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                style: GoogleFonts.dmSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                ),
               ),
             ),
           ],
         ),
-        backgroundColor: isError ? Colors.redAccent : kRose,
+        backgroundColor: isError ? Colors.red.shade400 : kRose,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(14),
         ),
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        elevation: 10,
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        elevation: 6,
         duration: const Duration(seconds: 3),
       ),
     );
@@ -707,35 +1089,51 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
   Widget _buildFloatingButtons() {
     if (_profiles.isEmpty) return const SizedBox();
-    
+
     final currentProfileId = _profiles.first['id'].toString();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 40),
+      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Spacer(flex: 1),
-
-          // THEMED DISLIKE BUTTON (Muted Dark Gray)
-          _BouncingButton(
-            icon: Icons.close_rounded,
-            color: kBlack.withOpacity(0.8),
-            size: 65, 
-            onTap: () => _onSwipe(currentProfileId, 'dislike'),
+          // DISLIKE
+          Material(
+            color: Colors.white,
+            shape: const CircleBorder(),
+            elevation: 8,
+            shadowColor: Colors.black26,
+            child: InkWell(
+              onTap: () => _onSwipe(currentProfileId, 'dislike'),
+              customBorder: const CircleBorder(),
+              child: Container(
+                width: 72,
+                height: 72,
+                alignment: Alignment.center,
+                child: const Icon(Icons.close_rounded, color: kInkMuted, size: 36),
+              ),
+            ),
           ),
 
-          const Spacer(flex: 2),
+          const SizedBox(width: 80),
 
-          // THEMED LIKE BUTTON (Brand Rose)
-          _BouncingButton(
-            icon: Icons.favorite_rounded,
-            color: kRose, 
-            size: 65, 
-            onTap: () => _onSwipe(currentProfileId, 'like'),
+          // LIKE
+          Material(
+            color: kRose,
+            shape: const CircleBorder(),
+            elevation: 8,
+            shadowColor: kRose.withOpacity(0.4),
+            child: InkWell(
+              onTap: () => _onSwipe(currentProfileId, 'like'),
+              customBorder: const CircleBorder(),
+              child: Container(
+                width: 72,
+                height: 72,
+                alignment: Alignment.center,
+                child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 36),
+              ),
+            ),
           ),
-
-          const Spacer(flex: 1),
         ],
       ),
     );
@@ -743,15 +1141,36 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
   // ================= REUSED WIDGETS =================
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title.toUpperCase(),
-      style: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w800,
-        color: kRose,
-        letterSpacing: 1.5,
-      ),
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: kParchment,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: kBone, width: 1),
+      boxShadow: [
+        BoxShadow(
+          color: kInk.withOpacity(0.06),
+          blurRadius: 20,
+          spreadRadius: 0,
+          offset: const Offset(0, 6),
+        )
+      ],
+    );
+  }
+
+  Widget _buildCardLabel(String label) {
+    return Row(
+      children: [
+        Container(width: 3, height: 16, color: kGold, margin: const EdgeInsets.only(right: 10)),
+        Text(
+          label.toUpperCase(),
+          style: GoogleFonts.dmSans(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: kInkMuted,
+            letterSpacing: 1.8,
+          ),
+        ),
+      ],
     );
   }
 
@@ -768,221 +1187,212 @@ class _DiscoverPageState extends State<DiscoverPage> {
     });
 
     final Map<String, IconData> icons = {
-      'Height': Icons.height, 'Education': Icons.school, 'Job': Icons.work,
-      'Religion': Icons.church, 'Politics': Icons.gavel, 'Star Sign': Icons.auto_awesome,
-      'Kids': Icons.child_care, 'Pets': Icons.pets, 'Drink': Icons.local_bar,
-      'Smoke': Icons.smoking_rooms, 'Weed': Icons.grass, 'Location': Icons.location_on,
-      'Gender': Icons.person, 'Orientation': Icons.favorite, 'Pronouns': Icons.record_voice_over,
-      'Ethnicity': Icons.public, 'Languages': Icons.translate, 'Exercise': Icons.fitness_center,
+      'Age': Icons.cake_outlined,
+      'Looking For': Icons.search_rounded,
+      'Height': Icons.straighten_outlined,
+      'Education': Icons.school_outlined,
+      'Job': Icons.work_outline,
+      'Religion': Icons.auto_stories_outlined,
+      'Politics': Icons.gavel_outlined,
+      'Star Sign': Icons.auto_awesome_outlined,
+      'Kids': Icons.child_care_outlined,
+      'Pets': Icons.pets_outlined,
+      'Drink': Icons.local_bar_outlined,
+      'Smoke': Icons.smoking_rooms_outlined,
+      'Weed': Icons.grass_outlined,
+      'Location': Icons.location_on_outlined,
+      'Gender': Icons.person_outline_rounded,
+      'Orientation': Icons.favorite_border_rounded,
+      'Pronouns': Icons.record_voice_over_outlined,
+      'Ethnicity': Icons.public_outlined,
+      'Languages': Icons.translate_outlined,
+      'Exercise': Icons.fitness_center_outlined,
     };
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: _premiumShadowDecoration(),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 24),
           if (horizontalData.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+              child: _buildCardLabel("At a Glance"),
+            ),
             SizedBox(
-              height: 60,
-              child: ListView.builder(
+              height: 52,
+              child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
                 physics: const BouncingScrollPhysics(),
                 itemCount: horizontalData.length,
+                separatorBuilder: (context, index) => VerticalDivider(
+                  width: 24,
+                  thickness: 1,
+                  color: kBone,
+                  indent: 4,
+                  endIndent: 4,
+                ),
                 itemBuilder: (context, index) {
                   String key = horizontalData.keys.elementAt(index);
                   String value = horizontalData[key]!;
-                  return Container(
-                    margin: const EdgeInsets.only(right: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(icons[key] ?? Icons.circle, color: kRose, size: 18),
-                        const SizedBox(width: 8),
-                        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
-                      ],
-                    ),
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icons[key] ?? Icons.circle_outlined, color: kRose, size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        value,
+                        style: GoogleFonts.dmSans(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                          color: kInk,
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
             ),
-            const SizedBox(height: 16),
           ],
           if (horizontalData.isNotEmpty && verticalData.isNotEmpty)
-            Divider(height: 1, thickness: 1, color: Colors.grey.shade100),
+            Divider(height: 1, thickness: 1, color: kBone),
           if (verticalData.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Column(
-                children: verticalData.entries.map((entry) {
-                  return Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: kRose.withOpacity(0.1), shape: BoxShape.circle),
-                              child: Icon(icons[entry.key] ?? Icons.circle, size: 18, color: kRose),
+            Column(
+              children: verticalData.entries.map((entry) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      child: Row(
+                        children: [
+                          Icon(icons[entry.key] ?? Icons.circle_outlined, size: 18, color: kRose),
+                          const SizedBox(width: 14),
+                          Text(
+                            entry.key,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: kInkMuted,
+                              letterSpacing: 0.5,
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(entry.key.toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 2),
-                                  Text(entry.value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87)),
-                                ],
-                              ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            entry.value,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: kInk,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      if (entry.key != verticalData.keys.last) Divider(height: 1, thickness: 1, color: Colors.grey.shade100),
-                    ],
-                  );
-                }).toList(),
-              ),
+                    ),
+                    if (entry.key != verticalData.keys.last)
+                      Divider(height: 1, thickness: 1, color: kBone),
+                  ],
+                );
+              }).toList(),
             ),
-          const SizedBox(height: 8),
         ],
       ),
     );
   }
 
-  Widget _buildMainPhotoCard({required String url, required String name, required int age}) {
-    final double cardHeight = MediaQuery.of(context).size.height * 0.65;
-
+  Widget _buildPhotoCard(String url, {bool isFirst = false}) {
     return Container(
-      height: cardHeight,
+      height: 520,
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      decoration: _premiumShadowDecoration(),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kBone, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: kInk.withOpacity(0.1),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(30),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.network(url, fit: BoxFit.cover, errorBuilder: (c,e,s) => Container(color: Colors.grey[300])),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.1), Colors.black.withOpacity(0.8)],
-                  stops: const [0.5, 0.7, 1.0],
-                ),
-              ),
+        borderRadius: BorderRadius.circular(21),
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (c, e, s) => Container(
+            color: kParchment,
+            child: const Center(
+              child: Icon(Icons.person_outline_rounded, color: kBone, size: 64),
             ),
-            Positioned(
-              bottom: 60, 
-              left: 24,
-              child: Text(
-                "$name, $age",
-                style: const TextStyle(
-                  color: Colors.white, 
-                  fontSize: 36, 
-                  fontWeight: FontWeight.w800,
-                  shadows: [Shadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 2))]
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSecondaryPhotoCard(String url) {
+  Widget _buildPromptCard(Map<String, dynamic> prompt) {
     return Container(
-      height: 500,
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: _premiumShadowDecoration(),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(30),
-        child: Image.network(url, fit: BoxFit.cover, errorBuilder: (c,e,s) => Container(color: Colors.grey[300])),
-      ),
-    );
-  }
-
-  Widget _buildIntentCard(String intent) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       padding: const EdgeInsets.all(24),
-      decoration: _premiumShadowDecoration(),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: kRose.withOpacity(0.1), shape: BoxShape.circle),
-            child: const Icon(Icons.search_rounded, color: kRose, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded( 
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("LOOKING FOR", style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
-                const SizedBox(height: 4),
-                Text(intent, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87), softWrap: true),
-              ],
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPremiumPromptCard(Map<String, dynamic> prompt) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
-      decoration: _premiumShadowDecoration(),
+      decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text((prompt['question'] as String).toUpperCase(), style: const TextStyle(color: kRose, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
-          const SizedBox(height: 16),
-          Text(prompt['answer'], style: const TextStyle(fontSize: 24, height: 1.3, fontWeight: FontWeight.w600, color: Colors.black87)),
+          // Opening quote mark
+          Text(
+            "\u201C",
+            style: GoogleFonts.domine(
+              fontSize: 48,
+              color: kRose.withOpacity(0.3),
+              height: 0.8,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            prompt['question'] as String,
+            style: GoogleFonts.dmSans(
+              color: kInkMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            prompt['answer'],
+            style: GoogleFonts.domine(
+              fontSize: 26,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+              color: kInk,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildPremiumChip(String label) {
+  Widget _buildChip(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.black.withOpacity(0.06)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+        color: kCream,
+        border: Border.all(color: kBone, width: 1),
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black.withOpacity(0.8))),
-    );
-  }
-
-  BoxDecoration _premiumShadowDecoration() {
-    return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(30),
-      boxShadow: [
-        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, spreadRadius: 0, offset: const Offset(0, 10)),
-      ],
+      child: Text(
+        label,
+        style: GoogleFonts.dmSans(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: kInk,
+        ),
+      ),
     );
   }
 
@@ -1016,7 +1426,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   int _calculateAge(String? birthdayString) {
-    if (birthdayString == null) return 24; 
+    if (birthdayString == null) return 24;
     try {
       final birthday = DateTime.parse(birthdayString);
       final now = DateTime.now();
@@ -1030,6 +1440,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
   }
 }
+
+// ─── FILTER BOTTOM SHEET ──────────────────────────────────────────────────────
 
 class _FilterBottomSheet extends StatefulWidget {
   final RangeValues initialAge;
@@ -1082,38 +1494,67 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   void _showPremiumLockDialog() {
     showDialog(
       context: context,
+      barrierColor: kInk.withOpacity(0.5),
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        backgroundColor: kCream,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: kBone),
+        ),
+        title: Row(
           children: [
-            Icon(Icons.star_rounded, color: Colors.amber, size: 28),
-            SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: kGold.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.star_rounded, color: kGold, size: 22),
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Premium Required', 
-                style: TextStyle(fontWeight: FontWeight.bold),
-                softWrap: true,
-              )
+                'Premium Feature',
+                style: GoogleFonts.domine(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 22,
+                  color: kInk,
+                ),
+              ),
             ),
           ],
         ),
-        content: const Text('Unlock advanced filters like Religion, Height, and Ethnicity by upgrading to Clush Premium.'),
+        content: Text(
+          'Unlock advanced filters like Religion, Height, and Ethnicity with Clush Premium.',
+          style: GoogleFonts.dmSans(
+            fontSize: 14,
+            color: kInkMuted,
+            height: 1.5,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Maybe Later', style: TextStyle(color: Colors.grey)),
+            child: Text(
+              'Maybe later',
+              style: GoogleFonts.dmSans(color: kInkMuted),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: kRose,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              // Navigate to Premium page logic here
-            },
-            child: const Text('Upgrade\nNow', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, height: 1.1)),
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Upgrade',
+              style: GoogleFonts.dmSans(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
@@ -1123,149 +1564,228 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      height: MediaQuery.of(context).size.height * 0.87,
+      decoration: BoxDecoration(
+        color: kCream,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(top: BorderSide(color: kBone, width: 0.5)),
       ),
       child: Column(
         children: [
           // Handle
-          Container(
-            width: 40,
-            height: 5,
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)),
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: kBone,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
           ),
-          const Text("Filters", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: kBlack)),
-          const SizedBox(height: 16),
+
+          // Title row
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+            child: Row(
+              children: [
+                Text(
+                  "Discover",
+                  style: GoogleFonts.domine(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w300,
+                    color: kInk,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  "Filters",
+                  style: GoogleFonts.domine(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w600,
+                    color: kRose,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Divider(height: 1, color: kBone),
+
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
               physics: const BouncingScrollPhysics(),
               children: [
-                _buildSectionHeader("FREE FILTERS"),
+                _buildSectionLabel("DISCOVER"),
                 const SizedBox(height: 16),
-                
-                // Intent Filter
-                const Text("Interested In", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+
+                // Intent
+                Text(
+                  "Interested In",
+                  style: GoogleFonts.dmSans(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: kInk,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: _intents.map((i) => ChoiceChip(
-                    label: Text(i),
-                    selected: _intent == i,
-                    selectedColor: kRose.withOpacity(0.2),
-                    labelStyle: TextStyle(color: _intent == i ? kRose : Colors.black87, fontWeight: FontWeight.bold),
-                    onSelected: (val) {
-                      if (val) setState(() => _intent = i);
-                    },
-                  )).toList(),
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: _intents.map((i) {
+                    final selected = _intent == i;
+                    return GestureDetector(
+                      onTap: () => setState(() => _intent = i),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: selected ? kRose : kParchment,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: selected ? kRose : kBone,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          i,
+                          style: GoogleFonts.dmSans(
+                            color: selected ? Colors.white : kInk,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
 
-                // Age Filter
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("Age Range", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-                    Text("${_age.start.round()} - ${_age.end.round()}", style: const TextStyle(fontWeight: FontWeight.bold, color: kRose)),
-                  ],
-                ),
-                RangeSlider(
-                  values: _age,
-                  min: 18,
-                  max: 100,
-                  activeColor: kRose,
-                  inactiveColor: kRose.withOpacity(0.2),
-                  onChanged: (val) => setState(() => _age = val),
+                // Age slider
+                _buildSliderLabel("Age Range", "${_age.start.round()} – ${_age.end.round()}"),
+                SliderTheme(
+                  data: _sliderTheme(context),
+                  child: RangeSlider(
+                    values: _age,
+                    min: 18,
+                    max: 100,
+                    onChanged: (val) => setState(() => _age = val),
+                  ),
                 ),
                 const SizedBox(height: 16),
 
-                // Distance Filter
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("Maximum Distance", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-                    Text("${_dist.round()} km", style: const TextStyle(fontWeight: FontWeight.bold, color: kRose)),
-                  ],
-                ),
-                Slider(
-                  value: _dist,
-                  min: 5,
-                  max: 100,
-                  activeColor: kRose,
-                  inactiveColor: kRose.withOpacity(0.2),
-                  onChanged: (val) => setState(() => _dist = val),
+                // Distance slider
+                _buildSliderLabel("Max Distance", "${_dist.round()} km"),
+                SliderTheme(
+                  data: _sliderTheme(context),
+                  child: Slider(
+                    value: _dist,
+                    min: 5,
+                    max: 100,
+                    onChanged: (val) => setState(() => _dist = val),
+                  ),
                 ),
                 const SizedBox(height: 32),
 
-                // PREMIUM FILTERS
+                // Premium
                 Row(
                   children: [
-                    _buildSectionHeader("PREMIUM FILTERS "),
-                    if (!widget.isPremium) const Icon(Icons.lock, size: 14, color: Colors.amber),
+                    _buildSectionLabel("PREMIUM"),
+                    const SizedBox(width: 8),
+                    if (!widget.isPremium)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: kGold.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: kGold.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star_rounded, size: 11, color: kGold),
+                            const SizedBox(width: 3),
+                            Text(
+                              "Unlock",
+                              style: GoogleFonts.dmSans(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: kGold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 16),
 
-                // Religion Filter
                 _buildPremiumDropdown("Religion", _religions, _rel, (v) => setState(() => _rel = v)),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
-                // Ethnicity Filter
                 _buildPremiumDropdown("Ethnicity", _ethnicities, _eth, (v) => setState(() => _eth = v)),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
-                // Height Filter
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("Height Range (cm)", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Colors.black54)),
-                    Text("${_ht.start.round()} - ${_ht.end.round()}", style: TextStyle(fontWeight: FontWeight.bold, color: widget.isPremium ? kRose : Colors.grey)),
-                  ],
+                _buildSliderLabel(
+                  "Height Range (cm)",
+                  "${_ht.start.round()} – ${_ht.end.round()}",
+                  locked: !widget.isPremium,
                 ),
                 AbsorbPointer(
                   absorbing: !widget.isPremium,
                   child: GestureDetector(
                     onTap: widget.isPremium ? null : _showPremiumLockDialog,
-                    child: RangeSlider(
-                      values: _ht,
-                      min: 100,
-                      max: 250,
-                      activeColor: widget.isPremium ? kRose : Colors.grey.shade300,
-                      inactiveColor: widget.isPremium ? kRose.withOpacity(0.2) : Colors.grey.shade100,
-                      onChanged: (val) => setState(() => _ht = val),
+                    child: SliderTheme(
+                      data: _sliderTheme(context, locked: !widget.isPremium),
+                      child: RangeSlider(
+                        values: _ht,
+                        min: 100,
+                        max: 250,
+                        onChanged: (val) => setState(() => _ht = val),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 48),
               ],
             ),
           ),
-          
-          // Apply Button
+
+          // Apply button
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
             decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+              color: kCream,
+              border: Border(top: BorderSide(color: kBone, width: 0.5)),
             ),
             child: SizedBox(
               width: double.infinity,
-              height: 55,
+              height: 54,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: kRose,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   elevation: 0,
                 ),
                 onPressed: () {
                   Navigator.pop(context);
                   widget.onApply(_age, _dist, _intent, _rel, _ht, _eth);
                 },
-                child: const Text("Apply Filters", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                child: Text(
+                  "Apply Filters",
+                  style: GoogleFonts.dmSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 0.3,
+                  ),
+                ),
               ),
             ),
           ),
@@ -1274,10 +1794,53 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  SliderThemeData _sliderTheme(BuildContext context, {bool locked = false}) {
+    return SliderTheme.of(context).copyWith(
+      activeTrackColor: locked ? kBone : kRose,
+      inactiveTrackColor: locked ? kBone.withOpacity(0.5) : kRosePale,
+      thumbColor: locked ? kBone : kRose,
+      overlayColor: kRose.withOpacity(0.12),
+      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+      trackHeight: 3,
+    );
+  }
+
+  Widget _buildSectionLabel(String label) {
     return Text(
-      title,
-      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2),
+      label,
+      style: GoogleFonts.dmSans(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: kInkMuted.withOpacity(0.6),
+        letterSpacing: 2.0,
+      ),
+    );
+  }
+
+  Widget _buildSliderLabel(String label, String value, {bool locked = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.dmSans(
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+              color: locked ? kInkMuted.withOpacity(0.4) : kInk,
+            ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.dmSans(
+              fontWeight: FontWeight.w700,
+              color: locked ? kInkMuted.withOpacity(0.4) : kRose,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1287,24 +1850,49 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Colors.black54)),
+          Row(
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.dmSans(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  color: widget.isPremium ? kInk : kInkMuted.withOpacity(0.4),
+                ),
+              ),
+              if (!widget.isPremium) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.lock_rounded, size: 13, color: kGold),
+              ],
+            ],
+          ),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-              color: widget.isPremium ? Colors.white : Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.grey.shade300),
+              color: widget.isPremium ? kParchment : kParchment.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: kBone, width: 1),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 isExpanded: true,
                 value: value ?? 'Any',
-                icon: Icon(widget.isPremium ? Icons.keyboard_arrow_down : Icons.lock, color: widget.isPremium ? Colors.grey : Colors.amber),
+                icon: Icon(
+                  widget.isPremium ? Icons.keyboard_arrow_down_rounded : Icons.lock_rounded,
+                  color: widget.isPremium ? kInkMuted : kGold,
+                  size: 18,
+                ),
+                dropdownColor: kCream,
+                style: GoogleFonts.dmSans(
+                  color: widget.isPremium ? kInk : kInkMuted.withOpacity(0.4),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
                 items: options.map((String val) {
                   return DropdownMenuItem<String>(
                     value: val,
-                    child: Text(val, style: TextStyle(color: widget.isPremium ? Colors.black87 : Colors.grey)),
+                    child: Text(val),
                   );
                 }).toList(),
                 onChanged: widget.isPremium ? onChanged : (_) => _showPremiumLockDialog(),
@@ -1317,16 +1905,20 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   }
 }
 
-// --- NEW WIDGET FOR THEMED BOUNCY BUTTON ---
+// ─── BOUNCING BUTTON ──────────────────────────────────────────────────────────
+
 class _BouncingButton extends StatefulWidget {
   final IconData icon;
   final Color color;
+  final Color iconColor;
   final double size;
   final VoidCallback onTap;
 
   const _BouncingButton({
+    super.key,
     required this.icon,
     required this.color,
+    required this.iconColor,
     required this.size,
     required this.onTap,
   });
@@ -1344,25 +1936,19 @@ class _BouncingButtonState extends State<_BouncingButton> with SingleTickerProvi
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 150),
+      duration: const Duration(milliseconds: 140),
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.8).animate(
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.82).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
   }
 
-  void _onTapDown(TapDownDetails details) {
-    _controller.forward();
-  }
-
+  void _onTapDown(TapDownDetails details) => _controller.forward();
   void _onTapUp(TapUpDetails details) {
     _controller.reverse();
     widget.onTap();
   }
-
-  void _onTapCancel() {
-    _controller.reverse();
-  }
+  void _onTapCancel() => _controller.reverse();
 
   @override
   void dispose() {
@@ -1382,21 +1968,27 @@ class _BouncingButtonState extends State<_BouncingButton> with SingleTickerProvi
           width: widget.size,
           height: widget.size,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: kCream,
             shape: BoxShape.circle,
-            border: Border.all(color: widget.color.withOpacity(0.2), width: 1.5),
+            border: Border.all(color: widget.color.withOpacity(0.25), width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: widget.color.withOpacity(0.12),
-                blurRadius: 15,
+                color: widget.color.withOpacity(0.15),
+                blurRadius: 20,
                 offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.8),
+                blurRadius: 0,
+                spreadRadius: 2,
+                offset: const Offset(-2, -2),
               ),
             ],
           ),
           child: Icon(
             widget.icon,
-            color: widget.color,
-            size: widget.size * 0.45,
+            color: widget.iconColor,
+            size: widget.size * 0.42,
           ),
         ),
       ),

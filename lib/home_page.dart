@@ -82,17 +82,29 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       body: activeBody,
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFFE9E6E1),
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (idx) => setState(() => _selectedIndex = idx),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.style_outlined), label: 'Discover'),
-          NavigationDestination(icon: Icon(Icons.favorite_border), label: 'Likes'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
-          NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
-        ],
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFE5DED7), width: 1)),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: (idx) => setState(() => _selectedIndex = idx),
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.white,
+          elevation: 0,
+          showSelectedLabels: false,
+          showUnselectedLabels: false,
+          selectedItemColor: const Color(0xFFB87E72),
+          unselectedItemColor: const Color(0xFFAFA09A),
+          iconSize: 26,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.style_outlined),      activeIcon: Icon(Icons.style_rounded),         label: ''),
+            BottomNavigationBarItem(icon: Icon(Icons.favorite_border),     activeIcon: Icon(Icons.favorite),              label: ''),
+            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), activeIcon: Icon(Icons.chat_bubble_rounded),   label: ''),
+            BottomNavigationBarItem(icon: Icon(Icons.person_outline),      activeIcon: Icon(Icons.person_rounded),        label: ''),
+          ],
+        ),
       ),
     );
   }

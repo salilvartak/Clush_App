@@ -10,10 +10,22 @@ import 'main.dart';
 import 'profile_store.dart';
 import 'success_screen.dart'; 
 
-// --- Theme Constants ---
-const Color kTan = Color(0xFFE9E6E1);
-const Color kRose = Color(0xFFCD9D8F);
-const Color kBlack = Color(0xFF2D2D2D);
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:google_fonts/google_fonts.dart';
+
+// --- Premium Theme Constants ---
+const Color kTan = Color(0xFFF4F0EA); // kParchment
+const Color kCream = Color(0xFFFAF8F5);
+const Color kBone = Color(0xFFE6DFD5);
+const Color kRose = Color(0xFFC48B71);
+const Color kRosePale = Color(0xFFF3E8E3);
+const Color kGold = Color(0xFFD4AF37);
+const Color kBlack = Color(0xFF2C2A28); // kInk
+const Color kInkMuted = Color(0xFF756F68);
+
 const double kPadding = 24.0;
 
 class BasicsPage extends StatefulWidget {
@@ -67,6 +79,12 @@ class _BasicsPageState extends State<BasicsPage> {
   String? drinkStatus;
   String? smokeStatus;
   String? weedStatus;
+
+  // --- Map State ---
+  final MapController _mapController = MapController();
+  LatLng _currentMapCenter = const LatLng(40.7128, -74.0060); // Default to NY
+  bool _isMapLoading = false;
+  final TextEditingController _mapSearchController = TextEditingController();
 
   // --- State Variables (New Sections) ---
   String? selectedIntent;
@@ -259,15 +277,15 @@ class _BasicsPageState extends State<BasicsPage> {
       case 6: return selectedEthnicity != null;
       case 7: return selectedHeight != null;
       case 8: return selectedReligion != null;
-      case 9: return selectedEducationLevel != null;
-      case 10: return jobController.text.trim().isNotEmpty;
+      case 9: return true; // Optional: selectedEducationLevel != null;
+      case 10: return true; // Optional: jobController.text.trim().isNotEmpty;
       case 11: return selectedLanguages.isNotEmpty;
-      case 12: return selectedPolitics != null;
-      case 13: return selectedKids != null;
+      case 12: return true; // Optional: selectedPolitics != null;
+      case 13: return true; // Optional: selectedKids != null;
       case 14: return selectedStarSign != null;
-      case 15: return selectedPets != null;
-      case 16: return selectedExercise != null;
-      case 17: return drinkStatus != null && smokeStatus != null && weedStatus != null;
+      case 15: return true; // Optional: selectedPets != null;
+      case 16: return true; // Optional: selectedExercise != null;
+      case 17: return true; // Optional: drinkStatus != null && smokeStatus != null && weedStatus != null;
       case 18: return selectedIntent != null;
       case 19: return selectedInterests.isNotEmpty; 
       case 20: return selectedFoods.isNotEmpty; 
@@ -409,23 +427,117 @@ class _BasicsPageState extends State<BasicsPage> {
       }
 
       // Show loading indicator logic could be added here
-      Position position = await Geolocator.getCurrentPosition();
-      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
-      
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
-        // Format: "City, Country" or "City, State"
-        String city = place.locality ?? place.subAdministrativeArea ?? "";
-        String country = place.country ?? "";
-        
-        setState(() {
-          location = "$city, $country";
-        });
-      }
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+      _currentMapCenter = LatLng(position.latitude, position.longitude);
+      _mapController.move(_currentMapCenter, 13.0);
     } catch (e) {
       debugPrint("Location Error: $e");
       _showError("Could not fetch location.");
     }
+  }
+
+  Future<void> _confirmMapLocation() async {
+    setState(() => _isMapLoading = true);
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(_currentMapCenter.latitude, _currentMapCenter.longitude);
+      
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        // Format: "Locality, City, State(Lat,Lng)"
+        String area = place.subLocality ?? place.thoroughfare ?? "";
+        String city = place.locality ?? place.subAdministrativeArea ?? "";
+        String state = place.administrativeArea ?? "";
+        
+        // Construct visual portion (Area, City)
+        List<String> displayParts = [];
+        if (area.isNotEmpty) displayParts.add(area);
+        if (city.isNotEmpty && city != area) displayParts.add(city);
+        if (displayParts.isEmpty && state.isNotEmpty) displayParts.add(state);
+        
+        String displayString = displayParts.join(", ");
+        if (displayString.isEmpty) displayString = "Selected Location";
+        
+        // Exact location format representing "displayString, state(lat,lng)"
+        String exactLocation = "$displayString, $state(${_currentMapCenter.latitude},${_currentMapCenter.longitude})";
+        
+        setState(() {
+          location = exactLocation;
+          _isMapLoading = false;
+        });
+        
+        // Just unfocus keyboard, user must press continue
+        FocusManager.instance.primaryFocus?.unfocus();
+      } else {
+        setState(() => _isMapLoading = false);
+        _showError("Could not identify location name.");
+      }
+    } catch (e) {
+      setState(() => _isMapLoading = false);
+      debugPrint("Confirm Location Error: $e");
+      _showError("Failed to lock location.");
+    }
+  }
+
+  Future<void> _searchMapLocation(String query) async {
+    if (query.trim().isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    try {
+      List<Location> locations = await locationFromAddress(query);
+      if (locations.isNotEmpty) {
+        final loc = locations.first;
+        setState(() {
+          _currentMapCenter = LatLng(loc.latitude, loc.longitude);
+        });
+        _mapController.move(_currentMapCenter, 13.0);
+      } else {
+        _showError("Location not found.");
+      }
+    } catch (e) {
+      _showError("Could not find address: $query");
+    }
+  }
+
+  String _getDisplayLocation(String loc) {
+    if (loc.contains("(")) {
+      return loc.split("(")[0].trim();
+    }
+    return loc;
+  }
+
+  // --- Discovery Tracking & Custom Data ---
+  int _getTotalDiscoverySelections() {
+    return selectedInterests.length + selectedFoods.length + selectedPlaces.length;
+  }
+
+  void _showAddCustomOptionDialog(String title, List<String> currentSelections, Function(String) onAdded) {
+    TextEditingController customCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("Add Custom $title", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, fontSize: 18)),
+        content: TextField(
+          controller: customCtrl,
+          autofocus: true,
+          style: GoogleFonts.dmSans(color: kBlack),
+          decoration: const InputDecoration(hintText: "Type here...", border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: GoogleFonts.dmSans(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: kRose, foregroundColor: Colors.white),
+            onPressed: () {
+              final val = customCtrl.text.trim();
+              if (val.isNotEmpty) {
+                onAdded(val);
+              }
+              Navigator.pop(context);
+            },
+            child: Text("Add", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold)),
+          )
+        ],
+      ),
+    );
   }
 
   // --- UI Builders ---
@@ -509,21 +621,51 @@ class _BasicsPageState extends State<BasicsPage> {
 
             Padding(
               padding: const EdgeInsets.all(kPadding),
-              child: SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kRose,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kRose,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      ),
+                      onPressed: (_currentQuestionIndex == _totalQuestionScreens - 1 && _isUploading) ? null : _nextPage,
+                      child: _isUploading 
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : Text(_currentQuestionIndex == _totalQuestionScreens - 1 ? "Finish Profile" : "Continue", style: GoogleFonts.dmSans(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
                   ),
-                  onPressed: (_currentQuestionIndex == _totalQuestionScreens - 1 && _isUploading) ? null : _nextPage,
-                  child: _isUploading 
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : Text(_currentQuestionIndex == _totalQuestionScreens - 1 ? "Finish Profile" : "Continue", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ),
+                  // Optional Skip Button for specific screens
+                  if ([9, 10, 12, 13, 15, 16, 17].contains(_currentQuestionIndex)) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () {
+                        // Clear the selection for that specific optional step if they explicitly hit skip
+                        setState(() {
+                             if (_currentQuestionIndex == 9) { selectedEducationLevel = null; schoolNameController.clear(); }
+                        else if (_currentQuestionIndex == 10) jobController.clear();
+                        else if (_currentQuestionIndex == 12) selectedPolitics = null;
+                        else if (_currentQuestionIndex == 13) selectedKids = null;
+                        else if (_currentQuestionIndex == 15) selectedPets = null;
+                        else if (_currentQuestionIndex == 16) selectedExercise = null;
+                        else if (_currentQuestionIndex == 17) { drinkStatus = null; smokeStatus = null; weedStatus = null; }
+                        });
+                        // Skip validation and force next page
+                        if (_currentQuestionIndex < _totalQuestionScreens - 1) {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                          _saveToStore();
+                          _pageController.nextPage(duration: const Duration(milliseconds: 350), curve: Curves.easeInOutCubic);
+                          setState(() => _currentQuestionIndex++);
+                        }
+                      },
+                      child: Text("Skip for now", style: GoogleFonts.dmSans(color: kInkMuted, fontWeight: FontWeight.w500)),
+                    )
+                  ]
+                ],
               ),
             ),
           ],
@@ -542,7 +684,7 @@ class _BasicsPageState extends State<BasicsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 30), 
-          Text(title, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold, height: 1.1, color: kBlack)),
+          Text(title, style: GoogleFonts.dmSans(fontSize: 30, fontWeight: FontWeight.bold, height: 1.1, color: kBlack)),
           const SizedBox(height: 24),
           Expanded(child: child), 
         ],
@@ -558,7 +700,7 @@ class _BasicsPageState extends State<BasicsPage> {
           TextField(
             controller: controller,
             keyboardType: type,
-            style: const TextStyle(fontSize: 20),
+            style: GoogleFonts.dmSans(fontSize: 20, color: kBlack),
             decoration: InputDecoration(
               hintText: hint,
               filled: true,
@@ -592,10 +734,10 @@ class _BasicsPageState extends State<BasicsPage> {
                   backgroundColor: Colors.white,
                   showCheckmark: false,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  labelStyle: TextStyle(
-                    color: isSelected ? Colors.white : Colors.black, 
+                  labelStyle: GoogleFonts.dmSans(
+                    color: isSelected ? Colors.white : kBlack, 
                     fontSize: 16,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500
                   ),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
                   onSelected: (val) => setState(() => selectedEducationLevel = level),
@@ -603,11 +745,11 @@ class _BasicsPageState extends State<BasicsPage> {
               }).toList(),
             ),
             const SizedBox(height: 24),
-            const Text("School / College Name (Optional)", style: TextStyle(fontWeight: FontWeight.bold)),
+            Text("School / College Name (Optional)", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, color: kBlack)),
             const SizedBox(height: 8),
             TextField(
               controller: schoolNameController,
-              style: const TextStyle(fontSize: 18),
+              style: GoogleFonts.dmSans(fontSize: 18, color: kBlack),
               decoration: InputDecoration(
                 hintText: "e.g. Harvard University",
                 filled: true,
@@ -646,7 +788,7 @@ class _BasicsPageState extends State<BasicsPage> {
                   builder: (context, index) {
                     final age = index + 18;
                     final isSelected = age == selectedAge;
-                    return Center(child: Text("$age", style: TextStyle(fontSize: isSelected ? 34 : 24, color: isSelected ? kBlack : Colors.grey[400], fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)));
+                    return Center(child: Text("$age", style: GoogleFonts.dmSans(fontSize: isSelected ? 34 : 24, color: isSelected ? kBlack : Colors.grey[400], fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)));
                   },
                   childCount: 82, 
                 ),
@@ -694,7 +836,7 @@ class _BasicsPageState extends State<BasicsPage> {
                     builder: (context, index) {
                       if (index < 0 || index >= currentList.length) return null;
                       final isSelected = index == _selectedHeightIndex;
-                      return Center(child: Text(currentList[index], style: TextStyle(fontSize: isSelected ? 26 : 20, color: isSelected ? kBlack : Colors.grey[400], fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)));
+                      return Center(child: Text(currentList[index], style: GoogleFonts.dmSans(fontSize: isSelected ? 26 : 20, color: isSelected ? kBlack : Colors.grey[400], fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)));
                     },
                     childCount: currentList.length,
                   ),
@@ -721,7 +863,7 @@ class _BasicsPageState extends State<BasicsPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         decoration: BoxDecoration(color: isActive ? kRose : Colors.transparent, borderRadius: BorderRadius.circular(30)),
-        child: Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
+        child: Text(label, style: GoogleFonts.dmSans(color: isActive ? Colors.white : kBlack, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -744,7 +886,7 @@ class _BasicsPageState extends State<BasicsPage> {
               backgroundColor: Colors.white,
               showCheckmark: false,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
+              labelStyle: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
               onSelected: (selected) { if (selected) onSelect(option); },
             );
@@ -761,20 +903,37 @@ class _BasicsPageState extends State<BasicsPage> {
         child: Wrap(
           spacing: 10,
           runSpacing: 10,
-          children: options.map((option) {
-            final isSelected = currentSelections.contains(option);
-            return FilterChip(
-              label: Text(option),
-              selected: isSelected,
-              selectedColor: kRose,
-              backgroundColor: Colors.white,
-              showCheckmark: false,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
-              onSelected: (_) => onToggle(option),
-            );
-          }).toList(),
+          children: [
+            ...options.map((option) {
+              final isSelected = currentSelections.contains(option);
+              return FilterChip(
+                label: Text(option),
+                selected: isSelected,
+                selectedColor: kRose,
+                backgroundColor: Colors.white,
+                showCheckmark: false,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                labelStyle: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
+                onSelected: (_) => onToggle(option),
+              );
+            }),
+            // Add Custom Option Button
+            ActionChip(
+              label: Text("+ Add your own"),
+              backgroundColor: kBone,
+              labelStyle: GoogleFonts.dmSans(color: kInkMuted, fontSize: 16, fontWeight: FontWeight.bold),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: Colors.grey.shade300)),
+              onPressed: () {
+                _showAddCustomOptionDialog(title, currentSelections, (newVal) {
+                  setState(() {
+                    if (!options.contains(newVal)) options.add(newVal);
+                    if (!currentSelections.contains(newVal)) currentSelections.add(newVal);
+                  });
+                });
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -786,42 +945,99 @@ class _BasicsPageState extends State<BasicsPage> {
       title: "Where are you located?",
       child: Column(
         children: [
-          GestureDetector(
-            onTap: () async {
-              final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => const LocationSearchPage()));
-              if (result != null) setState(() => location = result);
-            },
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-              child: Row(children: [
-                const Icon(Icons.location_city, color: kRose, size: 28),
-                const SizedBox(width: 16),
-                Expanded(child: Text(location ?? "Search City", style: TextStyle(fontSize: 18, color: location == null ? Colors.grey : kBlack, fontWeight: FontWeight.w500))),
-                const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
-              ]),
+          // Search Bar
+          TextField(
+            controller: _mapSearchController,
+            style: GoogleFonts.dmSans(color: kBlack),
+            onSubmitted: _searchMapLocation,
+            decoration: InputDecoration(
+              hintText: "Search a city...",
+              hintStyle: GoogleFonts.dmSans(color: Colors.grey),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.search, color: kRose),
+                onPressed: () => _searchMapLocation(_mapSearchController.text),
+              ),
             ),
           ),
-          const SizedBox(height: 20),
-          GestureDetector(
-            onTap: _fetchCurrentLocation,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                border: Border.all(color: kRose),
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.my_location, color: kRose),
-                  SizedBox(width: 8),
-                  Text("Use Current Location", style: TextStyle(color: kRose, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 16),
+          // Interactive Map Area
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: _currentMapCenter,
+                      initialZoom: 13.0,
+                      onPositionChanged: (position, hasGesture) {
+                        if (hasGesture && position.center != null) {
+                          _currentMapCenter = position.center!;
+                        }
+                      },
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.example.clush',
+                      ),
+                      RichAttributionWidget(
+                        attributions: [
+                          TextSourceAttribution(
+                            'OpenStreetMap contributors',
+                            onTap: () => launchUrl(Uri.parse('https://openstreetmap.org/copyright')),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  // Center Pin Overlay (Doesn't move with the map)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 40), // Offset slightly to point correctly
+                    child: Icon(Icons.location_on, color: kRose, size: 48),
+                  ),
+                  // Current GPS Location Button
+                  Positioned(
+                    bottom: 16,
+                    right: 16,
+                    child: FloatingActionButton(
+                      mini: true,
+                      backgroundColor: Colors.white,
+                      onPressed: _fetchCurrentLocation,
+                      child: const Icon(Icons.my_location, color: kBlack),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          // Confirm Pin Button
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: kRose, width: 2),
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              ),
+              onPressed: _isMapLoading ? null : _confirmMapLocation,
+              child: _isMapLoading 
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: kRose, strokeWidth: 2))
+                : Text("Confirm Pin Location", style: GoogleFonts.dmSans(color: kRose, fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          if (location != null) ...[
+             const SizedBox(height: 16),
+             Text("Currently: ${_getDisplayLocation(location!)}", style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 14)),
+          ]
         ],
       ),
     );
@@ -850,7 +1066,7 @@ class _BasicsPageState extends State<BasicsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+        Text(label, style: GoogleFonts.dmSans(fontSize: 18, fontWeight: FontWeight.bold, color: kBlack)),
         const SizedBox(height: 12),
         Wrap(spacing: 10, children: habitOptions.map((opt) {
           final isSelected = current == opt;
@@ -861,7 +1077,7 @@ class _BasicsPageState extends State<BasicsPage> {
             backgroundColor: Colors.white,
             showCheckmark: false,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
+            labelStyle: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
             onSelected: (val) => onSelect(opt),
           );
@@ -896,8 +1112,8 @@ class _BasicsPageState extends State<BasicsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(title, style: TextStyle(color: isSelected ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text(item['subtitle']!, style: TextStyle(color: isSelected ? Colors.white70 : Colors.grey.shade600)),
+                        Text(title, style: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(item['subtitle']!, style: GoogleFonts.dmSans(color: isSelected ? Colors.white70 : kInkMuted)),
                       ],
                     ),
                   ),
@@ -917,24 +1133,52 @@ class _BasicsPageState extends State<BasicsPage> {
         child: Wrap(
           spacing: 8,
           runSpacing: 10,
-          children: options.map((option) {
-            final isSelected = selectionList.contains(option);
-            return FilterChip(
-              label: Text(option),
-              selected: isSelected,
-              selectedColor: kRose,
-              backgroundColor: Colors.white,
-              showCheckmark: false,
-              labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
-              onSelected: (_) {
-                setState(() {
-                  isSelected ? selectionList.remove(option) : selectionList.add(option);
+          children: [
+            ...options.map((option) {
+              final isSelected = selectionList.contains(option);
+              return FilterChip(
+                label: Text(option),
+                selected: isSelected,
+                selectedColor: kRose,
+                backgroundColor: Colors.white,
+                showCheckmark: false,
+                labelStyle: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
+                onSelected: (_) {
+                  setState(() {
+                    if (isSelected) {
+                      selectionList.remove(option);
+                    } else {
+                      if (_getTotalDiscoverySelections() >= 15) {
+                        _showError("You can choose up to 15 combined discovery traits.");
+                      } else {
+                        selectionList.add(option);
+                      }
+                    }
+                  });
+                },
+              );
+            }),
+            ActionChip(
+              label: Text("+ Add your own"),
+              backgroundColor: kBone,
+              labelStyle: GoogleFonts.dmSans(color: kInkMuted, fontWeight: FontWeight.bold),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: Colors.grey.shade300)),
+              onPressed: () {
+                if (_getTotalDiscoverySelections() >= 15) {
+                   _showError("You can choose up to 15 combined discovery traits.");
+                   return;
+                }
+                _showAddCustomOptionDialog(title, selectionList, (newVal) {
+                  setState(() {
+                    if (!options.contains(newVal)) options.add(newVal);
+                    if (!selectionList.contains(newVal)) selectionList.add(newVal);
+                  });
                 });
               },
-            );
-          }).toList(),
+            ),
+          ],
         ),
       ),
     );
@@ -946,7 +1190,7 @@ class _BasicsPageState extends State<BasicsPage> {
       title: "Add your photos",
       child: Column(
         children: [
-          const Text("Add at least 2 photos. Tap a slot to add.", style: TextStyle(color: Colors.grey, fontSize: 16)),
+          Text("Add at least 2 photos. Tap a slot to add.", style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 16)),
           const SizedBox(height: 20),
           Expanded(
             child: GridView.builder(
@@ -1015,7 +1259,7 @@ class _BasicsPageState extends State<BasicsPage> {
       title: "Write your profile answers",
       child: Column(
         children: [
-          const Text("Pick 3 prompts to help others get to know you better.", style: TextStyle(color: Colors.grey, fontSize: 16)),
+          Text("Pick 3 prompts to help others get to know you better.", style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 16)),
           const SizedBox(height: 20),
           Expanded(
             child: ListView.separated(
@@ -1034,19 +1278,19 @@ class _BasicsPageState extends State<BasicsPage> {
                       border: Border.all(color: kRose.withOpacity(0.5)),
                     ),
                     child: slot == null
-                        ? Row(mainAxisAlignment: MainAxisAlignment.center, children: const [Icon(Icons.add, color: kRose), SizedBox(width: 8), Text("Select a Prompt", style: TextStyle(color: kRose, fontWeight: FontWeight.bold))])
+                        ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.add, color: kRose), const SizedBox(width: 8), Text("Select a Prompt", style: GoogleFonts.dmSans(color: kRose, fontWeight: FontWeight.bold))])
                         : Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Expanded(child: Text(slot['question']!.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kRose, letterSpacing: 0.5))),
+                                  Expanded(child: Text(slot['question']!.toUpperCase(), style: GoogleFonts.dmSans(fontSize: 11, fontWeight: FontWeight.bold, color: kRose, letterSpacing: 0.5))),
                                   GestureDetector(onTap: () => setState(() => _promptSlots[index] = null), child: const Icon(Icons.close, size: 16, color: Colors.grey)),
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Text(slot['answer']!, style: const TextStyle(fontSize: 16)),
+                              Text(slot['answer']!, style: GoogleFonts.dmSans(fontSize: 16, color: kBlack, fontWeight: FontWeight.w500)),
                             ],
                           ),
                   ),
@@ -1079,7 +1323,7 @@ class _BasicsPageState extends State<BasicsPage> {
                 const SizedBox(height: 16),
                 Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 16),
-                const Text("Pick a Prompt", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                Text("Pick a Prompt", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, fontSize: 18, color: kBlack)),
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.separated(
@@ -1088,7 +1332,7 @@ class _BasicsPageState extends State<BasicsPage> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, idx) {
                       return ListTile(
-                        title: Text(availableQuestions[idx]),
+                        title: Text(availableQuestions[idx], style: GoogleFonts.dmSans(color: kBlack, fontWeight: FontWeight.w500)),
                         trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
                         onTap: () {
                           Navigator.pop(context);
@@ -1112,10 +1356,10 @@ class _BasicsPageState extends State<BasicsPage> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(question, style: const TextStyle(fontSize: 16)),
-        content: TextField(controller: textCtrl, autofocus: true, maxLines: 3, decoration: const InputDecoration(hintText: "Type your answer...", border: OutlineInputBorder())),
+        title: Text(question, style: GoogleFonts.dmSans(fontSize: 16, fontWeight: FontWeight.bold, color: kBlack)),
+        content: TextField(controller: textCtrl, autofocus: true, maxLines: 3, style: GoogleFonts.dmSans(color: kBlack), decoration: const InputDecoration(hintText: "Type your answer...", border: OutlineInputBorder())),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: GoogleFonts.dmSans(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: kRose, foregroundColor: Colors.white),
             onPressed: () {
@@ -1124,52 +1368,11 @@ class _BasicsPageState extends State<BasicsPage> {
                 Navigator.pop(context);
               }
             },
-            child: const Text("Save"),
+            child: Text("Save", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold)),
           )
         ],
       ),
     );
   }
 }
-
-// --- Sub Page: Location Search ---
-class LocationSearchPage extends StatefulWidget {
-  const LocationSearchPage({super.key});
-  @override
-  State<LocationSearchPage> createState() => _LocationSearchPageState();
-}
-
-class _LocationSearchPageState extends State<LocationSearchPage> {
-  final TextEditingController _searchController = TextEditingController();
-  final List<String> allCities = ["New York, USA", "Los Angeles, USA", "Chicago, USA", "London, UK", "Paris, France", "Tokyo, Japan", "Mumbai, India", "Pune, India", "Delhi, India", "Toronto, Canada", "Berlin, Germany", "Sydney, Australia", "Dubai, UAE", "Singapore", "San Francisco, USA", "Seattle, USA", "Austin, USA"];
-  List<String> filteredCities = [];
-
-  @override
-  void initState() {
-    super.initState();
-    filteredCities = allCities;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(title: const Text("Set Location", style: TextStyle(color: Colors.black)), backgroundColor: Colors.white, elevation: 0, leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: () => Navigator.pop(context))),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: _searchController,
-              autofocus: true,
-              onChanged: (val) => setState(() => filteredCities = allCities.where((c) => c.toLowerCase().contains(val.toLowerCase())).toList()),
-              decoration: InputDecoration(hintText: "Search city...", prefixIcon: const Icon(Icons.search), filled: true, fillColor: kTan.withOpacity(0.5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none)),
-            ),
-            const SizedBox(height: 20),
-            Expanded(child: ListView.separated(itemCount: filteredCities.length, separatorBuilder: (ctx, i) => const Divider(height: 1), itemBuilder: (context, index) => ListTile(title: Text(filteredCities[index]), leading: const Icon(Icons.location_city, color: Colors.grey), onTap: () => Navigator.pop(context, filteredCities[index])))),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// End of file

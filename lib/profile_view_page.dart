@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart'; // Typography
-import 'dart:ui'; // For blur effects
+import 'package:google_fonts/google_fonts.dart';
 
-const Color kRose = Color(0xFFCD9D8F);
-const Color kBlack = Color(0xFF2D2D2D);
-const Color kTan = Color(0xFFF8F9FA);
+// --- PREMIUM COLOR PALETTE (From Discover Page) ---
+const Color kRose = Color(0xFFC48B71);
+const Color kRoseLight = Color(0xFFD6A795);
+const Color kRosePale = Color(0xFFF3E8E3);
+
+const Color kCream = Color(0xFFFAF8F5);
+const Color kParchment = Color(0xFFF4F0EA);
+const Color kBone = Color(0xFFE6DFD5);
+
+const Color kInk = Color(0xFF2C2A28);
+const Color kInkMuted = Color(0xFF756F68);
+const Color kGold = Color(0xFFD4AF37);
+
 
 class ProfileViewPage extends StatelessWidget {
   final Map<String, dynamic> profile;
@@ -28,9 +37,12 @@ class ProfileViewPage extends StatelessWidget {
     final String? birthdayString = profile['birthday'];
     final int age = _calculateAge(birthdayString);
     final String intent = profile['intent'] ?? '';
+    final bool isVerified = profile['is_verified'] ?? true;
 
     // Essentials Data
     final Map<String, String?> allEssentials = {
+      'Age': age > 0 ? age.toString() : null,
+      'Looking For': intent.isNotEmpty ? intent : null,
       'Height': profile['height'],
       'Education': profile['education'],
       'Job': profile['job_title'],
@@ -42,7 +54,7 @@ class ProfileViewPage extends StatelessWidget {
       'Drink': profile['drink'],
       'Smoke': profile['smoke'],
       'Weed': profile['weed'],
-      'Location': profile['location'],
+      'Location': (() { final loc = profile['location'] as String?; if (loc == null) return null; final idx = loc.indexOf('('); return idx != -1 ? loc.substring(0, idx).trim().split(',').take(2).join(',').trim() : loc; })(),
       'Gender': profile['gender'],
       'Orientation': profile['sexual_orientation'],
       'Pronouns': profile['pronouns'],
@@ -58,44 +70,137 @@ class ProfileViewPage extends StatelessWidget {
     }
 
     List<Map<String, dynamic>> remainingPrompts = [];
-    if (prompts.length > 1) {
-      for (var p in prompts.sublist(1)) {
+    if (prompts.isNotEmpty) {
+      for (var p in prompts) {
         if (p != null) remainingPrompts.add(p as Map<String, dynamic>);
       }
     }
 
     // 3. Build Content List
-    List<Widget> content = [];
+    List<Widget> contentList = [];
 
+    // Header margin spacer
+    contentList.add(const SizedBox(height: 16));
+
+    // Profile Header (Name, Badge, Active Pill)
+    contentList.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          name,
+                          style: GoogleFonts.domine(
+                            fontSize: 38,
+                            fontWeight: FontWeight.w300,
+                            color: kInk,
+                            letterSpacing: -1.0,
+                            height: 1.0,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isVerified) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 28, // Increased background size
+                          height: 28,
+                          decoration: const BoxDecoration(
+                            color: kRosePale,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.verified_rounded, color: kRose, size: 18), // Increased icon size
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Moved Active indicator pill here
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: kRosePale,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: kRose,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    "Active Today",
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      color: kRose,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Thin decorative rule under the name
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Container(width: 32, height: 1, color: kGold),
+                const SizedBox(width: 8),
+                Container(width: 8, height: 1, color: kBone),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // 1st Image
     if (photoUrls.isNotEmpty) {
-      content.add(_buildMainPhotoCard(url: photoUrls[0], name: name, age: age));
+      contentList.add(_buildPhotoCard(photoUrls[0], isFirst: true));
+    } else {
+      contentList.add(_buildPhotoCard('https://via.placeholder.com/600x800', isFirst: true));
     }
 
-    if (prompts.isNotEmpty && prompts[0] != null) {
-      content.add(_buildPremiumPromptCard(prompts[0]));
-    }
-
+    // Essentials card
     if (allEssentials.values.any((v) => v != null && v.isNotEmpty)) {
-      content.add(_buildUnifiedEssentialsCard(allEssentials));
+      contentList.add(_buildUnifiedEssentialsCard(allEssentials));
     }
 
-    if (intent.isNotEmpty) {
-      content.add(_buildIntentCard(intent));
-    }
-
+    // Interests/Hobbies
     if (allInterests.isNotEmpty) {
-      content.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      contentList.add(
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.all(24),
+          decoration: _cardDecoration(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSectionTitle("My Passions"),
-              const SizedBox(height: 12),
+              _buildCardLabel("Hobbies & Interests"),
+              const SizedBox(height: 16),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: allInterests.map((e) => _buildPremiumChip(e)).toList(),
+                spacing: 10,
+                runSpacing: 10,
+                children: allInterests.map((e) => _buildChip(e.toString())).toList(),
               ),
             ],
           ),
@@ -103,82 +208,116 @@ class ProfileViewPage extends StatelessWidget {
       );
     }
 
-    // Mix Section
-    if (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
-    if (remainingPhotos.isNotEmpty) content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
-    if (remainingPrompts.isNotEmpty) content.add(_buildPremiumPromptCard(remainingPrompts.removeAt(0)));
-    
-    while (remainingPhotos.isNotEmpty) {
-      content.add(_buildSecondaryPhotoCard(remainingPhotos.removeAt(0)));
-    }
-    while (remainingPrompts.isNotEmpty) {
-      content.add(_buildPremiumPromptCard(remainingPrompts.removeAt(0)));
+    // 1st Prompt
+    if (remainingPrompts.isNotEmpty) {
+      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
     }
 
-    content.add(const SizedBox(height: 80)); 
+    // 2nd Image
+    if (remainingPhotos.isNotEmpty) {
+      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
+    }
+
+    // 3rd Image
+    if (remainingPhotos.isNotEmpty) {
+      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
+    }
+
+    // 2nd Prompt
+    if (remainingPrompts.isNotEmpty) {
+      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
+    }
+
+    // 4th Image
+    if (remainingPhotos.isNotEmpty) {
+      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
+    }
+
+    // 3rd Prompt
+    if (remainingPrompts.isNotEmpty) {
+      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
+    }
+
+    while (remainingPhotos.isNotEmpty) {
+      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
+    }
+
+    while (remainingPrompts.isNotEmpty) {
+      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
+    }
+
+    // Bottom spacing
+    contentList.add(const SizedBox(height: 80));
 
     return Scaffold(
-      backgroundColor: kTan,
-      body: Stack(
-        children: [
-          // SCROLLABLE CONTENT
-          SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.only(top: 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: content,
+      backgroundColor: kCream,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.only(top: 64, bottom: 40), // Increased top padding from 16 to 64
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: contentList,
+              ),
             ),
-          ),
-
-          // HEADER (Cleaned up - No Menu)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            // Minimalist back button at top left
+            Positioned(
+              top: 16,
+              left: 16,
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
                 child: Container(
-                  height: 100,
-                  color: kTan.withOpacity(0.85),
-                  padding: const EdgeInsets.fromLTRB(16, 48, 16, 0),
-                  alignment: Alignment.centerLeft,
-                  child: Row(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle, border: Border.all(color: Colors.black.withOpacity(0.05))),
-                        child: IconButton(
-                          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: kBlack, size: 22),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        "Preview",
-                        style: GoogleFonts.outfit(
-                          fontSize: 22, 
-                          fontWeight: FontWeight.w800, 
-                          color: kBlack,
-                          letterSpacing: -0.5
-                        ),
-                      ),
-                    ],
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: kCream.withOpacity(0.9),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kBone.withOpacity(0.5), width: 1),
                   ),
+                  child: const Icon(Icons.arrow_back_ios_new_rounded, color: kInk, size: 20),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // --- WIDGET HELPERS ---
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title.toUpperCase(), 
-      style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w800, color: kRose, letterSpacing: 1.5)
+  // ================= REUSED WIDGETS =================
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: kParchment,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: kBone, width: 1),
+      boxShadow: [
+        BoxShadow(
+          color: kInk.withOpacity(0.06),
+          blurRadius: 20,
+          spreadRadius: 0,
+          offset: const Offset(0, 6),
+        )
+      ],
+    );
+  }
+
+  Widget _buildCardLabel(String label) {
+    return Row(
+      children: [
+        Container(width: 3, height: 16, color: kGold, margin: const EdgeInsets.only(right: 10)),
+        Text(
+          label.toUpperCase(),
+          style: GoogleFonts.dmSans(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: kInkMuted,
+            letterSpacing: 1.8,
+          ),
+        ),
+      ],
     );
   }
 
@@ -189,52 +328,224 @@ class ProfileViewPage extends StatelessWidget {
 
     allData.forEach((key, value) {
       if (value != null && value.isNotEmpty) {
-        if (verticalKeys.contains(key)) verticalData[key] = value;
-        else horizontalData[key] = value;
+        if (verticalKeys.contains(key)) {
+          verticalData[key] = value;
+        } else {
+          horizontalData[key] = value;
+        }
       }
     });
 
     final Map<String, IconData> icons = {
-      'Height': Icons.height, 'Education': Icons.school, 'Job': Icons.work, 'Religion': Icons.church,
-      'Politics': Icons.gavel, 'Star Sign': Icons.auto_awesome, 'Kids': Icons.child_care, 'Pets': Icons.pets,
-      'Drink': Icons.local_bar, 'Smoke': Icons.smoking_rooms, 'Weed': Icons.grass, 'Location': Icons.location_on,
-      'Gender': Icons.person, 'Orientation': Icons.favorite, 'Pronouns': Icons.record_voice_over,
-      'Ethnicity': Icons.public, 'Languages': Icons.translate, 'Exercise': Icons.fitness_center,
+      'Age': Icons.cake_outlined,
+      'Looking For': Icons.search_rounded,
+      'Height': Icons.straighten_outlined,
+      'Education': Icons.school_outlined,
+      'Job': Icons.work_outline,
+      'Religion': Icons.auto_stories_outlined,
+      'Politics': Icons.gavel_outlined,
+      'Star Sign': Icons.auto_awesome_outlined,
+      'Kids': Icons.child_care_outlined,
+      'Pets': Icons.pets_outlined,
+      'Drink': Icons.local_bar_outlined,
+      'Smoke': Icons.smoking_rooms_outlined,
+      'Weed': Icons.grass_outlined,
+      'Location': Icons.location_on_outlined,
+      'Gender': Icons.person_outline_rounded,
+      'Orientation': Icons.favorite_border_rounded,
+      'Pronouns': Icons.record_voice_over_outlined,
+      'Ethnicity': Icons.public_outlined,
+      'Languages': Icons.translate_outlined,
+      'Exercise': Icons.fitness_center_outlined,
     };
 
     return Container(
-      width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: _premiumShadowDecoration(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Padding(padding: EdgeInsets.fromLTRB(20, 24, 20, 16)),
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           if (horizontalData.isNotEmpty) ...[
-            SizedBox(height: 60, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16), physics: const BouncingScrollPhysics(), itemCount: horizontalData.length, itemBuilder: (context, index) { String key = horizontalData.keys.elementAt(index); String value = horizontalData[key]!; return Container(margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)), child: Row(children: [Icon(icons[key] ?? Icons.circle, color: kRose, size: 18), const SizedBox(width: 8), Text(value, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13, color: kBlack))])); })),
-            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+              child: _buildCardLabel("At a Glance"),
+            ),
+            SizedBox(
+              height: 52,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+                physics: const BouncingScrollPhysics(),
+                itemCount: horizontalData.length,
+                separatorBuilder: (context, index) => VerticalDivider(
+                  width: 24,
+                  thickness: 1,
+                  color: kBone,
+                  indent: 4,
+                  endIndent: 4,
+                ),
+                itemBuilder: (context, index) {
+                  String key = horizontalData.keys.elementAt(index);
+                  String value = horizontalData[key]!;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icons[key] ?? Icons.circle_outlined, color: kRose, size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        value,
+                        style: GoogleFonts.dmSans(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13,
+                          color: kInk,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ],
-          if (horizontalData.isNotEmpty && verticalData.isNotEmpty) Divider(height: 1, thickness: 1, color: Colors.grey.shade100),
-          if (verticalData.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8), child: Column(children: verticalData.entries.map((entry) { return Column(children: [Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Row(children: [Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: kRose.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icons[entry.key] ?? Icons.circle, size: 18, color: kRose)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(entry.key.toUpperCase(), style: GoogleFonts.outfit(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w800, letterSpacing: 0.5)), const SizedBox(height: 4), Text(entry.value, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600, color: kBlack))]))])), if (entry.key != verticalData.keys.last) Divider(height: 1, thickness: 1, color: Colors.grey.shade100)]); }).toList())),
-          const SizedBox(height: 8),
-      ]),
+          if (horizontalData.isNotEmpty && verticalData.isNotEmpty)
+            Divider(height: 1, thickness: 1, color: kBone),
+          if (verticalData.isNotEmpty)
+            Column(
+              children: verticalData.entries.map((entry) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      child: Row(
+                        children: [
+                          Icon(icons[entry.key] ?? Icons.circle_outlined, size: 18, color: kRose),
+                          const SizedBox(width: 14),
+                          Text(
+                            entry.key,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: kInkMuted,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            entry.value,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: kInk,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (entry.key != verticalData.keys.last)
+                      Divider(height: 1, thickness: 1, color: kBone),
+                  ],
+                );
+              }).toList(),
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildMainPhotoCard({required String url, required String name, required int age}) {
-    return Container(height: 600, width: double.infinity, margin: const EdgeInsets.fromLTRB(16, 110, 16, 16), decoration: _premiumShadowDecoration(), child: ClipRRect(borderRadius: BorderRadius.circular(32), child: Stack(fit: StackFit.expand, children: [Image.network(url, fit: BoxFit.cover), Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.2), Colors.black.withOpacity(0.85)], stops: const [0.5, 0.75, 1.0]))), Positioned(bottom: 30, left: 24, child: Text("$name, $age", style: GoogleFonts.outfit(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, letterSpacing: -0.5, shadows: [Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))])))])));
+  Widget _buildPhotoCard(String url, {bool isFirst = false}) {
+    return Container(
+      height: 520,
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kBone, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: kInk.withOpacity(0.1),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(21),
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (c, e, s) => Container(
+            color: kParchment,
+            child: const Center(
+              child: Icon(Icons.person_outline_rounded, color: kBone, size: 64),
+            ),
+          ),
+        ),
+      ),
+    );
   }
-  Widget _buildSecondaryPhotoCard(String url) {
-    return Container(height: 500, width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: _premiumShadowDecoration(), child: ClipRRect(borderRadius: BorderRadius.circular(32), child: Image.network(url, fit: BoxFit.cover)));
+
+  Widget _buildPromptCard(Map<String, dynamic> prompt) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.all(24),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Opening quote mark
+          Text(
+            "\u201C",
+            style: GoogleFonts.domine(
+              fontSize: 48,
+              color: kRose.withOpacity(0.3),
+              height: 0.8,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            prompt['question'] as String,
+            style: GoogleFonts.dmSans(
+              color: kInkMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            prompt['answer'],
+            style: GoogleFonts.domine(
+              fontSize: 26,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+              color: kInk,
+            ),
+          ),
+        ],
+      ),
+    );
   }
-  Widget _buildIntentCard(String intent) {
-    return Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), padding: const EdgeInsets.all(24), decoration: _premiumShadowDecoration(), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: kRose.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.search_rounded, color: kRose, size: 28)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("LOOKING FOR", style: GoogleFonts.outfit(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0)), const SizedBox(height: 6), Text(intent, style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: kBlack), softWrap: true)]))]));
+
+  Widget _buildChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: kCream,
+        border: Border.all(color: kBone, width: 1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.dmSans(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: kInk,
+        ),
+      ),
+    );
   }
-  Widget _buildPremiumPromptCard(Map<String, dynamic> prompt) {
-    return Container(width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36), decoration: _premiumShadowDecoration(), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text((prompt['question'] as String).toUpperCase(), style: GoogleFonts.outfit(color: kRose, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.0)), const SizedBox(height: 16), Text(prompt['answer'], style: GoogleFonts.outfit(fontSize: 26, height: 1.3, fontWeight: FontWeight.w600, color: kBlack, letterSpacing: -0.5))]));
-  }
-  Widget _buildPremiumChip(String label) {
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.black.withOpacity(0.04)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))]), child: Text(label, style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w600, color: kBlack)));
-  }
-  BoxDecoration _premiumShadowDecoration() {
-    return BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 12))]);
-  }
+
   int _calculateAge(String? birthdayString) {
     if (birthdayString == null) return 0;
     try {
