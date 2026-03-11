@@ -1,20 +1,28 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:google_fonts/google_fonts.dart'; // Typography
+import 'package:google_fonts/google_fonts.dart';
+import 'package:clush/services/image_validation_service.dart';
+import 'package:clush/services/content_moderator.dart';
 
-// --- Theme Constants (Matches ProfileViewPage) ---
-const Color kRose = Color(0xFFCD9D8F);
-const Color kTan = Color(0xFFF8F9FA); // 0xFFF8F9FA for Off-White
-const Color kBlack = Color(0xFF2D2D2D);
+// ─── PALETTE (matches DiscoverPage) ──────────────────────────────────────────
+const Color kRose      = Color(0xFFB87E72);
+const Color kRoseLight = Color(0xFFD4A99F);
+const Color kRosePale  = Color(0xFFF5EAE7);
+const Color kCream     = Color(0xFFFAF7F4);
+const Color kParchment = Color(0xFFF0EBE5);
+const Color kBone      = Color(0xFFE5DED7);
+const Color kInk       = Color(0xFF1C1714);
+const Color kInkMuted  = Color(0xFF6B5E57);
+const Color kGold      = Color(0xFFC9A96E);
 
 class EditProfilePage extends StatefulWidget {
   final Map<String, dynamic> currentData;
-
   const EditProfilePage({super.key, required this.currentData});
 
   @override
@@ -24,124 +32,107 @@ class EditProfilePage extends StatefulWidget {
 class _EditProfilePageState extends State<EditProfilePage> {
   bool _isLoading = false;
   final ImagePicker _picker = ImagePicker();
+  final ImageValidationService _imageValidationService = ImageValidationService();
+  int? _validatingIndex;
+  bool _photo0Changed = false;
 
-  // --- 1. State Variables ---
+  // ─── State ──────────────────────────────────────────────────────────────────
   late TextEditingController _nameController;
   late TextEditingController _jobController;
   late TextEditingController _schoolController;
-  
-  // Photos: Can be String (URL) or File (New Upload)
-  List<dynamic> _photos = List.filled(6, null); 
-  
-  // Basic Stats
-  String? _gender;
-  String? _orientation;
-  String? _pronouns;
-  String? _ethnicity;
-  String? _height;
-  String? _religion;
-  String? _politics;
-  String? _starSign;
-  String? _educationLevel;
-  String? _location;
-  
-  // Lifestyle
-  String? _drink;
-  String? _smoke;
-  String? _weed;
-  String? _exercise;
-  String? _kids;
-  String? _pets;
 
-  // Lists
-  List<String> _languages = [];
-  List<String> _interests = [];
-  List<String> _foods = [];
-  List<String> _places = [];
-  
-  // Prompts
+  List<dynamic> _photos = List.filled(6, null);
+
+  String? _gender, _orientation, _pronouns, _ethnicity;
+  String? _height, _religion, _politics, _starSign;
+  String? _educationLevel, _location;
+  String? _drink, _smoke, _weed, _exercise, _kids, _pets, _intent;
+
+  List<String> _languages = [], _interests = [], _foods = [], _places = [];
   List<Map<String, dynamic>?> _prompts = [null, null, null];
-  String? _intent;
 
-  // --- 2. Options Lists (Mirrors BasicsPage) ---
-  final List<String> genderOptions = ["Woman", "Man", "Non-binary"];
-  final List<String> orientationOptions = ["Straight", "Gay", "Lesbian", "Bisexual", "Asexual", "Demisexual", "Pansexual", "Queer", "Questioning"];
-  final List<String> pronounOptions = ["She/Her", "He/Him", "They/Them", "She/They", "He/They", "Prefer not to say"];
-  final List<String> ethnicityOptions = ["Black/African Descent", "East Asian", "Hispanic/Latino", "Middle Eastern", "Native American", "Pacific Islander", "South Asian", "White/Caucasian", "Other"];
-  final List<String> religionOptions = ["Hindu", "Muslim", "Christian", "Sikh", "Atheist", "Jewish", "Agnostic", "Buddhist", "Spiritual", "Catholic", "Other"];
-  final List<String> politicalOptions = ["Liberal", "Moderate", "Conservative", "Not political", "Other"];
-  final List<String> educationOptions = ["High School", "Undergraduate", "Postgraduate", "Trade School", "Other"];
-  final List<String> kidsOptions = ["Want someday", "Don't want", "Have & want more", "Have & don't want more", "Not sure"];
-  final List<String> petsOptions = ["Dog", "Cat", "Reptile", "Amphibian", "Bird", "Fish", "None", "Want one", "Allergic"];
-  final List<String> exerciseOptions = ["Active", "Sometimes", "Almost never"];
-  final List<String> habitOptions = ["Yes", "Sometimes", "No"];
-  final List<String> starSigns = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
-  final List<String> intentOptionsStrings = ["Life Partner", "Long-term relationship", "Long-term, open to short", "Open to options"];
-
-  final List<String> interestOptions = ["Travel", "Photography", "Hiking", "Yoga", "Art", "Reading", "Fitness", "Music", "Movies", "Cooking", "Gaming", "Writing", "Meditation", "Tech", "Startups", "Dancing", "Cycling", "Swimming", "Pets", "Volunteering", "Astronomy", "Blogging", "DIY", "Podcasting"];
-  final List<String> foodOptions = ["Coffee", "Tea", "Pizza", "Sushi", "Burgers", "Street Food", "Desserts", "Vegan", "BBQ", "Pasta", "Indian", "Thai", "Mexican", "Chinese", "Wine", "Cocktails", "Mocktails", "Smoothies", "Ice Cream", "Biryani"];
-  final List<String> placeOptions = ["Beach", "Mountains", "Cafes", "Museums", "Art Galleries", "Hidden Bars", "Nature Trails", "Bookstores", "Rooftops", "Parks", "Gyms", "Libraries", "Music Venues", "Temples", "Historic Sites", "Street Markets"];
-  final List<String> languageOptions = ["English", "Spanish", "French", "German", "Chinese", "Japanese", "Korean", "Arabic", "Hindi", "Portuguese", "Russian", "Other"];
-
-  // Height Logic
   bool _isFeet = true;
-  final List<String> heightFeet = List.generate(37, (i) => "${(i ~/ 12) + 4}' ${i % 12}\""); // 4'0 to 7'0
-  final List<String> heightCm = List.generate(121, (i) => "${i + 120} cm"); // 120 to 240
+
+  // ─── Options ─────────────────────────────────────────────────────────────────
+  final List<String> genderOptions        = ["Woman","Man","Non-binary"];
+  final List<String> orientationOptions   = ["Straight","Gay","Lesbian","Bisexual","Asexual","Demisexual","Pansexual","Queer","Questioning"];
+  final List<String> pronounOptions       = ["She/Her","He/Him","They/Them","She/They","He/They","Prefer not to say"];
+  final List<String> ethnicityOptions     = ["Black/African Descent","East Asian","Hispanic/Latino","Middle Eastern","Native American","Pacific Islander","South Asian","White/Caucasian","Other"];
+  final List<String> religionOptions      = ["Hindu","Muslim","Christian","Sikh","Atheist","Jewish","Agnostic","Buddhist","Spiritual","Catholic","Other"];
+  final List<String> politicalOptions     = ["Liberal","Moderate","Conservative","Not political","Other"];
+  final List<String> educationOptions     = ["High School","Undergraduate","Postgraduate","Trade School","Other"];
+  final List<String> kidsOptions          = ["Want someday","Don't want","Have & want more","Have & don't want more","Not sure"];
+  final List<String> petsOptions          = ["Dog","Cat","Reptile","Amphibian","Bird","Fish","None","Want one","Allergic"];
+  final List<String> exerciseOptions      = ["Active","Sometimes","Almost never"];
+  final List<String> habitOptions         = ["Yes","Sometimes","No"];
+  final List<String> starSigns            = ["Aries","Taurus","Gemini","Cancer","Leo","Virgo","Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"];
+  final List<String> intentOptionsStrings = ["Life Partner","Long-term relationship","Long-term, open to short","Open to options"];
+  final List<String> interestOptions      = ["Travel","Photography","Hiking","Yoga","Art","Reading","Fitness","Music","Movies","Cooking","Gaming","Writing","Meditation","Tech","Startups","Dancing","Cycling","Swimming","Pets","Volunteering","Astronomy","Blogging","DIY","Podcasting"];
+  final List<String> foodOptions          = ["Coffee","Tea","Pizza","Sushi","Burgers","Street Food","Desserts","Vegan","BBQ","Pasta","Indian","Thai","Mexican","Chinese","Wine","Cocktails","Mocktails","Smoothies","Ice Cream","Biryani"];
+  final List<String> placeOptions         = ["Beach","Mountains","Cafes","Museums","Art Galleries","Hidden Bars","Nature Trails","Bookstores","Rooftops","Parks","Gyms","Libraries","Music Venues","Temples","Historic Sites","Street Markets"];
+  final List<String> languageOptions      = ["English","Spanish","French","German","Chinese","Japanese","Korean","Arabic","Hindi","Portuguese","Russian","Other"];
+
+  final List<String> heightFeet = List.generate(37, (i) => "${(i ~/ 12) + 4}' ${i % 12}\"");
+  final List<String> heightCm   = List.generate(121, (i) => "${i + 120} cm");
 
   @override
   void initState() {
     super.initState();
+    _imageValidationService.initialize();
     _initializeData();
+  }
+
+  @override
+  void dispose() {
+    _imageValidationService.dispose();
+    _nameController.dispose();
+    _jobController.dispose();
+    _schoolController.dispose();
+    super.dispose();
   }
 
   void _initializeData() {
     final data = widget.currentData;
-    
     _nameController = TextEditingController(text: data['full_name']);
-    _jobController = TextEditingController(text: data['job_title']);
-    
-    // Parse Education (Level - School)
+    _jobController  = TextEditingController(text: data['job_title']);
+
     String fullEdu = data['education'] ?? '';
     if (fullEdu.contains(' - ')) {
       var parts = fullEdu.split(' - ');
-      _educationLevel = parts[0];
+      _educationLevel  = parts[0];
       _schoolController = TextEditingController(text: parts.length > 1 ? parts[1] : '');
     } else {
-      _educationLevel = fullEdu.isNotEmpty ? fullEdu : null;
+      _educationLevel   = fullEdu.isNotEmpty ? fullEdu : null;
       _schoolController = TextEditingController();
     }
 
-    // Load simple fields
-    _gender = data['gender'];
+    _gender      = data['gender'];
     _orientation = data['sexual_orientation'];
-    _pronouns = data['pronouns'];
-    _ethnicity = data['ethnicity'];
-    _height = data['height'];
-    _religion = data['religion'];
-    _politics = data['political_views'];
-    _starSign = data['star_sign'];
-    _location = data['location'];
-    _drink = data['drink'];
-    _smoke = data['smoke'];
-    _weed = data['weed'];
-    _exercise = data['exercise'];
-    _kids = data['kids'];
-    _pets = data['pets'];
-    _intent = data['intent'];
+    _pronouns    = data['pronouns'];
+    _ethnicity   = data['ethnicity'];
+    _height      = data['height'];
+    _religion    = data['religion'];
+    _politics    = data['political_views'];
+    _starSign    = data['star_sign'];
+    _location    = data['location'];
+    _drink       = data['drink'];
+    _smoke       = data['smoke'];
+    _weed        = data['weed'];
+    _exercise    = data['exercise'];
+    _kids        = data['kids'];
+    _pets        = data['pets'];
+    _intent      = data['intent'];
 
-    // Load Lists
     _languages = List<String>.from((data['languages'] as String?)?.split(', ') ?? []);
     _interests = List<String>.from(data['interests'] ?? []);
-    _foods = List<String>.from(data['foods'] ?? []);
-    _places = List<String>.from(data['places'] ?? []);
+    _foods     = List<String>.from(data['foods'] ?? []);
+    _places    = List<String>.from(data['places'] ?? []);
 
-    // Load Photos
     List<dynamic> loadedPhotos = data['photo_urls'] ?? [];
     for (int i = 0; i < loadedPhotos.length && i < 6; i++) {
       _photos[i] = loadedPhotos[i];
     }
 
-    // Load Prompts
     List<dynamic> loadedPrompts = data['prompts'] ?? [];
     for (int i = 0; i < 3; i++) {
       if (i < loadedPrompts.length && loadedPrompts[i] != null) {
@@ -150,38 +141,49 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
-  // --- 3. Save Logic ---
+  // ─── Save ────────────────────────────────────────────────────────────────────
   Future<void> _saveProfile() async {
-    setState(() => _isLoading = true);
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
+    // ─── Text Moderation ────────────────────────────────────────────────────────
+    String? nameError = ContentModerator.validateText(_nameController.text);
+    if (nameError != null) { _showNotification(nameError); return; }
+    String? jobError = ContentModerator.validateText(_jobController.text);
+    if (jobError != null) { _showNotification(jobError); return; }
+
+    String? schoolError = ContentModerator.validateText(_schoolController.text);
+    if (schoolError != null) { _showNotification(schoolError); return; }
+
+    for (var prompt in _prompts) {
+      if (prompt != null) {
+        String? promptError = ContentModerator.validateText(prompt['answer']);
+        if (promptError != null) { _showNotification(promptError); return; }
+      }
+    }
+
+    setState(() => _isLoading = true);
     try {
       final supabase = Supabase.instance.client;
       List<String> finalPhotoUrls = [];
-      
-      // 1. Upload/Keep Photos
       for (var item in _photos) {
         if (item == null) continue;
-        
         if (item is File) {
           final fileExt = item.path.split('.').last;
           final fileName = '$userId/${DateTime.now().millisecondsSinceEpoch}_${finalPhotoUrls.length}.$fileExt';
           await supabase.storage.from('user_photos').upload(fileName, item);
-          final url = supabase.storage.from('user_photos').getPublicUrl(fileName);
-          finalPhotoUrls.add(url);
+          finalPhotoUrls.add(supabase.storage.from('user_photos').getPublicUrl(fileName));
         } else if (item is String) {
           finalPhotoUrls.add(item);
         }
       }
 
-      // 2. Prepare Data
       String finalEdu = _educationLevel ?? '';
       if (_schoolController.text.isNotEmpty) {
         finalEdu = "$finalEdu - ${_schoolController.text.trim()}";
       }
 
-      final updates = {
+      await supabase.from('profiles').update({
         'full_name': _nameController.text.trim(),
         'job_title': _jobController.text.trim(),
         'education': finalEdu,
@@ -207,165 +209,256 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'places': _places,
         'photo_urls': finalPhotoUrls,
         'prompts': _prompts.where((p) => p != null).toList(),
-      };
+        if (_photo0Changed) 'is_verified': false,
+      }).eq('id', userId);
 
-      await supabase.from('profiles').update(updates).eq('id', userId);
-
-      if (mounted) Navigator.pop(context, true); // Return true to trigger refresh
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error saving: $e")));
+      if (mounted) _showNotification("Error saving: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- 4. Main UI Build ---
+  void _showNotification(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.info_outline_rounded,
+              color: isError ? const Color(0xFFE57373) : kRose,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.dmSans(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: kInk,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        duration: const Duration(seconds: 4),
+        elevation: 4,
+      ),
+    );
+  }
+
+  // ─── Build ───────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kTan,
-      appBar: AppBar(
-        backgroundColor: kTan,
-        elevation: 0,
-        centerTitle: false,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded, color: kBlack),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          "Edit Profile",
-          style: GoogleFonts.outfit(color: kBlack, fontWeight: FontWeight.w800, fontSize: 24, letterSpacing: -0.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: _isLoading ? null : _saveProfile,
-            child: _isLoading 
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kRose))
-              : Text("Save", style: GoogleFonts.outfit(color: kRose, fontWeight: FontWeight.w700, fontSize: 16)),
-          )
+      backgroundColor: kCream,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 60),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 104), // header spacer
+
+                // ── PHOTOS ──────────────────────────────────────────────────
+                _buildSectionLabel("My Photos"),
+                const SizedBox(height: 12),
+                _buildPhotoGrid(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+                  child: Text(
+                    "Tap a photo to replace it.",
+                    style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 12, fontWeight: FontWeight.w400),
+                  ),
+                ),
+
+                // ── THE ESSENTIALS ───────────────────────────────────────────
+                const SizedBox(height: 28),
+                _buildSectionLabel("The Essentials"),
+                const SizedBox(height: 10),
+                _buildCard([
+                  _buildTextRow("Name", _nameController),
+                  _buildBoneDivider(),
+                  _buildTextRow("Job Title", _jobController),
+                  _buildBoneDivider(),
+                  _buildLocationRow(),
+                ]),
+
+                // ── ABOUT ME ─────────────────────────────────────────────────
+                const SizedBox(height: 28),
+                _buildSectionLabel("About Me"),
+                const SizedBox(height: 10),
+                _buildCard([
+                  _buildSelectorRow("Height",      _height,      Icons.straighten_outlined,         () => _showHeightPicker()),
+                  _buildBoneDivider(),
+                  _buildEducationSelector(),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Gender",      _gender,      Icons.person_outline_rounded,       () => _showChipModal("Gender", genderOptions, _gender, (v) => setState(() => _gender = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Pronouns",    _pronouns,    Icons.record_voice_over_outlined,   () => _showChipModal("Pronouns", pronounOptions, _pronouns, (v) => setState(() => _pronouns = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Orientation", _orientation, Icons.favorite_border_rounded,      () => _showChipModal("Sexual Orientation", orientationOptions, _orientation, (v) => setState(() => _orientation = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Ethnicity",   _ethnicity,   Icons.public_outlined,              () => _showChipModal("Ethnicity", ethnicityOptions, _ethnicity, (v) => setState(() => _ethnicity = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Religion",    _religion,    Icons.auto_stories_outlined,        () => _showChipModal("Religion", religionOptions, _religion, (v) => setState(() => _religion = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Politics",    _politics,    Icons.gavel_outlined,               () => _showChipModal("Politics", politicalOptions, _politics, (v) => setState(() => _politics = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Star Sign",   _starSign,    Icons.auto_awesome_outlined,        () => _showChipModal("Star Sign", starSigns, _starSign, (v) => setState(() => _starSign = v))),
+                  _buildBoneDivider(),
+                  _buildMultiRow("Languages",      _languages,   Icons.translate_outlined,           () => _showMultiSelectModal("Languages", languageOptions, _languages)),
+                ]),
+
+                // ── LIFESTYLE ────────────────────────────────────────────────
+                const SizedBox(height: 28),
+                _buildSectionLabel("Lifestyle"),
+                const SizedBox(height: 10),
+                _buildCard([
+                  _buildSelectorRow("Looking For", _intent,   Icons.search_rounded,          () => _showChipModal("Intent", intentOptionsStrings, _intent, (v) => setState(() => _intent = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Kids",        _kids,     Icons.child_care_outlined,     () => _showChipModal("Kids", kidsOptions, _kids, (v) => setState(() => _kids = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Pets",        _pets,     Icons.pets_outlined,           () => _showChipModal("Pets", petsOptions, _pets, (v) => setState(() => _pets = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Exercise",    _exercise, Icons.fitness_center_outlined, () => _showChipModal("Exercise", exerciseOptions, _exercise, (v) => setState(() => _exercise = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Drink",       _drink,    Icons.local_bar_outlined,      () => _showChipModal("Drink", habitOptions, _drink, (v) => setState(() => _drink = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Smoke",       _smoke,    Icons.smoking_rooms_outlined,  () => _showChipModal("Smoke", habitOptions, _smoke, (v) => setState(() => _smoke = v))),
+                  _buildBoneDivider(),
+                  _buildSelectorRow("Weed",        _weed,     Icons.grass_outlined,          () => _showChipModal("Weed", habitOptions, _weed, (v) => setState(() => _weed = v))),
+                ]),
+
+                // ── PASSIONS ─────────────────────────────────────────────────
+                const SizedBox(height: 28),
+                _buildSectionLabel("Passions & Discovery"),
+                const SizedBox(height: 10),
+                _buildCard([
+                  _buildMultiRow("Interests",      _interests, Icons.favorite_border_rounded, () => _showMultiSelectModal("Interests", interestOptions, _interests)),
+                  _buildBoneDivider(),
+                  _buildMultiRow("Favorite Foods", _foods,     Icons.restaurant_outlined,     () => _showMultiSelectModal("Foods", foodOptions, _foods)),
+                  _buildBoneDivider(),
+                  _buildMultiRow("Favorite Places",_places,    Icons.location_on_outlined,    () => _showMultiSelectModal("Places", placeOptions, _places)),
+                ]),
+
+                // ── PROMPTS ──────────────────────────────────────────────────
+                const SizedBox(height: 28),
+                _buildSectionLabel("My Prompts"),
+                const SizedBox(height: 10),
+                _buildPromptsList(),
+              ],
+            ),
+          ),
+
+          // ── FROSTED HEADER ───────────────────────────────────────────────────
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: _buildHeader(),
+          ),
         ],
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 50),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // A. PHOTOS
-            _buildSectionHeader("My Photos"),
-            const SizedBox(height: 8),
-            _buildPhotoGrid(),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              child: Text(
-                "Tap to replace. Dragging not supported yet.", 
-                style: GoogleFonts.outfit(color: Colors.grey.shade500, fontSize: 13, fontWeight: FontWeight.w500)
+    );
+  }
+
+  // ─── Header ──────────────────────────────────────────────────────────────────
+  Widget _buildHeader() {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          height: 100,
+          decoration: BoxDecoration(
+            color: kCream.withOpacity(0.88),
+            border: Border(bottom: BorderSide(color: kBone, width: 0.5)),
+          ),
+          padding: const EdgeInsets.fromLTRB(6, 44, 16, 10),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: kInk),
+                onPressed: () => Navigator.pop(context),
               ),
-            ),
-
-            // B. THE ESSENTIALS
-            const SizedBox(height: 20),
-            _buildSectionHeader("The Essentials"),
-            _buildContainer([
-               _buildTextFieldRow("Name", _nameController),
-               _buildDivider(),
-               _buildTextFieldRow("Job Title", _jobController),
-               _buildDivider(),
-               _buildLocationRow(),
-            ]),
-
-            // C. ABOUT ME
-            const SizedBox(height: 20),
-            _buildSectionHeader("About Me"),
-            _buildContainer([
-              _buildSelectorRow("Height", _height, () => _showHeightPicker()),
-              _buildDivider(),
-              _buildEducationSelector(),
-              _buildDivider(),
-              _buildSelectorRow("Gender", _gender, () => _showChipModal("Gender", genderOptions, _gender, (v) => setState(() => _gender = v))),
-              _buildDivider(),
-              _buildSelectorRow("Pronouns", _pronouns, () => _showChipModal("Pronouns", pronounOptions, _pronouns, (v) => setState(() => _pronouns = v))),
-              _buildDivider(),
-              _buildSelectorRow("Orientation", _orientation, () => _showChipModal("Sexual Orientation", orientationOptions, _orientation, (v) => setState(() => _orientation = v))),
-              _buildDivider(),
-              _buildSelectorRow("Ethnicity", _ethnicity, () => _showChipModal("Ethnicity", ethnicityOptions, _ethnicity, (v) => setState(() => _ethnicity = v))),
-              _buildDivider(),
-              _buildSelectorRow("Religion", _religion, () => _showChipModal("Religion", religionOptions, _religion, (v) => setState(() => _religion = v))),
-              _buildDivider(),
-              _buildSelectorRow("Politics", _politics, () => _showChipModal("Politics", politicalOptions, _politics, (v) => setState(() => _politics = v))),
-              _buildDivider(),
-              _buildSelectorRow("Star Sign", _starSign, () => _showChipModal("Star Sign", starSigns, _starSign, (v) => setState(() => _starSign = v))),
-               _buildDivider(),
-              _buildMultiSelectRow("Languages", _languages, () => _showMultiSelectModal("Languages", languageOptions, _languages)),
-            ]),
-
-            // D. LIFESTYLE
-            const SizedBox(height: 20),
-            _buildSectionHeader("Lifestyle"),
-            _buildContainer([
-              _buildSelectorRow("Looking For", _intent, () => _showChipModal("Intent", intentOptionsStrings, _intent, (v) => setState(() => _intent = v))),
-              _buildDivider(),
-              _buildSelectorRow("Kids", _kids, () => _showChipModal("Kids", kidsOptions, _kids, (v) => setState(() => _kids = v))),
-              _buildDivider(),
-              _buildSelectorRow("Pets", _pets, () => _showChipModal("Pets", petsOptions, _pets, (v) => setState(() => _pets = v))),
-              _buildDivider(),
-              _buildSelectorRow("Exercise", _exercise, () => _showChipModal("Exercise", exerciseOptions, _exercise, (v) => setState(() => _exercise = v))),
-              _buildDivider(),
-              _buildSelectorRow("Drink", _drink, () => _showChipModal("Drink", habitOptions, _drink, (v) => setState(() => _drink = v))),
-              _buildDivider(),
-              _buildSelectorRow("Smoke", _smoke, () => _showChipModal("Smoke", habitOptions, _smoke, (v) => setState(() => _smoke = v))),
-              _buildDivider(),
-              _buildSelectorRow("Weed", _weed, () => _showChipModal("Weed", habitOptions, _weed, (v) => setState(() => _weed = v))),
-            ]),
-
-            // E. PASSIONS
-            const SizedBox(height: 20),
-            _buildSectionHeader("Passions & Discovery"),
-            _buildContainer([
-              _buildMultiSelectRow("Interests", _interests, () => _showMultiSelectModal("Interests", interestOptions, _interests)),
-              _buildDivider(),
-              _buildMultiSelectRow("Favorite Foods", _foods, () => _showMultiSelectModal("Foods", foodOptions, _foods)),
-              _buildDivider(),
-              _buildMultiSelectRow("Favorite Places", _places, () => _showMultiSelectModal("Places", placeOptions, _places)),
-            ]),
-
-            // F. PROMPTS
-            const SizedBox(height: 20),
-            _buildSectionHeader("My Prompts"),
-            _buildPromptsList(),
-          ],
+              const SizedBox(width: 2),
+              Expanded(
+                child: Text(
+                  "Edit Profile",
+                  style: GoogleFonts.domine(
+                    color: kInk,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w400,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
+              _isLoading
+                  ? SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 1.5, color: kRose))
+                  : GestureDetector(
+                      onTap: _saveProfile,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: kRose,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          "Save",
+                          style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                        ),
+                      ),
+                    ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // --- 5. Helper Widgets ---
-
-  Widget _buildSectionHeader(String title) {
+  // ─── Section Label ────────────────────────────────────────────────────────────
+  Widget _buildSectionLabel(String label) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: Text(
-        title.toUpperCase(), 
-        style: GoogleFonts.outfit(color: kRose, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.5)
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        children: [
+          Container(width: 3, height: 16, color: kGold, margin: const EdgeInsets.only(right: 10)),
+          Text(
+            label.toUpperCase(),
+            style: GoogleFonts.dmSans(
+              fontSize: 11, fontWeight: FontWeight.w700,
+              color: kInkMuted, letterSpacing: 1.8,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildContainer(List<Widget> children) {
+  // ─── Card Shell ───────────────────────────────────────────────────────────────
+  Widget _buildCard(List<Widget> children) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 16, offset: const Offset(0, 6))],
+        color: kParchment,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kBone, width: 1),
+        boxShadow: [BoxShadow(color: kInk.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 6))],
       ),
       child: Column(children: children),
     );
   }
 
-  Widget _buildDivider() => Divider(height: 1, thickness: 1, color: Colors.grey.withOpacity(0.08), indent: 24, endIndent: 24);
+  Widget _buildBoneDivider() => Divider(height: 1, thickness: 1, color: kBone, indent: 20, endIndent: 20);
 
-  // --- Photos Grid ---
+  // ─── Photo Grid ───────────────────────────────────────────────────────────────
   Widget _buildPhotoGrid() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -373,34 +466,55 @@ class _EditProfilePageState extends State<EditProfilePage> {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3, childAspectRatio: 0.7, crossAxisSpacing: 12, mainAxisSpacing: 12
+          crossAxisCount: 3, childAspectRatio: 0.72,
+          crossAxisSpacing: 10, mainAxisSpacing: 10,
         ),
         itemCount: 6,
         itemBuilder: (context, index) {
           final item = _photos[index];
           return GestureDetector(
             onTap: () => _showPhotoOptions(index),
-            child: Container(
+              child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
+                color: kParchment,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: kBone, width: 1),
+                boxShadow: [BoxShadow(color: kInk.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
               ),
-              child: item != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          item is File ? Image.file(item, fit: BoxFit.cover) : Image.network(item, fit: BoxFit.cover),
-                          Positioned(
-                            bottom: 6, right: 6,
-                            child: CircleAvatar(backgroundColor: Colors.white.withOpacity(0.9), radius: 14, child: const Icon(Icons.edit_rounded, size: 16, color: kRose)),
-                          )
-                        ],
-                      ),
-                    )
-                  : Icon(Icons.add_rounded, color: Colors.grey.shade300, size: 36),
+              child: _validatingIndex == index
+                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2, color: kRose))
+                  : item != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(15),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              item is File
+                                  ? Image.file(item, fit: BoxFit.cover)
+                                  : Image.network(item, fit: BoxFit.cover),
+                              Positioned(
+                                bottom: 6, right: 6,
+                                child: Container(
+                                  width: 26, height: 26,
+                                  decoration: BoxDecoration(
+                                    color: kCream.withOpacity(0.92),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: kBone, width: 1),
+                                  ),
+                                  child: const Icon(Icons.edit_rounded, size: 14, color: kRose),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_rounded, color: kBone, size: 28),
+                            const SizedBox(height: 4),
+                            Text("Add", style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 11, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
             ),
           );
         },
@@ -413,38 +527,90 @@ class _EditProfilePageState extends State<EditProfilePage> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        child: Wrap(
-          children: [
-            ListTile(leading: const Icon(Icons.photo_library_rounded), title: Text("Gallery", style: GoogleFonts.outfit(fontWeight: FontWeight.w500)), onTap: () { Navigator.pop(ctx); _pickImage(index, ImageSource.gallery); }),
-            ListTile(leading: const Icon(Icons.camera_alt_rounded), title: Text("Camera", style: GoogleFonts.outfit(fontWeight: FontWeight.w500)), onTap: () { Navigator.pop(ctx); _pickImage(index, ImageSource.camera); }),
-            if (_photos[index] != null)
-              ListTile(leading: const Icon(Icons.delete_rounded, color: Colors.red), title: Text("Remove", style: GoogleFonts.outfit(color: Colors.red, fontWeight: FontWeight.w500)), onTap: () { Navigator.pop(ctx); setState(() => _photos[index] = null); }),
-            const SizedBox(height: 20),
-          ],
+        decoration: BoxDecoration(
+          color: kCream,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: kBone, width: 0.5)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 36, height: 4, margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(color: kBone, borderRadius: BorderRadius.circular(4))),
+              ListTile(
+                leading: Icon(Icons.photo_library_rounded, color: kInkMuted, size: 20),
+                title: Text("Gallery", style: GoogleFonts.dmSans(fontWeight: FontWeight.w500, color: kInk)),
+                onTap: () { Navigator.pop(ctx); _pickImage(index, ImageSource.gallery); },
+              ),
+              Divider(height: 1, color: kBone, indent: 16, endIndent: 16),
+              ListTile(
+                leading: Icon(Icons.camera_alt_rounded, color: kInkMuted, size: 20),
+                title: Text("Camera", style: GoogleFonts.dmSans(fontWeight: FontWeight.w500, color: kInk)),
+                onTap: () { Navigator.pop(ctx); _pickImage(index, ImageSource.camera); },
+              ),
+              if (_photos[index] != null) ...[
+                Divider(height: 1, color: kBone, indent: 16, endIndent: 16),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
+                  title: Text("Remove", style: GoogleFonts.dmSans(color: Colors.red, fontWeight: FontWeight.w500)),
+                  onTap: () { Navigator.pop(ctx); setState(() => _photos[index] = null); },
+                ),
+              ],
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Future<void> _pickImage(int index, ImageSource source) async {
-    final XFile? img = await _picker.pickImage(source: source, imageQuality: 80);
-    if (img != null) setState(() => _photos[index] = File(img.path));
+    final XFile? pickedFile = await _picker.pickImage(source: source, imageQuality: 80);
+    if (pickedFile == null) return;
+
+    final File file = File(pickedFile.path);
+
+    setState(() => _validatingIndex = index);
+    
+    // Premium "Scanning" toast
+    _showNotification("Scanning your photo...", isError: false);
+
+    try {
+      final validationResult = await _imageValidationService.validateImage(file, index);
+
+      if (mounted) {
+        if (!validationResult.isValid) {
+          _showNotification(validationResult.errorMessage ?? "Invalid image");
+        } else {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          setState(() {
+            _photos[index] = file;
+            if (index == 0) _photo0Changed = true;
+          });
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _validatingIndex = null);
+    }
   }
 
-  // --- Form Rows ---
+  // ─── Row Builders ─────────────────────────────────────────────────────────────
 
-  Widget _buildTextFieldRow(String label, TextEditingController controller) {
+  Widget _buildTextRow(String label, TextEditingController ctrl) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
         children: [
-          SizedBox(width: 90, child: Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15))),
+          SizedBox(
+            width: 90,
+            child: Text(label, style: GoogleFonts.dmSans(fontWeight: FontWeight.w500, color: kInkMuted, fontSize: 14)),
+          ),
           Expanded(
             child: TextField(
-              controller: controller,
+              controller: ctrl,
               decoration: const InputDecoration(border: InputBorder.none, isDense: true),
-              style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: kBlack, fontSize: 16),
+              style: GoogleFonts.dmSans(fontWeight: FontWeight.w600, color: kInk, fontSize: 15),
               textAlign: TextAlign.end,
             ),
           ),
@@ -453,61 +619,92 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  Widget _buildSelectorRow(String label, String? value, VoidCallback onTap) {
+  Widget _buildSelectorRow(String label, String? value, IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Row(
           children: [
-            Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15)),
-            const Spacer(),
-            Text(value ?? "Add", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: value == null ? kRose : kBlack, fontSize: 16)),
+            Icon(icon, size: 18, color: kRose),
             const SizedBox(width: 12),
-            Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[400]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMultiSelectRow(String label, List<String> values, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Row(
-          children: [
-            Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15)),
-            const Spacer(),
-            Text("${values.length} selected", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: kBlack, fontSize: 16)),
-            const SizedBox(width: 12),
-            Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[400]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- Specialized Rows ---
-  Widget _buildLocationRow() {
-    return InkWell(
-      onTap: _fetchCurrentLocation, // Tap to fetch GPS location
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Row(
-          children: [
-            Text("Location", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15)),
-            const Spacer(),
-            Icon(Icons.location_on_rounded, size: 16, color: kRose),
-            const SizedBox(width: 6),
-            Expanded(
-                child: Text(_location ?? "Tap to update", 
+            Text(label, style: GoogleFonts.dmSans(fontWeight: FontWeight.w500, color: kInkMuted, fontSize: 14)),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                value ?? "Add",
                 textAlign: TextAlign.end,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: kBlack, fontSize: 16)
+                style: GoogleFonts.dmSans(
+                  fontWeight: FontWeight.w500,
+                  color: value == null ? kRoseLight : kInk,
+                  fontSize: 14,
+                ),
               ),
             ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, size: 18, color: kBone),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMultiRow(String label, List<String> values, IconData icon, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: kRose),
+            const SizedBox(width: 12),
+            Text(label, style: GoogleFonts.dmSans(fontWeight: FontWeight.w500, color: kInkMuted, fontSize: 14)),
+            const Spacer(),
+            Text(
+              values.isEmpty ? "Add" : "${values.length} selected",
+              style: GoogleFonts.dmSans(
+                fontWeight: FontWeight.w500,
+                color: values.isEmpty ? kRoseLight : kInk,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, size: 18, color: kBone),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationRow() {
+    return InkWell(
+      onTap: _fetchCurrentLocation,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          children: [
+            const Icon(Icons.location_on_outlined, size: 18, color: kRose),
+            const SizedBox(width: 12),
+            Text("Location", style: GoogleFonts.dmSans(fontWeight: FontWeight.w500, color: kInkMuted, fontSize: 14)),
+            const Spacer(),
+            Flexible(
+              child: Text(
+                _location ?? "Tap to update",
+                textAlign: TextAlign.end,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.dmSans(
+                  fontWeight: FontWeight.w500,
+                  color: _location == null ? kRoseLight : kInk,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, size: 18, color: kBone),
           ],
         ),
       ),
@@ -524,87 +721,228 @@ class _EditProfilePageState extends State<EditProfilePage> {
         setState(() => _location = "${placemarks[0].locality}, ${placemarks[0].country}");
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Location error: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Location error: $e")));
+      }
     }
   }
 
   Widget _buildEducationSelector() {
     return InkWell(
-      onTap: () {
-         _showChipModal("Education Level", educationOptions, _educationLevel, (v) => setState(() => _educationLevel = v));
-      },
+      onTap: () => _showChipModal("Education Level", educationOptions, _educationLevel, (v) => setState(() => _educationLevel = v)),
+      borderRadius: BorderRadius.circular(4),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(width: 90, child: Text("Education", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: Colors.grey.shade500, fontSize: 15))),
+            const Padding(
+              padding: EdgeInsets.only(top: 3),
+              child: Icon(Icons.school_outlined, size: 18, color: kRose),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 80,
+              child: Text("Education", style: GoogleFonts.dmSans(fontWeight: FontWeight.w500, color: kInkMuted, fontSize: 14)),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(_educationLevel ?? "Select Level", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: _educationLevel == null ? kRose : kBlack, fontSize: 16)),
+                  Text(
+                    _educationLevel ?? "Select Level",
+                    style: GoogleFonts.dmSans(
+                      fontWeight: FontWeight.w500,
+                      color: _educationLevel == null ? kRoseLight : kInk,
+                      fontSize: 14,
+                    ),
+                  ),
                   TextField(
                     controller: _schoolController,
                     textAlign: TextAlign.end,
-                    decoration: InputDecoration(hintText: "School Name (Optional)", border: InputBorder.none, isDense: true, hintStyle: GoogleFonts.outfit(color: Colors.grey, fontSize: 14)),
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.w500, color: kBlack, fontSize: 14),
-                  )
+                    style: GoogleFonts.dmSans(fontWeight: FontWeight.w400, color: kInk, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: "School Name (Optional)",
+                      hintStyle: GoogleFonts.dmSans(color: kInkMuted, fontSize: 13),
+                      border: InputBorder.none, isDense: true,
+                    ),
+                  ),
                 ],
               ),
-            )
+            ),
+            const SizedBox(width: 6),
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(Icons.chevron_right_rounded, size: 18, color: kBone),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // --- Modals (The Magic that makes it functional yet clean) ---
+  // ─── Prompts ─────────────────────────────────────────────────────────────────
+  Widget _buildPromptsList() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: List.generate(3, (index) {
+          final p = _prompts[index];
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              color: kParchment,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: kBone, width: 1),
+              boxShadow: [BoxShadow(color: kInk.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 6))],
+            ),
+            child: p == null
+                ? InkWell(
+                    onTap: () => _editPrompt(index),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 34, height: 34,
+                            decoration: BoxDecoration(color: kRosePale, shape: BoxShape.circle),
+                            child: const Icon(Icons.add_rounded, color: kRose, size: 18),
+                          ),
+                          const SizedBox(width: 14),
+                          Text(
+                            "Add a Prompt",
+                            style: GoogleFonts.dmSans(color: kInkMuted, fontWeight: FontWeight.w500, fontSize: 15),
+                          ),
+                          const Spacer(),
+                          Icon(Icons.chevron_right_rounded, color: kBone, size: 20),
+                        ],
+                      ),
+                    ),
+                  )
+                : InkWell(
+                    onTap: () => _editPrompt(index),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Opening quote
+                              Text(
+                                "\u201C",
+                                style: GoogleFonts.domine(
+                                  fontSize: 36, color: kRose.withOpacity(0.3), height: 0.8,
+                                ),
+                              ),
+                              const Spacer(),
+                              GestureDetector(
+                                onTap: () => setState(() => _prompts[index] = null),
+                                child: Icon(Icons.close_rounded, color: kInkMuted, size: 18),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            (p['question'] ?? '').toString(),
+                            style: GoogleFonts.dmSans(
+                              color: kInkMuted, fontSize: 11,
+                              fontWeight: FontWeight.w600, letterSpacing: 1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            p['answer'] ?? '',
+                            style: GoogleFonts.domine(
+                              fontSize: 22, height: 1.35,
+                              fontWeight: FontWeight.w600, color: kInk,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Icon(Icons.edit_rounded, color: kRose.withOpacity(0.6), size: 12),
+                              const SizedBox(width: 5),
+                              Text(
+                                "Tap to edit",
+                                style: GoogleFonts.dmSans(
+                                  color: kRose.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+          );
+        }),
+      ),
+    );
+  }
+
+  // ─── Modals ───────────────────────────────────────────────────────────────────
 
   void _showChipModal(String title, List<String> options, String? current, Function(String) onSelect) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
         return Container(
-          padding: const EdgeInsets.all(24),
-          height: 450,
+          decoration: BoxDecoration(
+            color: kCream,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(top: BorderSide(color: kBone, width: 0.5)),
+          ),
+          padding: EdgeInsets.fromLTRB(24, 8, 24, MediaQuery.of(ctx).viewInsets.bottom + 32),
+          height: MediaQuery.of(ctx).size.height * 0.6,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800, color: kBlack)),
-              const SizedBox(height: 24),
+              Center(
+                child: Container(
+                  width: 36, height: 4, margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(color: kBone, borderRadius: BorderRadius.circular(4)),
+                ),
+              ),
+              Text(title, style: GoogleFonts.domine(fontSize: 24, fontWeight: FontWeight.w400, color: kInk)),
+              const SizedBox(height: 20),
               Expanded(
                 child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
                   child: Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
+                    spacing: 10, runSpacing: 10,
                     children: options.map((opt) {
                       final isSelected = current == opt;
-                      return ChoiceChip(
-                        label: Text(opt),
-                        selected: isSelected,
-                        selectedColor: kRose,
-                        backgroundColor: Colors.white,
-                        showCheckmark: false,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(color: isSelected ? kRose : Colors.grey.shade300, width: 1.5)
+                      return GestureDetector(
+                        onTap: () { onSelect(opt); Navigator.pop(ctx); },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? kRose : kCream,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected ? kRose : kBone, width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Text(
+                            opt,
+                            style: GoogleFonts.dmSans(
+                              color: isSelected ? Colors.white : kInk,
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                              fontSize: 14,
+                            ),
+                          ),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        labelStyle: GoogleFonts.outfit(
-                          color: isSelected ? Colors.white : kBlack,
-                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                          fontSize: 15
-                        ),
-                        onSelected: (_) {
-                          onSelect(opt);
-                          Navigator.pop(context);
-                        },
                       );
                     }).toList(),
                   ),
                 ),
-              )
+              ),
             ],
           ),
         );
@@ -616,59 +954,80 @@ class _EditProfilePageState extends State<EditProfilePage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
         return StatefulBuilder(
-          builder: (context, setModalState) {
+          builder: (ctx, setModalState) {
             return Container(
-              padding: const EdgeInsets.all(24),
-              height: MediaQuery.of(context).size.height * 0.75,
+              decoration: BoxDecoration(
+                color: kCream,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border(top: BorderSide(color: kBone, width: 0.5)),
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+              height: MediaQuery.of(ctx).size.height * 0.75,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Center(
+                    child: Container(
+                      width: 36, height: 4, margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(color: kBone, borderRadius: BorderRadius.circular(4)),
+                    ),
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800, color: kBlack)),
-                      TextButton(onPressed: () => Navigator.pop(context), child: Text("Done", style: GoogleFonts.outfit(color: kRose, fontWeight: FontWeight.w700, fontSize: 16)))
+                      Text(title, style: GoogleFonts.domine(fontSize: 24, fontWeight: FontWeight.w400, color: kInk)),
+                      GestureDetector(
+                        onTap: () => Navigator.pop(ctx),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(color: kRose, borderRadius: BorderRadius.circular(8)),
+                          child: Text("Done", style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   Expanded(
                     child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
                       child: Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
+                        spacing: 10, runSpacing: 10,
                         children: options.map((opt) {
                           final isSelected = current.contains(opt);
-                          return FilterChip(
-                            label: Text(opt),
-                            selected: isSelected,
-                            selectedColor: kRose,
-                            backgroundColor: Colors.white,
-                            showCheckmark: false,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                              side: BorderSide(color: isSelected ? kRose : Colors.grey.shade300, width: 1.5)
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            labelStyle: GoogleFonts.outfit(
-                              color: isSelected ? Colors.white : kBlack,
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              fontSize: 15
-                            ),
-                            onSelected: (_) {
+                          return GestureDetector(
+                            onTap: () {
                               setModalState(() {
-                                setState(() { // Update parent state
+                                setState(() {
                                   isSelected ? current.remove(opt) : current.add(opt);
                                 });
                               });
                             },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isSelected ? kRose : kCream,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected ? kRose : kBone, width: isSelected ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Text(
+                                opt,
+                                style: GoogleFonts.dmSans(
+                                  color: isSelected ? Colors.white : kInk,
+                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
                           );
                         }).toList(),
                       ),
                     ),
-                  )
+                  ),
                 ],
               ),
             );
@@ -681,35 +1040,50 @@ class _EditProfilePageState extends State<EditProfilePage> {
   void _showHeightPicker() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
-        return StatefulBuilder(builder: (context, setModalState) {
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setModalState) {
           final list = _isFeet ? heightFeet : heightCm;
           return Container(
-            padding: const EdgeInsets.all(24),
-            height: 400,
+            decoration: BoxDecoration(
+              color: kCream,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border(top: BorderSide(color: kBone, width: 0.5)),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+            height: 420,
             child: Column(
               children: [
+                Center(
+                  child: Container(
+                    width: 36, height: 4, margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(color: kBone, borderRadius: BorderRadius.circular(4)),
+                  ),
+                ),
+                Text("Height", style: GoogleFonts.domine(fontSize: 24, fontWeight: FontWeight.w400, color: kInk)),
+                const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _buildToggleBtn("Feet", _isFeet, () => setModalState(() => _isFeet = true)),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     _buildToggleBtn("CM", !_isFeet, () => setModalState(() => _isFeet = false)),
                   ],
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
                 Expanded(
                   child: ListWheelScrollView.useDelegate(
                     itemExtent: 50,
                     perspective: 0.003,
                     onSelectedItemChanged: (i) => setState(() => _height = list[i]),
                     childDelegate: ListWheelChildBuilderDelegate(
-                      builder: (c, i) => Center(child: Text(list[i], style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w700, color: kBlack))),
+                      builder: (c, i) => Center(
+                        child: Text(list[i], style: GoogleFonts.domine(fontSize: 22, fontWeight: FontWeight.w600, color: kInk)),
+                      ),
                       childCount: list.length,
                     ),
                   ),
-                )
+                ),
               ],
             ),
           );
@@ -722,89 +1096,86 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 9),
         decoration: BoxDecoration(
-          color: active ? kRose : Colors.white, 
-          border: Border.all(color: active ? kRose : Colors.grey.shade300, width: 1.5),
-          borderRadius: BorderRadius.circular(24)
+          color: active ? kRose : kCream,
+          border: Border.all(color: active ? kRose : kBone, width: 1),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Text(txt, style: GoogleFonts.outfit(color: active ? Colors.white : Colors.grey.shade600, fontWeight: FontWeight.w700)),
+        child: Text(
+          txt,
+          style: GoogleFonts.dmSans(
+            color: active ? Colors.white : kInkMuted,
+            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+            fontSize: 14,
+          ),
+        ),
       ),
     );
   }
 
-  // --- Prompts List ---
-  Widget _buildPromptsList() {
-    return Column(
-      children: List.generate(3, (index) {
-        final p = _prompts[index];
-        return GestureDetector(
-          onTap: () => _editPrompt(index),
-          child: Container(
-             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-             padding: const EdgeInsets.all(20),
-             decoration: BoxDecoration(
-               color: Colors.white, 
-               borderRadius: BorderRadius.circular(24),
-               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
-             ),
-             child: p == null 
-               ? Row(children: [const Icon(Icons.add_circle_outline_rounded, color: kRose), const SizedBox(width: 12), Text("Add a Prompt", style: GoogleFonts.outfit(color: Colors.grey.shade500, fontWeight: FontWeight.w600, fontSize: 16))])
-               : Column(
-                   crossAxisAlignment: CrossAxisAlignment.start,
-                   children: [
-                     Text((p['question'] ?? '').toUpperCase(), style: GoogleFonts.outfit(color: kRose, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-                     const SizedBox(height: 8),
-                     Text(p['answer'] ?? '', style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w600, color: kBlack, height: 1.3)),
-                   ],
-                 ),
-          ),
-        );
-      }),
-    );
-  }
-
+  // ─── Prompt Editor ────────────────────────────────────────────────────────────
   void _editPrompt(int index) {
     final questions = [
       "What I'd order for the table", "One thing to know about me", "My ideal Sunday",
       "I'm overly competitive about", "The way to win my heart", "My biggest pet peeve",
       "I geek out on", "A random fact I love", "My simple pleasures", "I'm looking for",
       "Unpopular opinion", "Two truths and a lie"
-    ]; 
-    
+    ];
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         height: MediaQuery.of(context).size.height * 0.85,
-        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: kCream,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: kBone, width: 0.5)),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Choose a Prompt", style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 24, color: kBlack)),
-                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx))
-              ],
+            Center(
+              child: Container(
+                width: 36, height: 4, margin: const EdgeInsets.only(top: 12, bottom: 16),
+                decoration: BoxDecoration(color: kBone, borderRadius: BorderRadius.circular(4)),
+              ),
             ),
-            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text("Choose a Prompt", style: GoogleFonts.domine(fontWeight: FontWeight.w400, fontSize: 24, color: kInk)),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, color: kInkMuted, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  )
+                ],
+              ),
+            ),
             Expanded(
               child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                 itemCount: questions.length,
-                separatorBuilder: (c, i) => Divider(color: Colors.grey.withOpacity(0.1)),
+                separatorBuilder: (c, i) => Divider(color: kBone, height: 1),
                 itemBuilder: (context, i) => ListTile(
-                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                  title: Text(questions[i], style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600, color: kBlack)),
-                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  title: Text(
+                    questions[i],
+                    style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w400, color: kInk),
+                  ),
+                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 13, color: kInkMuted),
                   onTap: () {
                     Navigator.pop(ctx);
                     _showAnswerDialog(index, questions[i]);
                   },
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -816,27 +1187,44 @@ class _EditProfilePageState extends State<EditProfilePage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text(question, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: kBlack)),
+        backgroundColor: kCream,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: kBone, width: 1),
+        ),
+        title: Text(question, style: GoogleFonts.domine(fontSize: 17, fontWeight: FontWeight.w500, color: kInk, height: 1.3)),
         content: TextField(
-          controller: ctrl, 
-          maxLines: 4, 
-          autofocus: true, 
-          style: GoogleFonts.outfit(fontSize: 16),
+          controller: ctrl,
+          maxLines: 4,
+          autofocus: true,
+          style: GoogleFonts.dmSans(fontSize: 15, color: kInk),
           decoration: InputDecoration(
-            hintText: "Enter your answer...",
-            hintStyle: GoogleFonts.outfit(color: Colors.grey),
+            hintText: "Your answer…",
+            hintStyle: GoogleFonts.dmSans(color: kInkMuted, fontSize: 15),
             filled: true,
-            fillColor: Colors.grey.shade100,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-          )
+            fillColor: kParchment,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: kBone)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: kBone)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: kRose, width: 1.5)),
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text("Cancel", style: GoogleFonts.outfit(color: Colors.grey))),
-          TextButton(onPressed: () {
-            if(ctrl.text.isNotEmpty) setState(() => _prompts[index] = {'question': question, 'answer': ctrl.text});
-            Navigator.pop(ctx);
-          }, child: Text("Save", style: GoogleFonts.outfit(color: kRose, fontWeight: FontWeight.w700)))
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text("Cancel", style: GoogleFonts.dmSans(color: kInkMuted, fontWeight: FontWeight.w500)),
+          ),
+          GestureDetector(
+            onTap: () {
+              if (ctrl.text.isNotEmpty) setState(() => _prompts[index] = {'question': question, 'answer': ctrl.text});
+              Navigator.pop(ctx);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              decoration: BoxDecoration(color: kRose, borderRadius: BorderRadius.circular(8)),
+              child: Text("Save", style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+            ),
+          ),
+          const SizedBox(width: 4),
         ],
       ),
     );

@@ -8,6 +8,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'main.dart';
 import 'profile_store.dart';
+import 'services/image_validation_service.dart';
+import 'services/content_moderator.dart';
 import 'success_screen.dart'; 
 
 import 'package:flutter_map/flutter_map.dart';
@@ -46,6 +48,8 @@ class _BasicsPageState extends State<BasicsPage> {
   final PageController _pageController = PageController();
   int _currentQuestionIndex = 0;
   bool _isUploading = false;
+  int? _validatingIndex;
+  final ImageValidationService _validationService = ImageValidationService();
   
   // Total steps
   final int _totalQuestionScreens = 24; 
@@ -143,6 +147,13 @@ class _BasicsPageState extends State<BasicsPage> {
     super.initState();
     _generateHeightOptions();
     _loadFromStore();
+    _validationService.initialize();
+  }
+
+  @override
+  void dispose() {
+    _validationService.dispose();
+    super.dispose();
   }
 
   void _generateHeightOptions() {
@@ -268,7 +279,10 @@ class _BasicsPageState extends State<BasicsPage> {
 
   bool _validateCurrentStep() {
     switch (_currentQuestionIndex) {
-      case 0: return nameController.text.trim().length >= 2;
+      case 0: 
+        final error = ContentModerator.validateText(nameController.text);
+        if (error != null) { _showNotification(error); return false; }
+        return nameController.text.trim().length >= 2;
       case 1: return selectedAge != null;
       case 2: return selectedGender != null;
       case 3: return selectedOrientation != null;
@@ -277,8 +291,14 @@ class _BasicsPageState extends State<BasicsPage> {
       case 6: return selectedEthnicity != null;
       case 7: return selectedHeight != null;
       case 8: return selectedReligion != null;
-      case 9: return true; // Optional: selectedEducationLevel != null;
-      case 10: return true; // Optional: jobController.text.trim().isNotEmpty;
+      case 9: 
+        final error = ContentModerator.validateText(schoolNameController.text);
+        if (error != null) { _showNotification(error); return false; }
+        return true; 
+      case 10: 
+        final error = ContentModerator.validateText(jobController.text);
+        if (error != null) { _showNotification(error); return false; }
+        return true; 
       case 11: return selectedLanguages.isNotEmpty;
       case 12: return true; // Optional: selectedPolitics != null;
       case 13: return true; // Optional: selectedKids != null;
@@ -291,14 +311,49 @@ class _BasicsPageState extends State<BasicsPage> {
       case 20: return selectedFoods.isNotEmpty; 
       case 21: return selectedPlaces.isNotEmpty; 
       case 22: return _photos.where((p) => p != null).length >= 2; 
-      case 23: return _promptSlots.every((slot) => slot != null); 
+      case 23: 
+        for (var slot in _promptSlots) {
+          if (slot != null) {
+            final error = ContentModerator.validateText(slot['answer']);
+            if (error != null) { _showNotification(error); return false; }
+          }
+        }
+        return _promptSlots.every((slot) => slot != null); 
     }
     return true;
   }
 
-  void _showError(String message) {
+  void _showNotification(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating),
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline_rounded : Icons.info_outline_rounded,
+              color: isError ? const Color(0xFFE57373) : kRose,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.dmSans(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: kBlack,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        duration: const Duration(seconds: 4),
+        elevation: 4,
+      ),
     );
   }
 
@@ -385,6 +440,7 @@ class _BasicsPageState extends State<BasicsPage> {
         'places': store.places,
         'photo_urls': photoUrls,
         'prompts': _promptSlots,
+        'is_verified': false,
         'created_at': DateTime.now().toIso8601String(),
       };
 
@@ -397,7 +453,7 @@ class _BasicsPageState extends State<BasicsPage> {
         );
       }
     } catch (e) {
-      if (mounted) _showError("Error uploading: $e");
+      if (mounted) _showNotification("Error uploading: $e");
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
@@ -408,7 +464,7 @@ class _BasicsPageState extends State<BasicsPage> {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _showError("Location services are disabled.");
+        _showNotification("Location services are disabled.");
         return;
       }
 
@@ -416,13 +472,13 @@ class _BasicsPageState extends State<BasicsPage> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          _showError("Location permissions are denied.");
+          _showNotification("Location permissions are denied.");
           return;
         }
       }
       
       if (permission == LocationPermission.deniedForever) {
-        _showError("Location permissions are permanently denied.");
+        _showNotification("Location permissions are permanently denied.");
         return;
       }
 
@@ -432,7 +488,7 @@ class _BasicsPageState extends State<BasicsPage> {
       _mapController.move(_currentMapCenter, 13.0);
     } catch (e) {
       debugPrint("Location Error: $e");
-      _showError("Could not fetch location.");
+      _showNotification("Could not fetch location.");
     }
   }
 
@@ -469,12 +525,12 @@ class _BasicsPageState extends State<BasicsPage> {
         FocusManager.instance.primaryFocus?.unfocus();
       } else {
         setState(() => _isMapLoading = false);
-        _showError("Could not identify location name.");
+        _showNotification("Could not identify location name.");
       }
     } catch (e) {
       setState(() => _isMapLoading = false);
       debugPrint("Confirm Location Error: $e");
-      _showError("Failed to lock location.");
+      _showNotification("Failed to lock location.");
     }
   }
 
@@ -490,10 +546,10 @@ class _BasicsPageState extends State<BasicsPage> {
         });
         _mapController.move(_currentMapCenter, 13.0);
       } else {
-        _showError("Location not found.");
+        _showNotification("Location not found.");
       }
     } catch (e) {
-      _showError("Could not find address: $query");
+      _showNotification("Could not find address: $query");
     }
   }
 
@@ -1151,7 +1207,7 @@ class _BasicsPageState extends State<BasicsPage> {
                       selectionList.remove(option);
                     } else {
                       if (_getTotalDiscoverySelections() >= 15) {
-                        _showError("You can choose up to 15 combined discovery traits.");
+                        _showNotification("You can choose up to 15 combined discovery traits.");
                       } else {
                         selectionList.add(option);
                       }
@@ -1167,7 +1223,7 @@ class _BasicsPageState extends State<BasicsPage> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: Colors.grey.shade300)),
               onPressed: () {
                 if (_getTotalDiscoverySelections() >= 15) {
-                   _showError("You can choose up to 15 combined discovery traits.");
+                   _showNotification("You can choose up to 15 combined discovery traits.");
                    return;
                 }
                 _showAddCustomOptionDialog(title, selectionList, (newVal) {
@@ -1203,8 +1259,10 @@ class _BasicsPageState extends State<BasicsPage> {
               ),
               itemBuilder: (context, index) {
                 final photoFile = _photos[index];
+                final isValidating = _validatingIndex == index;
+
                 return GestureDetector(
-                  onTap: () => photoFile == null ? _showPhotoOptions(index) : _removeImage(index),
+                  onTap: () => (photoFile == null && !isValidating) ? _showPhotoOptions(index) : (photoFile != null ? _removeImage(index) : null),
                   child: Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -1212,15 +1270,17 @@ class _BasicsPageState extends State<BasicsPage> {
                       border: Border.all(color: photoFile == null && index < 2 ? kRose : Colors.transparent, width: 2), // Highlight required slots
                       boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
                     ),
-                    child: photoFile != null
-                        ? Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              ClipRRect(borderRadius: BorderRadius.circular(13), child: Image.file(photoFile, fit: BoxFit.cover)),
-                              const Positioned(bottom: 4, right: 4, child: CircleAvatar(radius: 10, backgroundColor: Colors.white, child: Icon(Icons.close, size: 14, color: kRose))),
-                            ],
-                          )
-                        : Icon(Icons.add_a_photo, color: index < 2 ? kRose : Colors.grey[300]),
+                    child: isValidating
+                        ? const Center(child: CircularProgressIndicator(color: kRose, strokeWidth: 2))
+                        : photoFile != null
+                            ? Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  ClipRRect(borderRadius: BorderRadius.circular(13), child: Image.file(photoFile, fit: BoxFit.cover)),
+                                  const Positioned(bottom: 4, right: 4, child: CircleAvatar(radius: 10, backgroundColor: Colors.white, child: Icon(Icons.close, size: 14, color: kRose))),
+                                ],
+                              )
+                            : Icon(Icons.add_a_photo, color: index < 2 ? kRose : Colors.grey[300]),
                   ),
                 );
               },
@@ -1248,7 +1308,28 @@ class _BasicsPageState extends State<BasicsPage> {
 
   Future<void> _pickImage(int index, ImageSource source) async {
     final XFile? img = await _picker.pickImage(source: source, imageQuality: 80);
-    if (img != null) setState(() => _photos[index] = File(img.path));
+    if (img != null) {
+      setState(() => _validatingIndex = index);
+      
+      // Premium "Scanning" toast
+      _showNotification("Scanning your photo...", isError: false);
+
+      try {
+        final file = File(img.path);
+        final result = await _validationService.validateImage(file, index);
+        
+        if (result.isValid) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          setState(() => _photos[index] = file);
+        } else {
+          _showNotification(result.errorMessage ?? "Invalid image");
+        }
+      } catch (e) {
+        _showNotification("Validation error: $e");
+      } finally {
+        setState(() => _validatingIndex = null);
+      }
+    }
   }
 
   void _removeImage(int index) => setState(() => _photos[index] = null);

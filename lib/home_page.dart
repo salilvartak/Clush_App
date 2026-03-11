@@ -89,7 +89,12 @@ class _HomePageState extends State<HomePage> {
         ),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: (idx) => setState(() => _selectedIndex = idx),
+          onTap: (idx) {
+            setState(() => _selectedIndex = idx);
+            // Re-check verification whenever they switch tabs to ensure they haven't 
+            // bypassed the gate (e.g. by changing photo in edit profile)
+            _checkVerificationStatus();
+          },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           elevation: 0,

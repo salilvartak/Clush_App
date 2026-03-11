@@ -62,6 +62,9 @@ dependencies:
   flutter_map: ^8.2.2
   latlong2: ^0.9.1
   url_launcher: ^6.3.2
+  google_mlkit_face_detection: ^0.13.2
+  image: ^4.8.0
+  nsfw_detector_flutter: ^1.0.5
   
 
 dev_dependencies:

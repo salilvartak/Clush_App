@@ -1,69 +1,53 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; 
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:google_fonts/google_fonts.dart'; // Typography
+import 'package:google_fonts/google_fonts.dart';
 import 'services/notification_service.dart';
+import 'main.dart';
+import 'setting_sub_pages.dart';
+import 'edit_profile_page.dart';
 
-import 'main.dart'; 
-import 'setting_sub_pages.dart'; 
-import 'edit_profile_page.dart'; 
-
-const Color kRose = Color(0xFFCD9D8F);
-const Color kBlack = Color(0xFF2D2D2D);
-const Color kTan = Color(0xFFF8F9FA);
+const Color kRose      = Color(0xFFB87E72);
+const Color kRosePale  = Color(0xFFF5EAE7);
+const Color kCream     = Color(0xFFFAF7F4);
+const Color kParchment = Color(0xFFF0EBE5);
+const Color kBone      = Color(0xFFE5DED7);
+const Color kInk       = Color(0xFF1C1714);
+const Color kInkMuted  = Color(0xFF6B5E57);
+const Color kGold      = Color(0xFFC9A96E);
+const Color kTan       = kCream;
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
-
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  // State for toggles
   bool activityStatus = true;
   bool notificationsEnabled = true;
   bool emailUpdates = true;
-  bool _isLoadingProfile = false; 
-
-  // Dynamic user data
-  String? _userEmail;
-  String? _userPhone;
-  String? _userLocation;
+  bool _isLoadingProfile = false;
+  String? _userEmail, _userPhone, _userLocation;
 
   @override
-  void initState() {
-    super.initState();
-    _loadSettings();
-  }
+  void initState() { super.initState(); _loadSettings(); }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final user = FirebaseAuth.instance.currentUser;
-    
-    String? fetchedLocation;
-    String? fetchedPhone = user?.phoneNumber;
-
+    String? fetchedLocation, fetchedPhone = user?.phoneNumber;
     if (user != null) {
       try {
         final data = await Supabase.instance.client
-            .from('profiles')
-            .select('location, phone')
-            .eq('id', user.uid)
-            .maybeSingle();
-            
+            .from('profiles').select('location, phone').eq('id', user.uid).maybeSingle();
         fetchedLocation = data?['location'];
-        // Fallback to Supabase phone if Firebase Auth doesn't have it
-        if (fetchedPhone == null || fetchedPhone.isEmpty) {
-          fetchedPhone = data?['phone'];
-        }
-      } catch (e) {
-        print("Error fetching user data: $e");
-      }
+        if (fetchedPhone == null || fetchedPhone.isEmpty) fetchedPhone = data?['phone'];
+      } catch (_) {}
     }
-
     setState(() {
       notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
       _userEmail = user?.email;
@@ -81,159 +65,73 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       await GoogleSignIn().signOut();
       await FirebaseAuth.instance.signOut();
-      if (mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error logging out: $e"))
-        );
-      }
-    }
+      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+    } catch (e) { if (mounted) _toast("Error: $e", err: true); }
   }
 
   Future<void> _handleEditProfile() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
-
     setState(() => _isLoadingProfile = true);
-
     try {
       final data = await Supabase.instance.client
-          .from('profiles')
-          .select()
-          .eq('id', userId)
-          .single();
-
+          .from('profiles').select().eq('id', userId).single();
       if (!mounted) return;
-
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => EditProfilePage(currentData: data),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error loading profile: $e")),
-      );
-    } finally {
-      if (mounted) setState(() => _isLoadingProfile = false);
-    }
-  }
-
-  void _showRetentionDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Leaving so soon?", textAlign: TextAlign.center),
-        content: const Text(
-            "Are you sure you want to delete your account?\n\n"
-            "As a gift, stay with us and get 1 WEEK OF PREMIUM for FREE!",
-            textAlign: TextAlign.center,
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-        actionsPadding: const EdgeInsets.all(16),
-        actions: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kRose,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _claimPremium();
-                },
-                child: const Text("Claim 1 Week Premium", style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kRose,
-                  side: const BorderSide(color: kRose, width: 2),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _navTo(const PauseAccountPage());
-                },
-                child: const Text("Put Account on Hold", style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _confirmFinalDeletion();
-                },
-                child: const Text("Delete Anyway", style: TextStyle(color: Colors.red)),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-              ),
-            ],
-          )
-        ],
-      ),
-    );
+      await Navigator.push(context,
+          MaterialPageRoute(builder: (_) => EditProfilePage(currentData: data)));
+    } catch (e) { _toast("Error loading profile: $e", err: true); }
+    finally { if (mounted) setState(() => _isLoadingProfile = false); }
   }
 
   Future<void> _claimPremium() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
-
     try {
-      await Supabase.instance.client
-          .from('profiles')
-          .update({
-            'is_premium': true, 
-            'premium_expiry': DateTime.now().add(const Duration(days: 7)).toIso8601String()
-          })
-          .eq('id', userId);
+      await Supabase.instance.client.from('profiles').update({
+        'is_premium': true,
+        'premium_expiry': DateTime.now().add(const Duration(days: 7)).toIso8601String()
+      }).eq('id', userId);
+      if (mounted) _toast("1 Week Premium Claimed!");
+    } catch (e) { if (mounted) _toast("Error: $e", err: true); }
+  }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("1 Week Premium Claimed! Enjoy your upgraded experience."),
-            backgroundColor: Colors.green,
-          )
-        );
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error claiming premium: $e")));
-    }
+  void _showRetentionDialog() {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: kCream,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
+      title: Text("Leaving so soon?", textAlign: TextAlign.center,
+          style: GoogleFonts.domine(fontSize: 22, color: kInk)),
+      content: Text("Delete your account?\n\nStay and get 1 WEEK OF PREMIUM FREE!", textAlign: TextAlign.center,
+          style: GoogleFonts.dmSans(color: kInkMuted, height: 1.5)),
+      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      actionsPadding: const EdgeInsets.all(16),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _solidBtn("Claim 1 Week Premium", () { Navigator.pop(ctx); _claimPremium(); }),
+        const SizedBox(height: 10),
+        _outlineBtn("Put Account on Hold", () { Navigator.pop(ctx); _navTo(const PauseAccountPage()); }),
+        TextButton(onPressed: () { Navigator.pop(ctx); _confirmFinalDeletion(); },
+            child: Text("Delete Anyway", style: GoogleFonts.dmSans(color: Colors.red.shade400))),
+        TextButton(onPressed: () => Navigator.pop(ctx),
+            child: Text("Cancel", style: GoogleFonts.dmSans(color: kInkMuted))),
+      ])],
+    ));
   }
 
   void _confirmFinalDeletion() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Final Confirmation"),
-        content: const Text("This action is permanent and cannot be undone. All your data, matches, and messages will be permanently lost. Are you absolutely sure?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx), 
-            child: const Text("Cancel")
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await _deleteAccount();
-            }, 
-            child: const Text("Yes, Delete", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
-          ),
-        ]
-      )
-    );
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: kCream,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
+      title: Text("Are you sure?", style: GoogleFonts.domine(fontSize: 22, color: kInk)),
+      content: Text("This is permanent. All data, matches and messages will be lost.",
+          style: GoogleFonts.dmSans(color: kInkMuted, height: 1.5)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx),
+            child: Text("Cancel", style: GoogleFonts.dmSans(color: kInkMuted))),
+        TextButton(onPressed: () async { Navigator.pop(ctx); await _deleteAccount(); },
+            child: Text("Yes, Delete", style: GoogleFonts.dmSans(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
+      ],
+    ));
   }
 
   Future<void> _deleteAccount() async {
@@ -243,369 +141,254 @@ class _SettingsPageState extends State<SettingsPage> {
         await Supabase.instance.client.from('profiles').delete().eq('id', user.uid);
         await user.delete();
       }
-      
-      if (mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error deleting account: $e. You may need to log out and log back in to perform this action."))
-        );
-      }
-    }
+      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+    } catch (e) { if (mounted) _toast("Error: $e", err: true); }
   }
 
-  // Updated _navTo to reload settings upon returning
   Future<void> _navTo(Widget page) async {
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => page));
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => page));
     _loadSettings();
+  }
+
+  void _toast(String msg, {bool err = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.w500)),
+      backgroundColor: err ? Colors.red.shade400 : kRose,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      margin: const EdgeInsets.all(16),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kTan,
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverAppBar(
-            backgroundColor: kTan,
-            expandedHeight: 120,
-            floating: false,
-            pinned: true,
-            elevation: 0,
-            iconTheme: const IconThemeData(color: kBlack),
-            flexibleSpace: FlexibleSpaceBar(
-              titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
-              title: Text(
-                "Settings",
-                style: GoogleFonts.outfit(color: kBlack, fontWeight: FontWeight.w800, fontSize: 32, letterSpacing: -0.5),
-              ),
-            ),
-          ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  
-                  // --- ACCOUNT ---
-                  _buildSectionLabel("Account"),
-                  _buildSectionContainer(children: [
-                    _buildPremiumTile(
-                      icon: Icons.edit_outlined,
-                      title: "Edit Profile",
-                      trailing: _isLoadingProfile 
-                          ? const SizedBox(
-                              width: 20, 
-                              height: 20, 
-                              child: CircularProgressIndicator(strokeWidth: 2, color: kRose)
-                            ) 
-                          : null,
-                      onTap: _isLoadingProfile ? null : _handleEditProfile,
-                    ),
-                    _buildDivider(),
-                    _buildPremiumTile(
-                      icon: Icons.phone_outlined,
-                      title: "Phone Number",
-                      subtitle: (_userPhone != null && _userPhone!.isNotEmpty) ? _userPhone : "Not provided",
-                      onTap: () => _navTo(const PhoneNumberPage()),
-                    ),
-                    _buildDivider(),
-                    _buildPremiumTile(
-                      icon: Icons.email_outlined,
-                      title: "Email Address",
-                      subtitle: (_userEmail != null && _userEmail!.isNotEmpty) ? _userEmail : "Not provided",
-                      onTap: () => _navTo(const EmailAddressPage()),
-                    ),
-                    _buildDivider(),
-                    _buildPremiumTile(
-                      icon: Icons.pause_circle_outline,
-                      title: "Pause Account",
-                      onTap: () => _navTo(const PauseAccountPage()),
-                    ),
+      backgroundColor: kCream,
+      body: Stack(children: [
+        CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            const SliverToBoxAdapter(child: SizedBox(height: 110)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _sectionLabel("Account"),
+                  _card([
+                    _tile(icon: Icons.edit_outlined, title: "Edit Profile",
+                        trailing: _isLoadingProfile
+                            ? SizedBox(width: 18, height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 1.5, color: kRose))
+                            : null,
+                        onTap: _isLoadingProfile ? null : _handleEditProfile),
+                    _divider(),
+                    _tile(icon: Icons.phone_outlined, title: "Phone Number",
+                        subtitle: (_userPhone?.isNotEmpty == true) ? _userPhone : "Not provided",
+                        onTap: () => _navTo(const PhoneNumberPage())),
+                    _divider(),
+                    _tile(icon: Icons.email_outlined, title: "Email Address",
+                        subtitle: (_userEmail?.isNotEmpty == true) ? _userEmail : "Not provided",
+                        onTap: () => _navTo(const EmailAddressPage())),
+                    _divider(),
+                    _tile(icon: Icons.pause_circle_outline, title: "Pause Account",
+                        onTap: () => _navTo(const PauseAccountPage())),
                   ]),
-
-                  // --- DISCOVERY ---
-                  _buildSectionLabel("Discovery"),
-                  _buildSectionContainer(children: [
-                    _buildPremiumTile(
-                      icon: Icons.location_on_outlined,
-                      title: "Location",
-                      subtitle: (_userLocation != null && _userLocation!.isNotEmpty) ? _userLocation : "Not set",
-                      onTap: () => _navTo(const CurrentLocationPage()),
-                    ),
-                    _buildDivider(),
-                    _buildPremiumTile(
-                      icon: Icons.flight_takeoff,
-                      title: "Travel Mode",
-                      trailing: _buildPremiumBadge("Premium"),
-                      onTap: () => _navTo(const TravelModePage()),
-                    ),
+                  _sectionLabel("Discovery"),
+                  _card([
+                    _tile(icon: Icons.location_on_outlined, title: "Location",
+                        subtitle: (_userLocation?.isNotEmpty == true) ? _userLocation : "Not set",
+                        onTap: () => _navTo(const CurrentLocationPage())),
+                    _divider(),
+                    _tile(icon: Icons.flight_takeoff_rounded, title: "Travel Mode",
+                        trailing: _premiumBadge(),
+                        onTap: () => _navTo(const TravelModePage())),
                   ]),
-
-                  // --- PRIVACY ---
-                  _buildSectionLabel("Privacy & Safety"),
-                  _buildSectionContainer(children: [
-                    _buildPremiumTile(
-                      icon: Icons.access_time,
-                      title: "Activity Status",
-                      trailing: Switch.adaptive(
-                        value: activityStatus,
-                        activeColor: kRose,
-                        onChanged: (v) => setState(() => activityStatus = v),
-                      ),
-                    ),
-                    _buildDivider(),
-                    _buildPremiumTile(
-                      icon: Icons.verified_user_outlined,
-                      title: "Verification",
-                      subtitle: "Get that blue tick",
-                      onTap: () => _navTo(const VerificationPage()),
-                    ),
-                    _buildDivider(),
-                    _buildPremiumTile(
-                      icon: Icons.block_outlined,
-                      title: "Blocked Contacts",
-                      onTap: () => _navTo(const BlockListPage()),
-                    ),
+                  _sectionLabel("Privacy & Safety"),
+                  _card([
+                    _tile(icon: Icons.access_time_rounded, title: "Activity Status",
+                        trailing: Switch.adaptive(value: activityStatus, activeColor: kRose,
+                            onChanged: (v) => setState(() => activityStatus = v))),
+                    _divider(),
+                    _tile(icon: Icons.verified_user_outlined, title: "Verification",
+                        subtitle: "Get that verified badge",
+                        onTap: () => _navTo(const VerificationPage())),
+                    _divider(),
+                    _tile(icon: Icons.block_outlined, title: "Blocked Contacts",
+                        onTap: () => _navTo(const BlockListPage())),
                   ]),
-
-                  // --- NOTIFICATIONS ---
-                  _buildSectionLabel("Notifications"),
-                  _buildSectionContainer(children: [
-                    _buildPremiumTile(
-                      icon: Icons.notifications_none,
-                      title: "Push Notifications",
-                      trailing: Switch.adaptive(
-                        value: notificationsEnabled,
-                        activeColor: kRose,
-                        onChanged: _toggleNotifications,
-                      ),
-                    ),
-                    _buildDivider(),
-                    _buildPremiumTile(
-                      icon: Icons.mail_outline,
-                      title: "Email Updates",
-                      trailing: Switch.adaptive(
-                        value: emailUpdates,
-                        activeColor: kRose,
-                        onChanged: (v) => setState(() => emailUpdates = v),
-                      ),
-                    ),
+                  _sectionLabel("Notifications"),
+                  _card([
+                    _tile(icon: Icons.notifications_none_rounded, title: "Push Notifications",
+                        trailing: Switch.adaptive(value: notificationsEnabled, activeColor: kRose,
+                            onChanged: _toggleNotifications)),
+                    _divider(),
+                    _tile(icon: Icons.mail_outline_rounded, title: "Email Updates",
+                        trailing: Switch.adaptive(value: emailUpdates, activeColor: kRose,
+                            onChanged: (v) => setState(() => emailUpdates = v))),
                   ]),
-
-                  // --- COMMUNITY ---
-                  _buildSectionLabel("Community"),
-                  _buildSectionContainer(children: [
-                    _buildPremiumTile(
-                      icon: Icons.favorite_border,
-                      title: "Safe Dating Tips",
-                      onTap: () => _navTo(const LegalPage(title: "Safe Dating", content: "...")),
-                    ),
-                    _buildDivider(),
-                    _buildPremiumTile(
-                      icon: Icons.description_outlined,
-                      title: "Legal & Licenses",
-                      onTap: () => _navTo(const LegalPage(title: "Legal", content: "...")),
-                    ),
+                  _sectionLabel("Community"),
+                  _card([
+                    _tile(icon: Icons.favorite_border_rounded, title: "Safe Dating Tips",
+                        onTap: () => _navTo(const LegalPage(title: "Safe Dating", content: "..."))),
+                    _divider(),
+                    _tile(icon: Icons.description_outlined, title: "Legal & Licenses",
+                        onTap: () => _navTo(const LegalPage(title: "Legal", content: "..."))),
                   ]),
-
-                  const SizedBox(height: 40),
-
-                  // --- LOGOUT & DELETE BUTTONS ---
+                  const SizedBox(height: 48),
                   _buildLogoutButton(),
-                  
-                  Center(
-                    child: TextButton(
-                      onPressed: _showRetentionDialog,
-                      child: Text(
-                        "Delete Account",
-                        style: GoogleFonts.outfit(
-                          color: Colors.grey, 
-                          fontSize: 15, 
-                          fontWeight: FontWeight.w500,
-                          decoration: TextDecoration.underline
-                        ),
-                      ),
-                    ),
-                  ),
-                  
+                  const SizedBox(height: 12),
+                  Center(child: TextButton(
+                    onPressed: _showRetentionDialog,
+                    child: Text("Delete Account", style: GoogleFonts.dmSans(
+                        color: kInkMuted, fontSize: 14,
+                        decoration: TextDecoration.underline, decorationColor: kInkMuted)),
+                  )),
                   const SizedBox(height: 20),
-                  
-                  // --- VERSION INFO ---
-                  Center(
-                    child: Text(
-                      "Version 1.0.0 (Build 24)",
-                      style: GoogleFonts.outfit(color: Colors.black38, fontSize: 13, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                  const SizedBox(height: 50),
-                ],
+                  Center(child: Text("Version 1.0.0 (Build 24)",
+                      style: GoogleFonts.dmSans(color: kBone, fontSize: 12))),
+                  const SizedBox(height: 60),
+                ]),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+        Positioned(top: 0, left: 0, right: 0, child: _buildHeader()),
+      ]),
     );
   }
 
-  // ================= PREMIUM WIDGETS =================
-
-  Widget _buildSectionLabel(String label) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 12, bottom: 12, top: 32),
-      child: Text(
-        label.toUpperCase(),
-        style: GoogleFonts.outfit(
-          fontSize: 13, 
-          fontWeight: FontWeight.w800, 
-          color: kRose,
-          letterSpacing: 1.5
+  Widget _buildHeader() {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          height: 108,
+          decoration: BoxDecoration(
+            color: kCream.withOpacity(0.88),
+            border: Border(bottom: BorderSide(color: kBone, width: 0.5)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 52, 24, 12),
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: Text("Settings", style: GoogleFonts.domine(
+                color: kInk, fontSize: 30, fontWeight: FontWeight.w400, letterSpacing: -0.5)),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSectionContainer({required List<Widget> children}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(children: children),
+  Widget _sectionLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, top: 28, bottom: 10),
+      child: Row(children: [
+        Container(width: 3, height: 14, color: kGold, margin: const EdgeInsets.only(right: 9)),
+        Text(label.toUpperCase(), style: GoogleFonts.dmSans(
+            fontSize: 11, fontWeight: FontWeight.w700, color: kInkMuted, letterSpacing: 1.8)),
+      ]),
     );
   }
 
-  Widget _buildPremiumTile({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    Widget? trailing,
-    VoidCallback? onTap,
-  }) {
+  Widget _card(List<Widget> children) => Container(
+    decoration: BoxDecoration(
+      color: kParchment,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: kBone, width: 1),
+      boxShadow: [BoxShadow(color: kInk.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 6))],
+    ),
+    child: Column(children: children),
+  );
+
+  Widget _divider() => Divider(height: 1, thickness: 1, color: kBone, indent: 56);
+
+  Widget _tile({required IconData icon, required String title,
+      String? subtitle, Widget? trailing, VoidCallback? onTap}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: kRose.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: kRose, size: 22),
-              ),
-              const SizedBox(width: 16),
-              
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.outfit(
-                        fontSize: 16, 
-                        fontWeight: FontWeight.w600, 
-                        color: kBlack
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: GoogleFonts.outfit(
-                          fontSize: 14, 
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w400
-                        ),
-                      ),
-                    ]
-                  ],
-                ),
-              ),
-
-              if (trailing != null) 
-                trailing
-              else 
-                Icon(Icons.chevron_right_rounded, color: Colors.black.withOpacity(0.2), size: 24),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return Divider(
-      height: 1, 
-      thickness: 1, 
-      color: Colors.grey.withOpacity(0.08), 
-      indent: 64,
-    );
-  }
-
-  Widget _buildPremiumBadge(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [kRose, Color(0xFFFFC3A0)]),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        text,
-        style: GoogleFonts.outfit(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
-      ),
-    );
-  }
-
-  Widget _buildLogoutButton() {
-    return Center(
-      child: TextButton(
-        onPressed: () {
-          showDialog(
-            context: context, 
-            builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              title: Text("Log Out?", style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
-              content: Text("Are you sure you want to log out?", style: GoogleFonts.outfit()),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: Text("Cancel", style: GoogleFonts.outfit(color: Colors.grey))),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _logout();
-                  }, 
-                  child: Text("Log Out", style: GoogleFonts.outfit(color: Colors.red, fontWeight: FontWeight.bold))
-                ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(children: [
+            Container(width: 36, height: 36,
+                decoration: BoxDecoration(color: kRosePale, shape: BoxShape.circle),
+                child: Icon(icon, color: kRose, size: 18)),
+            const SizedBox(width: 14),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w500, color: kInk)),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(subtitle, style: GoogleFonts.dmSans(fontSize: 13, color: kInkMuted),
+                    overflow: TextOverflow.ellipsis),
               ],
-            )
-          );
-        },
-        child: Text(
-          "Log Out",
-          style: GoogleFonts.outfit(
-            color: Colors.redAccent, 
-            fontSize: 18, 
-            fontWeight: FontWeight.w700
-          ),
+            ])),
+            if (trailing != null) trailing
+            else if (onTap != null) Icon(Icons.chevron_right_rounded, color: kBone, size: 22),
+          ]),
         ),
       ),
     );
   }
+
+  Widget _premiumBadge() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(
+      color: kGold.withOpacity(0.12),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: kGold.withOpacity(0.4)),
+    ),
+    child: Text("PREMIUM", style: GoogleFonts.dmSans(
+        color: kGold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+  );
+
+  Widget _solidBtn(String label, VoidCallback onTap) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: kRose, borderRadius: BorderRadius.circular(12)),
+      child: Text(label, style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+    ),
+  );
+
+  Widget _outlineBtn(String label, VoidCallback onTap) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kRose, width: 1.5),
+      ),
+      child: Text(label, style: GoogleFonts.dmSans(color: kRose, fontWeight: FontWeight.w600, fontSize: 15)),
+    ),
+  );
+
+  Widget _buildLogoutButton() => Center(
+    child: GestureDetector(
+      onTap: () => showDialog(context: context, builder: (ctx) => AlertDialog(
+        backgroundColor: kCream,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
+        title: Text("Log Out?", style: GoogleFonts.domine(fontSize: 22, color: kInk)),
+        content: Text("Are you sure you want to log out?", style: GoogleFonts.dmSans(color: kInkMuted)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: Text("Cancel", style: GoogleFonts.dmSans(color: kInkMuted))),
+          TextButton(onPressed: () { Navigator.pop(ctx); _logout(); },
+              child: Text("Log Out", style: GoogleFonts.dmSans(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
+        ],
+      )),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+        decoration: BoxDecoration(
+          color: kParchment,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kBone, width: 1),
+        ),
+        child: Text("Log Out", style: GoogleFonts.dmSans(
+            color: Colors.red.shade400, fontSize: 15, fontWeight: FontWeight.w600)),
+      ),
+    ),
+  );
 }
