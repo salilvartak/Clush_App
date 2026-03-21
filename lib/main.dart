@@ -8,12 +8,14 @@ import 'firebase_options.dart';
 import 'basics_page.dart'; 
 import 'home_page.dart';
 import 'dart:ui';
+import 'theme/colors.dart'; // NEW IMPORT
 
 import 'package:google_fonts/google_fonts.dart'; // <-- Added for typography
 import 'package:flutter_animate/flutter_animate.dart'; // <-- Added for animations
 
 // Import the notification service
 import 'services/notification_service.dart'; 
+import 'heart_loader.dart'; // <-- Added here
 
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
@@ -45,11 +47,18 @@ class AuraApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        fontFamily: GoogleFonts.outfit().fontFamily,
-        textTheme: GoogleFonts.outfitTextTheme(
+        fontFamily: GoogleFonts.dmSans().fontFamily,
+        textTheme: GoogleFonts.dmSansTextTheme(
           Theme.of(context).textTheme,
         ),
-        scaffoldBackgroundColor: const Color(0xFFF8F9FA), // A sleek off-white
+        scaffoldBackgroundColor: kCream, // Updated to use kCream
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: kRose,
+          primary: kRose,
+          secondary: kGold,
+          surface: kTan,
+          onSurface: kBlack,
+        ),
       ),
       home: const AnimatedSplashScreen(),
     );
@@ -91,7 +100,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
             builder: (context, profileSnapshot) {
               if (profileSnapshot.connectionState == ConnectionState.waiting) {
                  return const Scaffold(
-                    backgroundColor: Color(0xFFE9E6E1),
+                    backgroundColor: kTan,
                     body: Center(child: HeartLoader()), // <-- Replaced with HeartLoader
                  );
               }
@@ -113,14 +122,19 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   Future<bool> _checkProfileExists(String userId) async {
+    final sw = Stopwatch()..start();
     try {
       final data = await Supabase.instance.client
           .from('profiles')
           .select()
           .eq('id', userId)
           .maybeSingle(); 
+      final elapsed = sw.elapsedMilliseconds;
+      if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
       return data != null;
     } catch (e) {
+      final elapsed = sw.elapsedMilliseconds;
+      if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
       return false; 
     }
   }
@@ -182,7 +196,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> with Single
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE9E6E1), 
+      backgroundColor: kTan, 
       body: Center(
         child: AnimatedBuilder(
           animation: _controller,
@@ -212,13 +226,13 @@ class LogoPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     // Theme matching the rest of the app!
     final strokePaint = Paint()
-      ..color = const Color(0xFFCD9D8F) 
+      ..color = kRose 
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.5
       ..strokeCap = StrokeCap.round;
 
     final fillPaint = Paint()
-      ..color = const Color(0xFFCD9D8F).withOpacity(progress == 1.0 ? 1.0 : 0.0)
+      ..color = kRose.withOpacity(progress == 1.0 ? 1.0 : 0.0)
       ..style = PaintingStyle.fill;
 
     // Scale so the massive 1400px SVG fits properly inside the widget Size
@@ -376,7 +390,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE9E6E1),
+      backgroundColor: kTan,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -460,7 +474,7 @@ class _LoginScreenState extends State<LoginScreen> {
             decoration: InputDecoration(
               hintText: "Phone Number (e.g., +91...)",
               hintStyle: const TextStyle(color: Colors.black38, fontSize: 16),
-              prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFFCD9D8F)),
+              prefixIcon: const Icon(Icons.phone_outlined, color: kRose),
               filled: true,
               fillColor: Colors.transparent, // Let the container drive the color
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(24.0), borderSide: BorderSide.none),
@@ -475,9 +489,9 @@ class _LoginScreenState extends State<LoginScreen> {
           child: ElevatedButton(
             onPressed: _isLoading ? null : _verifyPhoneNumber,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFCD9D8F),
+              backgroundColor: kRose,
               elevation: 8,
-              shadowColor: const Color(0xFFCD9D8F).withOpacity(0.4),
+              shadowColor: kRose.withOpacity(0.4),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
             ),
             child: _isLoading 
@@ -549,14 +563,14 @@ class _LoginScreenState extends State<LoginScreen> {
             keyboardType: TextInputType.number,
             textAlign: TextAlign.center,
             maxLength: 6,
-            style: const TextStyle(fontSize: 28, letterSpacing: 14.0, fontWeight: FontWeight.bold, color: Color(0xFF2D2D2D)),
+            style: const TextStyle(fontSize: 28, letterSpacing: 14.0, fontWeight: FontWeight.bold, color: kBlack),
             decoration: InputDecoration(
               counterText: "",
               hintText: "------",
               hintStyle: const TextStyle(letterSpacing: 14.0, color: Colors.black26),
               filled: true,
               fillColor: Colors.transparent,
-              prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFFCD9D8F)),
+              prefixIcon: const Icon(Icons.lock_outline, color: kRose),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(24.0), borderSide: BorderSide.none),
               contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
             ),
@@ -569,9 +583,9 @@ class _LoginScreenState extends State<LoginScreen> {
           child: ElevatedButton(
             onPressed: _isLoading ? null : _signInWithOTP,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFCD9D8F),
+              backgroundColor: kRose,
               elevation: 8,
-              shadowColor: const Color(0xFFCD9D8F).withOpacity(0.4),
+              shadowColor: kRose.withOpacity(0.4),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
             ),
             child: _isLoading 
@@ -601,66 +615,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: const Text("Use a different number", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
         ).animate().fade(duration: 400.ms, delay: 300.ms),
       ],
-    );
-  }
-}
-
-// --- NEW HEART LOADER WIDGET ---
-class HeartLoader extends StatefulWidget {
-  final double size;
-  final Color color;
-
-  const HeartLoader({
-    super.key,
-    this.size = 50.0, // Default size for full screens
-    this.color = const Color(0xFFCD9D8F), // Your brand peach color
-  });
-
-  @override
-  State<HeartLoader> createState() => _HeartLoaderState();
-}
-
-class _HeartLoaderState extends State<HeartLoader> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    // 600ms gives a nice, natural heartbeat rhythm
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    )..repeat(reverse: true); // Reverses automatically to "beat" back down
-    
-    // Scales the heart from 85% to 115% size
-    _animation = Tween<double>(begin: 0.85, end: 1.15).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _animation.value,
-          child: child,
-        );
-      },
-      // Passing child here is an optimization so Flutter doesn't rebuild the Icon
-      child: Icon(
-        Icons.favorite, // You can change this to Icons.favorite_border for an outlined heart
-        color: widget.color,
-        size: widget.size,
-      ),
     );
   }
 }

@@ -6,6 +6,10 @@ import 'likes_page.dart';
 import 'matches_page.dart';
 import 'profile_tab.dart'; 
 import 'setting_sub_pages.dart'; // REQUIRED for VerificationPage
+import 'services/matching_service.dart';
+import 'theme/colors.dart'; 
+import 'heart_loader.dart'; 
+import 'package:google_fonts/google_fonts.dart'; 
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -18,6 +22,8 @@ class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0; 
   bool _isVerified = false;
   bool _isLoading = true;
+  int _unreadCount = 0;
+  final MatchingService _matchingService = MatchingService();
 
   final List<Widget> _pages = [
     const DiscoverPage(),
@@ -30,6 +36,14 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _checkVerificationStatus();
+    _fetchUnreadCount();
+  }
+
+  Future<void> _fetchUnreadCount() async {
+    final count = await _matchingService.getTotalUnreadCount();
+    if (mounted) {
+      setState(() => _unreadCount = count);
+    }
   }
 
   Future<void> _checkVerificationStatus() async {
@@ -59,7 +73,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: Color(0xFFCD9D8F))),
+        body: const Center(child: HeartLoader()),
       );
     }
 
@@ -84,8 +98,8 @@ class _HomePageState extends State<HomePage> {
       body: activeBody,
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Color(0xFFE5DED7), width: 1)),
+          color: kCream, // Updated
+          border: Border(top: BorderSide(color: kBone, width: 1)),
         ),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
@@ -94,20 +108,35 @@ class _HomePageState extends State<HomePage> {
             // Re-check verification whenever they switch tabs to ensure they haven't 
             // bypassed the gate (e.g. by changing photo in edit profile)
             _checkVerificationStatus();
+            _fetchUnreadCount();
           },
           type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
+          backgroundColor: kCream, // Updated
           elevation: 0,
           showSelectedLabels: false,
           showUnselectedLabels: false,
-          selectedItemColor: const Color(0xFFB87E72),
-          unselectedItemColor: const Color(0xFFAFA09A),
+          selectedItemColor: kRose,
+          unselectedItemColor: kInkMuted,
           iconSize: 26,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.style_outlined),      activeIcon: Icon(Icons.style_rounded),         label: ''),
-            BottomNavigationBarItem(icon: Icon(Icons.favorite_border),     activeIcon: Icon(Icons.favorite),              label: ''),
-            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), activeIcon: Icon(Icons.chat_bubble_rounded),   label: ''),
-            BottomNavigationBarItem(icon: Icon(Icons.person_outline),      activeIcon: Icon(Icons.person_rounded),        label: ''),
+          items: [
+            const BottomNavigationBarItem(icon: Icon(Icons.style_rounded),        activeIcon: Icon(Icons.style_rounded),         label: ''),
+            const BottomNavigationBarItem(icon: Icon(Icons.favorite),            activeIcon: Icon(Icons.favorite),              label: ''),
+            BottomNavigationBarItem(
+              icon: Badge(
+                isLabelVisible: _unreadCount > 0,
+                label: Text('$_unreadCount'),
+                backgroundColor: kRose,
+                child: const Icon(Icons.chat_bubble_rounded),
+              ),
+              activeIcon: Badge(
+                isLabelVisible: _unreadCount > 0,
+                label: Text('$_unreadCount'),
+                backgroundColor: kRose,
+                child: const Icon(Icons.chat_bubble_rounded),
+              ),
+              label: '',
+            ),
+            const BottomNavigationBarItem(icon: Icon(Icons.person_rounded),       activeIcon: Icon(Icons.person_rounded),        label: ''),
           ],
         ),
       ),
@@ -116,37 +145,38 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildVerificationPopup() {
     return Container(
-      color: Colors.white,
+      color: kTan,
       child: Center(
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 32),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: kCream,
             borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: kBone, width: 1),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+                color: kBlack.withOpacity(0.15),
+                blurRadius: 32,
+                offset: const Offset(0, 12),
               ),
             ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.lock_outline_rounded, size: 60, color: Color(0xFFCD9D8F)),
+              const Icon(Icons.lock_outline_rounded, size: 60, color: kRose),
               const SizedBox(height: 20),
-              const Text(
-                "Verification Required",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
+                Text(
+                  "Verification Required",
+                  style: GoogleFonts.domine(fontSize: 22, fontWeight: FontWeight.bold, color: kBlack),
+                  textAlign: TextAlign.center,
+                ),
               const SizedBox(height: 12),
               const Text(
                 "To access Matches, Likes, and Discovery, you must verify your identity first.",
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 15),
+                style: TextStyle(color: kInkMuted, fontSize: 15),
               ),
               const SizedBox(height: 30),
               SizedBox(
@@ -163,7 +193,7 @@ class _HomePageState extends State<HomePage> {
                     _checkVerificationStatus();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFCD9D8F),
+                    backgroundColor: kRose,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
                   ),

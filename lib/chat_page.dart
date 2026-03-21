@@ -9,16 +9,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'services/crypto_service.dart';
+import 'heart_loader.dart';
 
-// ─── PALETTE (matches discover_page.dart) ────────────────────────────────────
-const Color kRose      = Color(0xFFB87E72);   // Deep muted rose
-const Color kRoseLight = Color(0xFFD4A99F);   // Soft petal
-const Color kRosePale  = Color(0xFFF5EAE7);   // Blush wash
-const Color kCream     = Color(0xFFFAF7F4);   // Warm parchment bg
-const Color kBone      = Color(0xFFE5DED7);   // Card border / input bg
-const Color kInk       = Color(0xFF1C1714);   // Near-black text
-const Color kInkMuted  = Color(0xFF6B5E57);   // Secondary text
-const Color kGold      = Color(0xFFC9A96E);   // Accent gold
+import 'theme/colors.dart';
 
 class ChatScreen extends StatefulWidget {
   final String myId;
@@ -71,6 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _unreadCount = 0;
         _isAtBottom = true;
       });
+      if (privateRoom != null) _matchingService.updateLastRead(privateRoom!);
     } else if (!atBottom && _isAtBottom) {
       setState(() => _isAtBottom = false);
     }
@@ -97,59 +91,85 @@ class _ChatScreenState extends State<ChatScreen> {
         'room': privateRoom,
         'username': widget.myName,
       });
+      _matchingService.updateLastRead(privateRoom!);
     });
 
-    socket.on('load_history', (data) {
+    // 🛑 THE FIX: Changed 'load_history' to 'chat_history' to match Python perfectly
+    socket.on('chat_history', (data) {
       if (mounted) {
-        setState(() {
-          messages = List<Map<String, dynamic>>.from(data.map((msg) {
-            String decryptedString = _crypto.decryptPayload(msg['message']);
-            Map<String, dynamic> parsed;
-            try {
-              parsed = jsonDecode(decryptedString);
-            } catch (e) {
-              parsed = {"type": "text", "data": decryptedString};
-            }
-            return {
-              'sender': msg['sender'],
-              'type': parsed['type'] ?? 'text',
-              'data': parsed['data'] ?? '[Encrypted Message]',
-              'timestamp': msg['timestamp'] ?? '',
-              'isMe': msg['sender'] == widget.myName,
-            };
-          }));
-        });
-        _scrollToBottom();
+        try {
+          List<dynamic> rawData = data as List<dynamic>;
+          setState(() {
+            messages = rawData.map((msg) {
+              String decryptedString = "[Error decrypting]";
+              Map<String, dynamic> parsed = {"type": "text", "data": decryptedString};
+              
+              try {
+                // Safeguard against null messages
+                String rawMsg = msg['message'] ?? "";
+                if (rawMsg.isNotEmpty) {
+                  decryptedString = _crypto.decryptPayload(rawMsg);
+                  parsed = jsonDecode(decryptedString);
+                }
+              } catch (e) {
+                // If it's old unencrypted text, fallback to it
+                parsed = {"type": "text", "data": decryptedString};
+              }
+
+              return {
+                'sender': msg['sender'],
+                'type': parsed['type'] ?? 'text',
+                'data': parsed['data'] ?? '[Corrupted Message]',
+                'timestamp': msg['timestamp'] ?? '',
+                'isMe': msg['sender'] == widget.myName,
+              };
+            }).toList();
+          });
+          _scrollToBottom();
+        } catch (e) {
+          debugPrint("❌ Flutter History Parsing Error: $e");
+        }
       }
     });
 
     socket.on('receive_message', (data) {
       if (mounted) {
-        String decryptedString = _crypto.decryptPayload(data['message']);
-        Map<String, dynamic> parsed;
         try {
-          parsed = jsonDecode(decryptedString);
-        } catch (e) {
-          parsed = {"type": "text", "data": decryptedString};
-        }
-        setState(() {
-          messages.add({
-            'sender': data['sender'],
-            'type': parsed['type'] ?? 'text',
-            'data': parsed['data'] ?? '[Encrypted]',
-            'timestamp': data['timestamp'] ?? 'Now',
-            'isMe': data['sender'] == widget.myName,
+          String decryptedString = "[Error decrypting]";
+          Map<String, dynamic> parsed = {"type": "text", "data": decryptedString};
+
+          try {
+            String rawMsg = data['message'] ?? "";
+            if (rawMsg.isNotEmpty) {
+              decryptedString = _crypto.decryptPayload(rawMsg);
+              parsed = jsonDecode(decryptedString);
+            }
+          } catch (e) {
+            parsed = {"type": "text", "data": decryptedString};
+          }
+
+          setState(() {
+            messages.add({
+              'sender': data['sender'],
+              'type': parsed['type'] ?? 'text',
+              'data': parsed['data'] ?? '[Corrupted]',
+              'timestamp': data['timestamp'] ?? 'Now',
+              'isMe': data['sender'] == widget.myName,
+            });
+
+            final isFromOther = data['sender'] != widget.myName;
+            if (isFromOther && !_isAtBottom) {
+              _unreadCount++;
+            }
           });
 
-          // Increment unread only if message is from the other person and
-          // the user is not already at the bottom of the chat
-          final isFromOther = data['sender'] != widget.myName;
-          if (isFromOther && !_isAtBottom) {
-            _unreadCount++;
+          if (_isAtBottom) {
+            _scrollToBottom();
+            if (privateRoom != null) _matchingService.updateLastRead(privateRoom!);
           }
-        });
-
-        if (_isAtBottom) _scrollToBottom();
+        } catch (e) {
+          debugPrint("❌ Flutter Receive Message Error: $e");
+        }
       }
     });
 
@@ -498,9 +518,9 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Text(
                 widget.matchName,
-                style: GoogleFonts.dmSans(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
+                style: GoogleFonts.domine(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
                   color: kInk,
                   height: 1.1,
                 ),
@@ -578,7 +598,7 @@ class _ChatScreenState extends State<ChatScreen> {
             // Image button
             IconButton(
               icon: _isUploadingMedia
-                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: kRose, strokeWidth: 2))
+                  ? const HeartLoader(size: 22)
                   : const Icon(Icons.add_photo_alternate_outlined, color: kInkMuted),
               onPressed: _isUploadingMedia ? null : sendEncryptedImage,
             ),
@@ -780,7 +800,7 @@ class _ChatScreenState extends State<ChatScreen> {
             return const SizedBox(
                 height: 150,
                 width: 150,
-                child: Center(child: CircularProgressIndicator(color: kRose, strokeWidth: 2)));
+                child: const Center(child: HeartLoader(size: 40)));
           }
           if (snapshot.hasError || !snapshot.hasData) {
             return const SizedBox(

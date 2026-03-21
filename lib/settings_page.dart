@@ -10,15 +10,8 @@ import 'main.dart';
 import 'setting_sub_pages.dart';
 import 'edit_profile_page.dart';
 
-const Color kRose      = Color(0xFFB87E72);
-const Color kRosePale  = Color(0xFFF5EAE7);
-const Color kCream     = Color(0xFFFAF7F4);
-const Color kParchment = Color(0xFFF0EBE5);
-const Color kBone      = Color(0xFFE5DED7);
-const Color kInk       = Color(0xFF1C1714);
-const Color kInkMuted  = Color(0xFF6B5E57);
-const Color kGold      = Color(0xFFC9A96E);
-const Color kTan       = kCream;
+import 'theme/colors.dart';
+import 'heart_loader.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -178,7 +171,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     _tile(icon: Icons.edit_outlined, title: "Edit Profile",
                         trailing: _isLoadingProfile
                             ? SizedBox(width: 18, height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 1.5, color: kRose))
+                                child: const HeartLoader(size: 20))
                             : null,
                         onTap: _isLoadingProfile ? null : _handleEditProfile),
                     _divider(),
@@ -294,7 +287,7 @@ class _SettingsPageState extends State<SettingsPage> {
       color: kParchment,
       borderRadius: BorderRadius.circular(20),
       border: Border.all(color: kBone, width: 1),
-      boxShadow: [BoxShadow(color: kInk.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 6))],
+      boxShadow: [BoxShadow(color: kInk.withOpacity(0.09), blurRadius: 28, offset: const Offset(0, 8))],
     ),
     child: Column(children: children),
   );

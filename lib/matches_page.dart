@@ -3,12 +3,12 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart'; // Typography
 import 'package:flutter_animate/flutter_animate.dart'; // Animations
+import 'dart:convert';
 import 'chat_page.dart';
-import 'main.dart'; // For HeartLoader
+import 'heart_loader.dart';
+import 'services/crypto_service.dart';
 
-const Color kRose = Color(0xFFCD9D8F);
-const Color kBlack = Color(0xFF2D2D2D);
-const Color kTan = Color(0xFFF8F9FA);
+import 'theme/colors.dart';
 
 class MatchesPage extends StatefulWidget {
   const MatchesPage({super.key});
@@ -31,6 +31,7 @@ class _MatchesPageState extends State<MatchesPage> {
   }
 
   Future<void> _fetchData() async {
+    final sw = Stopwatch()..start();
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
@@ -85,14 +86,59 @@ class _MatchesPageState extends State<MatchesPage> {
         final otherProfile = isUserA_Me ? match['profile_b'] : match['profile_a'];
 
         if (otherProfile != null && !blockedIds.contains(otherProfile['id'])) {
+          final otherId = otherProfile['id'];
+          final roomId = _getRoomId(myId, otherId);
+          
+          String lastMessage = "Tap to chat";
+          DateTime? lastMessageTime;
+
+          try {
+            final lastMsgData = await _supabase
+                .from('messages')
+                .select('message, created_at')
+                .eq('room_id', roomId)
+                .order('created_at', ascending: false)
+                .limit(1)
+                .maybeSingle();
+
+            if (lastMsgData != null) {
+              final crypto = CryptoService(roomId);
+              final decryptedJson = crypto.decryptPayload(lastMsgData['message']);
+              try {
+                final payload = jsonDecode(decryptedJson);
+                if (payload['type'] == 'text') {
+                  lastMessage = payload['data'];
+                } else if (payload['type'] == 'image') {
+                  lastMessage = "Sent an image";
+                }
+              } catch (e) {
+                lastMessage = decryptedJson;
+              }
+              lastMessageTime = DateTime.tryParse(lastMsgData['created_at']);
+            }
+          } catch (e) {
+            print("Error fetching last message for $roomId: $e");
+          }
+
           loadedMatches.add({
-            'match_uuid': otherProfile['id'],
+            'match_uuid': otherId,
             'display_name': otherProfile['full_name'],
+            'last_message': lastMessage,
+            'last_message_time': lastMessageTime,
           });
         }
       }
 
+      // Sort matches by last message time (most recent first)
+      loadedMatches.sort((a, b) {
+        final timeA = a['last_message_time'] as DateTime? ?? DateTime(1970);
+        final timeB = b['last_message_time'] as DateTime? ?? DateTime(1970);
+        return timeB.compareTo(timeA);
+      });
+
       if (mounted) {
+        final elapsed = sw.elapsedMilliseconds;
+        if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
         setState(() {
           matches = loadedMatches;
           isLoading = false;
@@ -101,8 +147,18 @@ class _MatchesPageState extends State<MatchesPage> {
 
     } catch (e) {
       print('❌ Error fetching matches: $e');
-      if (mounted) setState(() => isLoading = false);
+      if (mounted) {
+        final elapsed = sw.elapsedMilliseconds;
+        if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
+        setState(() => isLoading = false);
+      }
     }
+  }
+
+  String _getRoomId(String id1, String id2) {
+    List<String> ids = [id1, id2];
+    ids.sort();
+    return "${ids[0]}_${ids[1]}";
   }
 
   @override
@@ -112,7 +168,7 @@ class _MatchesPageState extends State<MatchesPage> {
       appBar: AppBar(
         title: Text(
           "Matches",
-          style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w800, color: kBlack, letterSpacing: -0.5),
+          style: GoogleFonts.domine(fontSize: 26, fontWeight: FontWeight.w700, color: kBlack, letterSpacing: -0.5),
         ),
         backgroundColor: kTan,
         elevation: 0,
@@ -131,15 +187,15 @@ class _MatchesPageState extends State<MatchesPage> {
                           color: Colors.white,
                           shape: BoxShape.circle,
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))
+                            BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 28, offset: const Offset(0, 12))
                           ]
                         ),
                         child: Icon(Icons.favorite_border_rounded, size: 60, color: kRose.withOpacity(0.5)),
                       ),
                       const SizedBox(height: 24),
-                      Text("No matches yet.", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w600, color: kBlack)),
+                      Text("No matches yet.", style: GoogleFonts.domine(fontSize: 20, fontWeight: FontWeight.w600, color: kBlack)),
                       const SizedBox(height: 8),
-                      Text("Keep swiping to find new people!", style: GoogleFonts.outfit(color: Colors.black54)),
+                      Text("Keep swiping to find new people!", style: GoogleFonts.dmSans(color: Colors.black54)),
                     ],
                   ).animate().fade(duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
                 )
@@ -155,9 +211,9 @@ class _MatchesPageState extends State<MatchesPage> {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 18,
+                            offset: const Offset(0, 6),
                           )
                         ],
                       ),
@@ -168,15 +224,23 @@ class _MatchesPageState extends State<MatchesPage> {
                           backgroundColor: kRose.withOpacity(0.1),
                           backgroundImage: match['photo_url'] != null ? NetworkImage(match['photo_url']) : null, // Assuming backend could return photo_url
                           child: match['photo_url'] == null 
-                              ? Text(match['display_name'][0].toUpperCase(), style: GoogleFonts.outfit(color: kRose, fontSize: 20, fontWeight: FontWeight.bold))
-                              : null,
+                                  ? Text(match['display_name'][0].toUpperCase(), style: GoogleFonts.domine(color: kRose, fontSize: 20, fontWeight: FontWeight.bold))
+                                  : null,
+                            ),
+                            title: Text(match['display_name'], style: GoogleFonts.domine(fontSize: 18, fontWeight: FontWeight.w600, color: kBlack)),
+                            subtitle: Text(
+                              match['last_message'], 
+                              style: GoogleFonts.dmSans(
+                                color: match['last_message'] == "Tap to chat" ? Colors.black45 : Colors.black87,
+                                fontWeight: match['last_message'] == "Tap to chat" ? FontWeight.normal : FontWeight.w500,
+                              ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        title: Text(match['display_name'], style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: kBlack)),
-                        subtitle: Text("Tap to chat", style: GoogleFonts.outfit(color: Colors.black45)),
                         trailing: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(color: kTan, shape: BoxShape.circle),
-                          child: const Icon(Icons.send_rounded, color: kRose, size: 20),
+                          child: const Icon(Icons.chevron_right_rounded, color: kRose, size: 24),
                         ),
                         onTap: () {
                           Navigator.push(

@@ -6,15 +6,15 @@ import 'package:flutter_animate/flutter_animate.dart'; // Animations
 import 'profile_view_page.dart'; 
 import 'settings_page.dart';
 import 'dart:ui'; // For blur effects
+import 'heart_loader.dart';
 
-const Color kRose = Color(0xFFCD9D8F);
-const Color kBlack = Color(0xFF2D2D2D);
-const Color kTan = Color(0xFFF8F9FA);
+import 'theme/colors.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
 
   Future<Map<String, dynamic>?> _fetchProfile() async {
+    final sw = Stopwatch()..start();
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return null;
     
@@ -23,6 +23,9 @@ class ProfileTab extends StatelessWidget {
         .select()
         .eq('id', userId)
         .single();
+    
+    final elapsed = sw.elapsedMilliseconds;
+    if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
     return data;
   }
 
@@ -36,7 +39,7 @@ class ProfileTab extends StatelessWidget {
           future: _fetchProfile(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: kRose));
+              return const Center(child: HeartLoader(size: 50));
             }
             if (snapshot.hasError || !snapshot.hasData) {
               return Center(child: Text("Error loading profile: ${snapshot.error}"));
@@ -60,7 +63,7 @@ class ProfileTab extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("My Profile", style: GoogleFonts.outfit(fontSize: 32, fontWeight: FontWeight.w800, color: kBlack, letterSpacing: -0.5)),
+                      Text("My Profile", style: GoogleFonts.domine(fontSize: 32, fontWeight: FontWeight.w700, color: kBlack, letterSpacing: -0.5)),
                       Container(
                         decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]),
                         child: IconButton(
@@ -92,7 +95,7 @@ class ProfileTab extends StatelessWidget {
                   Center(
                     child: Text(
                       "This is how you appear to others", 
-                      style: GoogleFonts.outfit(color: Colors.black54, fontSize: 16, fontWeight: FontWeight.w500)
+                      style: GoogleFonts.dmSans(color: Colors.black54, fontSize: 16, fontWeight: FontWeight.w500)
                     ).animate().fade(duration: 600.ms, delay: 400.ms),
                   ),
                 ],
@@ -113,7 +116,7 @@ class ProfileTab extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 5))
+          BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 24, offset: const Offset(0, 8))
         ],
       ),
       child: Stack(
@@ -147,10 +150,10 @@ class ProfileTab extends StatelessWidget {
                   children: [
                     Text(
                       "$name, $age", 
-                      style: GoogleFonts.outfit(
+                      style: GoogleFonts.domine(
                         color: Colors.white, 
                         fontSize: 36, 
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                         letterSpacing: -0.5,
                         shadows: [
                            Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2)),
@@ -193,7 +196,7 @@ class ProfileTab extends StatelessWidget {
             children: [
               const Icon(Icons.visibility_rounded, color: Colors.white, size: 16),
               const SizedBox(width: 6),
-              Text("Preview", style: GoogleFonts.outfit(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+              Text("Preview", style: GoogleFonts.dmSans(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
             ],
           ),
         ),

@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart'; // Typography
 import 'package:flutter_animate/flutter_animate.dart'; // Animations
 import 'services/matching_service.dart';
-import 'main.dart'; // For HeartLoader
+import 'heart_loader.dart';
 
-const Color kRose = Color(0xFFCD9D8F);
-const Color kBlack = Color(0xFF2D2D2D);
-const Color kTan = Color(0xFFF8F9FA);
+import 'theme/colors.dart';
 
 class LikesPage extends StatefulWidget {
   const LikesPage({super.key});
@@ -27,8 +25,11 @@ class _LikesPageState extends State<LikesPage> {
   }
 
   Future<void> _fetchLikes() async {
+    final sw = Stopwatch()..start();
     final users = await _matchingService.fetchWhoLikedMe();
     if (mounted) {
+      final elapsed = sw.elapsedMilliseconds;
+      if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
       setState(() {
         _likedByUsers = users;
         _isLoading = false;
@@ -74,7 +75,7 @@ class _LikesPageState extends State<LikesPage> {
       appBar: AppBar(
         title: Text(
           "Likes You", 
-          style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w800, color: kBlack, letterSpacing: -0.5)
+          style: GoogleFonts.domine(fontSize: 26, fontWeight: FontWeight.w700, color: kBlack, letterSpacing: -0.5)
         ),
         backgroundColor: kTan,
         elevation: 0,
@@ -109,7 +110,7 @@ class _LikesPageState extends State<LikesPage> {
               color: Colors.white,
               shape: BoxShape.circle,
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10))
+                BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 28, offset: const Offset(0, 12))
               ]
             ),
             child: Icon(Icons.favorite_border_rounded, size: 60, color: kRose.withOpacity(0.5)),
@@ -117,12 +118,12 @@ class _LikesPageState extends State<LikesPage> {
           const SizedBox(height: 24),
           Text(
             "No pending likes",
-            style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w600, color: kBlack),
+            style: GoogleFonts.domine(fontSize: 20, fontWeight: FontWeight.w600, color: kBlack),
           ),
           const SizedBox(height: 8),
           Text(
             "Go swipe to find more matches!",
-            style: GoogleFonts.outfit(fontSize: 16, color: Colors.black54),
+            style: GoogleFonts.dmSans(fontSize: 16, color: Colors.black54),
           ),
         ],
       ).animate().fade(duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
@@ -145,7 +146,7 @@ class _LikesPageState extends State<LikesPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withOpacity(0.07), blurRadius: 16, offset: const Offset(0, 6)),
         ],
       ),
       child: Row(
@@ -162,12 +163,12 @@ class _LikesPageState extends State<LikesPage> {
               children: [
                 Text(
                   "$name, $age",
-                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: kBlack),
+                  style: GoogleFonts.domine(fontSize: 18, fontWeight: FontWeight.w600, color: kBlack),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   user['job_title'] ?? "No job title",
-                  style: GoogleFonts.outfit(fontSize: 14, color: Colors.black54),
+                  style: GoogleFonts.dmSans(fontSize: 14, color: Colors.black54),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

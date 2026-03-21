@@ -9,6 +9,8 @@ import 'package:geocoding/geocoding.dart';
 import 'main.dart';
 import 'profile_store.dart';
 import 'services/image_validation_service.dart';
+import 'services/matching_service.dart';
+import 'heart_loader.dart';
 import 'services/content_moderator.dart';
 import 'success_screen.dart'; 
 
@@ -19,14 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 // --- Premium Theme Constants ---
-const Color kTan = Color(0xFFF4F0EA); // kParchment
-const Color kCream = Color(0xFFFAF8F5);
-const Color kBone = Color(0xFFE6DFD5);
-const Color kRose = Color(0xFFC48B71);
-const Color kRosePale = Color(0xFFF3E8E3);
-const Color kGold = Color(0xFFD4AF37);
-const Color kBlack = Color(0xFF2C2A28); // kInk
-const Color kInkMuted = Color(0xFF756F68);
+import 'theme/colors.dart';
 
 const double kPadding = 24.0;
 
@@ -280,7 +275,7 @@ class _BasicsPageState extends State<BasicsPage> {
   bool _validateCurrentStep() {
     switch (_currentQuestionIndex) {
       case 0: 
-        final error = ContentModerator.validateText(nameController.text);
+        final error = ContentModerator.validatePromptText(nameController.text);
         if (error != null) { _showNotification(error); return false; }
         return nameController.text.trim().length >= 2;
       case 1: return selectedAge != null;
@@ -292,11 +287,11 @@ class _BasicsPageState extends State<BasicsPage> {
       case 7: return selectedHeight != null;
       case 8: return selectedReligion != null;
       case 9: 
-        final error = ContentModerator.validateText(schoolNameController.text);
+        final error = ContentModerator.validatePromptText(schoolNameController.text);
         if (error != null) { _showNotification(error); return false; }
         return true; 
       case 10: 
-        final error = ContentModerator.validateText(jobController.text);
+        final error = ContentModerator.validatePromptText(jobController.text);
         if (error != null) { _showNotification(error); return false; }
         return true; 
       case 11: return selectedLanguages.isNotEmpty;
@@ -314,7 +309,7 @@ class _BasicsPageState extends State<BasicsPage> {
       case 23: 
         for (var slot in _promptSlots) {
           if (slot != null) {
-            final error = ContentModerator.validateText(slot['answer']);
+            final error = ContentModerator.validatePromptText(slot['answer']);
             if (error != null) { _showNotification(error); return false; }
           }
         }
@@ -691,7 +686,7 @@ class _BasicsPageState extends State<BasicsPage> {
                       ),
                       onPressed: (_currentQuestionIndex == _totalQuestionScreens - 1 && _isUploading) ? null : _nextPage,
                       child: _isUploading 
-                        ? const CircularProgressIndicator(color: Colors.white)
+                        ? const HeartLoader(size: 24, color: Colors.white)
                         : Text(_currentQuestionIndex == _totalQuestionScreens - 1 ? "Finish Profile" : "Continue", style: GoogleFonts.dmSans(fontSize: 18, fontWeight: FontWeight.bold)),
                     ),
                   ),
@@ -740,7 +735,7 @@ class _BasicsPageState extends State<BasicsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 30), 
-          Text(title, style: GoogleFonts.dmSans(fontSize: 30, fontWeight: FontWeight.bold, height: 1.1, color: kBlack)),
+          Text(title, style: GoogleFonts.domine(fontSize: 30, fontWeight: FontWeight.bold, height: 1.1, color: kBlack)),
           const SizedBox(height: 24),
           Expanded(child: child), 
         ],
@@ -1086,7 +1081,7 @@ class _BasicsPageState extends State<BasicsPage> {
               ),
               onPressed: _isMapLoading ? null : _confirmMapLocation,
               child: _isMapLoading 
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: kRose, strokeWidth: 2))
+                ? const HeartLoader(size: 24)
                 : Text("Confirm Pin Location", style: GoogleFonts.dmSans(color: kRose, fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ),
@@ -1271,7 +1266,7 @@ class _BasicsPageState extends State<BasicsPage> {
                       boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
                     ),
                     child: isValidating
-                        ? const Center(child: CircularProgressIndicator(color: kRose, strokeWidth: 2))
+                        ? const Center(child: HeartLoader(size: 40))
                         : photoFile != null
                             ? Stack(
                                 fit: StackFit.expand,
@@ -1306,29 +1301,58 @@ class _BasicsPageState extends State<BasicsPage> {
     );
   }
 
+  Future<bool> _scanImageWithPython(File image) async {
+    final result = await _validationService.checkTextModeration(image);
+    return result.isValid;
+  }
+
   Future<void> _pickImage(int index, ImageSource source) async {
     final XFile? img = await _picker.pickImage(source: source, imageQuality: 80);
-    if (img != null) {
-      setState(() => _validatingIndex = index);
-      
-      // Premium "Scanning" toast
-      _showNotification("Scanning your photo...", isError: false);
+    if (img == null) return;
 
-      try {
-        final file = File(img.path);
-        final result = await _validationService.validateImage(file, index);
-        
+    final File selectedImage = File(img.path);
+    setState(() => _validatingIndex = index);
+
+    // 1. Show scanning indicator
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("🔍 Scanning image for text..."),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    // 2. Wait for Python to scan it
+    bool isClean = await _scanImageWithPython(selectedImage);
+
+    // 3. THE WALL: If Python says it's dirty, we KILL the function right here.
+    if (!isClean) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("🚨 Blocked: Images containing text or numbers are strictly prohibited."),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      setState(() => _validatingIndex = null);
+      return; // 🛑 THIS IS THE MOST IMPORTANT LINE. It stops the image from uploading.
+    }
+
+    // 4. ONLY IF CLEAN: Perform other validations (resolution, face, NSFW)
+    try {
+      final result = await _validationService.validateImage(selectedImage, index);
+
+      if (mounted) {
         if (result.isValid) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          setState(() => _photos[index] = file);
+          setState(() => _photos[index] = selectedImage);
         } else {
           _showNotification(result.errorMessage ?? "Invalid image");
         }
-      } catch (e) {
-        _showNotification("Validation error: $e");
-      } finally {
-        setState(() => _validatingIndex = null);
       }
+    } catch (e) {
+      if (mounted) _showNotification("Validation error: $e");
+    } finally {
+      if (mounted) setState(() => _validatingIndex = null);
     }
   }
 

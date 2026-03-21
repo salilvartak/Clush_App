@@ -4,8 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Import main.dart so we can access the global scaffoldMessengerKey
 import '../main.dart'; 
+import '../theme/colors.dart';
 
 // TOP-LEVEL FUNCTION FOR BACKGROUND MESSAGES
 @pragma('vm:entry-point')
@@ -124,7 +124,7 @@ class NotificationService {
                 Text(message.notification?.body ?? ""),
               ],
             ),
-            backgroundColor: const Color(0xFFCD9D8F), 
+            backgroundColor: kRose, 
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             margin: const EdgeInsets.all(20),

@@ -13,15 +13,18 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ─── PALETTE (matches DiscoverPage) ──────────────────────────────────────────
-const Color _kRose      = Color(0xFFB87E72);
-const Color _kRosePale  = Color(0xFFF5EAE7);
-const Color _kCream     = Color(0xFFFAF7F4);
-const Color _kParchment = Color(0xFFF0EBE5);
-const Color _kBone      = Color(0xFFE5DED7);
-const Color _kInk       = Color(0xFF1C1714);
-const Color _kInkMuted  = Color(0xFF6B5E57);
-const Color _kGold      = Color(0xFFC9A96E);
+import 'theme/colors.dart';
+import 'heart_loader.dart';
+
+// ─── PALETTE (mapped to theme/colors.dart) ───────────────────────────────────
+const Color _kRose      = kRose;
+const Color _kRosePale  = kRosePale;
+const Color _kCream     = kCream;
+const Color _kParchment = kTan; 
+const Color _kBone      = kBone;
+const Color _kInk       = kInk;
+const Color _kInkMuted  = kInkMuted;
+const Color _kGold      = kGold;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -29,7 +32,7 @@ BoxDecoration _cardDecor() => BoxDecoration(
   color: _kParchment,
   borderRadius: BorderRadius.circular(20),
   border: Border.all(color: _kBone, width: 1),
-  boxShadow: [BoxShadow(color: _kInk.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 6))],
+  boxShadow: [BoxShadow(color: _kInk.withOpacity(0.09), blurRadius: 28, offset: const Offset(0, 8))],
 );
 
 InputDecoration _inputDecor(String hint, {IconData? icon}) => InputDecoration(
@@ -56,7 +59,7 @@ Widget _saveButton(String label, bool isLoading, VoidCallback? onTap) {
       ),
       child: isLoading
           ? const SizedBox(width: 20, height: 20,
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              child: const HeartLoader(size: 22, color: Colors.white))
           : Text(label, style: GoogleFonts.dmSans(
               color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
     ),
@@ -269,7 +272,7 @@ class _PauseAccountPageState extends State<PauseAccountPage> {
     return BaseSettingsPage(
       title: "Pause Account",
       body: isLoading
-          ? Center(child: CircularProgressIndicator(color: _kRose, strokeWidth: 1.5))
+          ? const Center(child: HeartLoader(size: 40))
           : Container(
               padding: const EdgeInsets.all(28),
               decoration: _cardDecor(),
@@ -433,7 +436,7 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
   Widget build(BuildContext context) => BaseSettingsPage(
     title: "Location",
     body: _isLoading
-        ? Center(child: CircularProgressIndicator(color: _kRose, strokeWidth: 1.5))
+        ? const Center(child: HeartLoader(size: 40))
         : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // Search Bar
             TextField(
@@ -504,7 +507,7 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
                 ),
                 onPressed: _isMapLoading ? null : _confirmMapLocation,
                 child: _isMapLoading 
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: _kRose, strokeWidth: 2))
+                  ? const HeartLoader(size: 18)
                   : Text("Confirm Pin Location", style: GoogleFonts.dmSans(color: _kRose, fontSize: 14, fontWeight: FontWeight.w600)),
               ),
             ),
@@ -649,7 +652,7 @@ class _VerificationPageState extends State<VerificationPage> {
   Widget build(BuildContext context) {
     if (_isFetchingProfile) {
       return BaseSettingsPage(title: "Verification",
-          body: Center(child: CircularProgressIndicator(color: _kRose, strokeWidth: 1.5)));
+          body: const Center(child: HeartLoader(size: 40)));
     }
     if (_isVerified) {
       return BaseSettingsPage(
@@ -829,7 +832,7 @@ class _BlockListPageState extends State<BlockListPage> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return BaseSettingsPage(title: "Blocked Users",
-          body: Center(child: CircularProgressIndicator(color: _kRose, strokeWidth: 1.5)));
+          body: const Center(child: HeartLoader(size: 40)));
     }
     if (_blockedUsers.isEmpty) {
       return BaseSettingsPage(

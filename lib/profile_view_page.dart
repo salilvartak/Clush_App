@@ -1,18 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// --- PREMIUM COLOR PALETTE (From Discover Page) ---
-const Color kRose = Color(0xFFC48B71);
-const Color kRoseLight = Color(0xFFD6A795);
-const Color kRosePale = Color(0xFFF3E8E3);
-
-const Color kCream = Color(0xFFFAF8F5);
-const Color kParchment = Color(0xFFF4F0EA);
-const Color kBone = Color(0xFFE6DFD5);
-
-const Color kInk = Color(0xFF2C2A28);
-const Color kInkMuted = Color(0xFF756F68);
-const Color kGold = Color(0xFFD4AF37);
+import 'theme/colors.dart';
 
 
 class ProfileViewPage extends StatelessWidget {

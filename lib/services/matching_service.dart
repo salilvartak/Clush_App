@@ -130,4 +130,72 @@ class MatchingService {
       return false;
     }
   }
-}
+
+  // --- UNREAD MESSAGE TRACKING ---
+
+  Future<void> updateLastRead(String roomId) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return;
+    try {
+      await _client.from('chat_read_status').upsert({
+        'user_id': myId,
+        'room_id': roomId,
+        'last_read_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'user_id, room_id');
+    } catch (e) {
+      print('Error updating last read: $e');
+    }
+  }
+
+  Future<int> getTotalUnreadCount() async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return 0;
+
+    try {
+      // 1. Get my display name (since the messages table currently uses names for senders)
+      final myProfile = await _client.from('profiles').select('full_name').eq('id', myId).single();
+      final myName = myProfile['full_name'];
+
+      // 2. Get all matches to get room IDs
+      final matches = await _client.from('matches')
+          .select('user_a, user_b')
+          .or('user_a.eq.$myId,user_b.eq.$myId');
+
+      int totalUnread = 0;
+
+      for (var m in matches) {
+        final roomId = _getRoomId(m['user_a'], m['user_b']);
+
+        // 3. Get last read status for this room
+        final readStatus = await _client.from('chat_read_status')
+            .select('last_read_at')
+            .eq('user_id', myId)
+            .eq('room_id', roomId)
+            .maybeSingle();
+
+        final lastRead = readStatus?['last_read_at'] ?? '1970-01-01T00:00:00Z';
+
+        // 4. Count messages that are newer than lastRead and NOT sent by me
+        final response = await _client.from('messages')
+            .select('id')
+            .eq('room_id', roomId)
+            .neq('sender', myName)
+            .gt('created_at', lastRead)
+            .count(CountOption.exact);
+
+        totalUnread += (response.count as num? ?? 0).toInt();
+      }
+
+      return totalUnread;
+    } catch (e) {
+      print('Error calculating unread count: $e');
+      return 0;
+    }
+  }
+
+  String _getRoomId(String id1, String id2) {
+    List<String> ids = [id1, id2];
+    ids.sort();
+    return "${ids[0]}_${ids[1]}";
+  }
+}

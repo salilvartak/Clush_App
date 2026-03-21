@@ -1,20 +1,13 @@
+import 'dart:math' show cos, sqrt, asin, pi;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui'; // For blur effects
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'services/matching_service.dart';
+import 'heart_loader.dart';
 
-// ─── REFINED PALETTE ──────────────────────────────────────────────────────────
-const Color kRose       = Color(0xFFB87E72);      // Deep muted rose
-const Color kRoseLight  = Color(0xFFD4A99F);      // Soft petal
-const Color kRosePale   = Color(0xFFF5EAE7);      // Blush wash
-const Color kCream      = Color(0xFFFAF7F4);      // Warm parchment bg
-const Color kParchment  = Color(0xFFF0EBE5);      // Card surface
-const Color kBone       = Color(0xFFE5DED7);      // Card border / divider
-const Color kInk        = Color(0xFF1C1714);      // Near-black text
-const Color kInkMuted   = Color(0xFF6B5E57);      // Secondary text
-const Color kGold       = Color(0xFFC9A96E);      // Accent gold
+import 'theme/colors.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -23,7 +16,10 @@ class DiscoverPage extends StatefulWidget {
   State<DiscoverPage> createState() => _DiscoverPageState();
 }
 
-class _DiscoverPageState extends State<DiscoverPage> {
+class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   // Service for handling likes/matches
   final MatchingService _matchingService = MatchingService();
 
@@ -50,6 +46,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   Future<void> _fetchProfiles() async {
+    final stopwatch = Stopwatch()..start();
     try {
       final myId = FirebaseAuth.instance.currentUser?.uid;
       if (myId == null) {
@@ -106,12 +103,14 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
-          .select('gender, is_premium')
+          .select('gender, is_premium, location')
           .eq('id', myId)
           .maybeSingle();
 
       if (myProfileResponse == null) {
         if (mounted) {
+          final elapsed = stopwatch.elapsedMilliseconds;
+          if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
           setState(() {
             _isLoading = false;
             _errorMessage = "Profile not found. Please complete your profile.";
@@ -119,6 +118,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
         }
         return;
       }
+
+      final myLocationStr = myProfileResponse['location'] as String?;
+      final Map<String, double>? myCoords = _parseCoordinates(myLocationStr);
 
       final myGender = myProfileResponse['gender'] as String?;
 
@@ -171,7 +173,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
         query = query.eq('ethnicity', _filterEthnicity!);
       }
 
-      final response = await query.limit(40);
+      final response = await query.limit(150); // Increased limit from 40 to 150 to find local users first
 
       List<Map<String, dynamic>> filteredProfiles = List<Map<String, dynamic>>.from(response);
 
@@ -188,7 +190,55 @@ class _DiscoverPageState extends State<DiscoverPage> {
         }).toList();
       }
 
+      // --- DISTANCE FILTERING ---
+      debugPrint("📍 My Coordinates: $myCoords");
+      debugPrint("🔍 Filtering profiles vs distance: ${_filterDistance}km");
+
+      if (myCoords != null) {
+        filteredProfiles = filteredProfiles.where((p) {
+          final otherLocationStr = p['location'] as String?;
+          final otherCoords = _parseCoordinates(otherLocationStr);
+          final name = p['full_name'] ?? 'Unknown';
+
+          if (otherCoords == null) {
+            debugPrint("❌ $name: No coordinates found. Hiding.");
+            return false;
+          }
+
+          final distance = _calculateDistance(
+            myCoords['lat']!,
+            myCoords['lng']!,
+            otherCoords['lat']!,
+            otherCoords['lng']!,
+          );
+          
+          p['calculated_distance'] = distance;
+          
+          final isWithin = distance <= _filterDistance;
+          if (isWithin) {
+            debugPrint("✅ $name: ${distance.toStringAsFixed(2)}km away. Keeping.");
+          } else {
+            debugPrint("🚫 $name: ${distance.toStringAsFixed(2)}km away. Filtered out.");
+          }
+
+          return isWithin;
+        }).toList();
+
+        // --- SORT BY DISTANCE ---
+        filteredProfiles.sort((a, b) {
+          final distA = a['calculated_distance'] as double? ?? 99999.0;
+          final distB = b['calculated_distance'] as double? ?? 99999.0;
+          return distA.compareTo(distB);
+        });
+        debugPrint("📊 Found ${filteredProfiles.length} users within ${_filterDistance}km");
+      } else {
+        debugPrint("⚠️ My coordinates are null. Hiding everyone.");
+        filteredProfiles = [];
+      }
+
       if (mounted) {
+        final elapsed = stopwatch.elapsedMilliseconds;
+        if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
         setState(() {
           _profiles = filteredProfiles.take(20).toList();
           _isLoading = false;
@@ -196,6 +246,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
       }
     } catch (e) {
       if (mounted) {
+        final elapsed = stopwatch.elapsedMilliseconds;
+        if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
         setState(() {
           _errorMessage = 'Error loading profiles: $e';
           _isLoading = false;
@@ -366,32 +418,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     if (_isLoading) {
       return Scaffold(
         backgroundColor: kCream,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(
-                  color: kRose,
-                  strokeWidth: 1.5,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "Finding your people…",
-                style: GoogleFonts.domine(
-                  color: kInkMuted,
-                  fontSize: 16,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ),
+        body: const Center(
+          child: HeartLoader(size: 80),
         ),
       );
     }
@@ -556,7 +588,17 @@ class _DiscoverPageState extends State<DiscoverPage> {
       'Drink': profile['drink'],
       'Smoke': profile['smoke'],
       'Weed': profile['weed'],
-      'Location': (() { final loc = profile['location'] as String?; if (loc == null) return null; final idx = loc.indexOf('('); return idx != -1 ? loc.substring(0, idx).trim().split(',').take(2).join(',').trim() : loc; })(),
+      'Location': (() { 
+        final loc = profile['location'] as String?; 
+        if (loc == null) return null; 
+        final idx = loc.indexOf('('); 
+        final cityPart = idx != -1 ? loc.substring(0, idx).trim().split(',').take(2).join(',').trim() : loc;
+        final distance = profile['calculated_distance'] as double?;
+        if (distance != null) {
+          return "$cityPart (${distance.toStringAsFixed(1)} km away)";
+        }
+        return cityPart;
+      })(),
       'Gender': profile['gender'],
       'Orientation': profile['sexual_orientation'],
       'Pronouns': profile['pronouns'],
@@ -1438,6 +1480,40 @@ class _DiscoverPageState extends State<DiscoverPage> {
     } catch (e) {
       return 24;
     }
+  }
+
+  // --- LOCATION HELPERS ---
+
+  Map<String, double>? _parseCoordinates(String? locationStr) {
+    if (locationStr == null || !locationStr.contains('(')) return null;
+    try {
+      final start = locationStr.indexOf('(') + 1;
+      final end = locationStr.indexOf(')');
+      if (start <= 0 || end <= start) return null;
+      
+      final coordsPart = locationStr.substring(start, end);
+      final parts = coordsPart.split(',');
+      if (parts.length < 2) return null;
+
+      final lat = double.tryParse(parts[0].trim());
+      final lng = double.tryParse(parts[1].trim());
+
+      if (lat != null && lng != null) {
+        return {'lat': lat, 'lng': lng};
+      }
+    } catch (e) {
+      debugPrint("Error parsing coordinates: $e");
+    }
+    return null;
+  }
+
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const p = pi / 180;
+    const c = cos;
+    final a = 0.5 - c((lat2 - lat1) * p) / 2 + 
+              c(lat1 * p) * c(lat2 * p) * 
+              (1 - c((lon2 - lon1) * p)) / 2;
+    return 12742 * asin(sqrt(a)); // 2 * R; R = 6371 km
   }
 }
 

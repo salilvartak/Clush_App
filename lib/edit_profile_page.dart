@@ -10,16 +10,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:clush/services/image_validation_service.dart';
 import 'package:clush/services/content_moderator.dart';
 
-// ─── PALETTE (matches DiscoverPage) ──────────────────────────────────────────
-const Color kRose      = Color(0xFFB87E72);
-const Color kRoseLight = Color(0xFFD4A99F);
-const Color kRosePale  = Color(0xFFF5EAE7);
-const Color kCream     = Color(0xFFFAF7F4);
-const Color kParchment = Color(0xFFF0EBE5);
-const Color kBone      = Color(0xFFE5DED7);
-const Color kInk       = Color(0xFF1C1714);
-const Color kInkMuted  = Color(0xFF6B5E57);
-const Color kGold      = Color(0xFFC9A96E);
+import 'theme/colors.dart';
+import 'heart_loader.dart';
 
 class EditProfilePage extends StatefulWidget {
   final Map<String, dynamic> currentData;
@@ -147,17 +139,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (userId == null) return;
 
     // ─── Text Moderation ────────────────────────────────────────────────────────
-    String? nameError = ContentModerator.validateText(_nameController.text);
+    String? nameError = ContentModerator.validatePromptText(_nameController.text);
     if (nameError != null) { _showNotification(nameError); return; }
-    String? jobError = ContentModerator.validateText(_jobController.text);
+    String? jobError = ContentModerator.validatePromptText(_jobController.text);
     if (jobError != null) { _showNotification(jobError); return; }
 
-    String? schoolError = ContentModerator.validateText(_schoolController.text);
+    String? schoolError = ContentModerator.validatePromptText(_schoolController.text);
     if (schoolError != null) { _showNotification(schoolError); return; }
 
     for (var prompt in _prompts) {
       if (prompt != null) {
-        String? promptError = ContentModerator.validateText(prompt['answer']);
+        String? promptError = ContentModerator.validatePromptText(prompt['answer']);
         if (promptError != null) { _showNotification(promptError); return; }
       }
     }
@@ -401,7 +393,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 ),
               ),
               _isLoading
-                  ? SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 1.5, color: kRose))
+                  ? const HeartLoader(size: 22)
                   : GestureDetector(
                       onTap: _saveProfile,
                       child: Container(
@@ -482,7 +474,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 boxShadow: [BoxShadow(color: kInk.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
               ),
               child: _validatingIndex == index
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2, color: kRose))
+                  ? const Center(child: HeartLoader(size: 40))
                   : item != null
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(15),
@@ -565,19 +557,46 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
+  Future<bool> _scanImageWithPython(File image) async {
+    final result = await _imageValidationService.checkTextModeration(image);
+    return result.isValid;
+  }
+
   Future<void> _pickImage(int index, ImageSource source) async {
     final XFile? pickedFile = await _picker.pickImage(source: source, imageQuality: 80);
     if (pickedFile == null) return;
 
-    final File file = File(pickedFile.path);
+    final File selectedImage = File(pickedFile.path);
 
     setState(() => _validatingIndex = index);
-    
-    // Premium "Scanning" toast
-    _showNotification("Scanning your photo...", isError: false);
 
+    // 1. Show scanning indicator
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("🔍 Scanning image for text..."),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    // 2. Wait for Python to scan it
+    bool isClean = await _scanImageWithPython(selectedImage);
+
+    // 3. THE WALL: If Python says it's dirty, we KILL the function right here.
+    if (!isClean) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("🚨 Blocked: Images containing text or numbers are strictly prohibited."),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      setState(() => _validatingIndex = null);
+      return; // 🛑 THIS IS THE MOST IMPORTANT LINE. It stops the image from uploading.
+    }
+
+    // 4. ONLY IF CLEAN: Perform other validations (resolution, face, NSFW)
     try {
-      final validationResult = await _imageValidationService.validateImage(file, index);
+      final validationResult = await _imageValidationService.validateImage(selectedImage, index);
 
       if (mounted) {
         if (!validationResult.isValid) {
@@ -585,7 +604,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         } else {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           setState(() {
-            _photos[index] = file;
+            _photos[index] = selectedImage;
             if (index == 0) _photo0Changed = true;
           });
         }

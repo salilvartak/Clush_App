@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'home_page.dart'; // Make sure you have this file too, or remove this import if not ready
+import 'home_page.dart'; 
+import 'theme/colors.dart';
 
 class SuccessScreen extends StatefulWidget {
   const SuccessScreen({super.key});
@@ -59,8 +60,8 @@ class _SuccessScreenState extends State<SuccessScreen> with SingleTickerProvider
               child: Container(
                 width: 120,
                 height: 120,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFCD9D8F), // kRose
+                decoration: BoxDecoration(
+                  color: kRose, 
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.check, color: Colors.white, size: 60),
