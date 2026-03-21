@@ -34,7 +34,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   bool _isPremium = false;
   RangeValues _filterAge = const RangeValues(18, 60);
   double _filterDistance = 50;
-  String _filterIntent = 'Default';
+  String _filterIntent = '';
   String? _filterReligion;
   RangeValues _filterHeight = const RangeValues(100, 250);
   String? _filterEthnicity;
@@ -103,7 +103,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
-          .select('gender, is_premium, location')
+          .select('gender, is_premium, location, intent')
           .eq('id', myId)
           .maybeSingle();
 
@@ -123,6 +123,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       final Map<String, double>? myCoords = _parseCoordinates(myLocationStr);
 
       final myGender = myProfileResponse['gender'] as String?;
+      final myIntent = myProfileResponse['intent'] as String?;
 
       if (mounted) {
         setState(() {
@@ -137,13 +138,29 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         });
       }
 
-      String targetGender;
-      if (myGender?.toLowerCase() == 'woman') {
-        targetGender = 'Man';
-      } else if (myGender?.toLowerCase() == 'man') {
-        targetGender = 'Woman';
-      } else {
-        targetGender = 'Woman';
+      if (_filterIntent.isEmpty || _filterIntent == 'Default') {
+        if (myIntent != null && myIntent.isNotEmpty) {
+          String mappedIntent = myIntent;
+          if (mappedIntent.toLowerCase() == 'man') mappedIntent = 'Men';
+          if (mappedIntent.toLowerCase() == 'woman') mappedIntent = 'Women';
+          if (mappedIntent.toLowerCase() == 'men') mappedIntent = 'Men';
+          if (mappedIntent.toLowerCase() == 'women') mappedIntent = 'Women';
+          if (mappedIntent.toLowerCase() == 'everyone') mappedIntent = 'Everyone';
+          
+          if (['Men', 'Women', 'Everyone'].contains(mappedIntent)) {
+            _filterIntent = mappedIntent;
+          }
+        }
+        
+        if (_filterIntent.isEmpty || _filterIntent == 'Default') {
+          if (myGender?.toLowerCase() == 'woman') {
+            _filterIntent = 'Men';
+          } else if (myGender?.toLowerCase() == 'man') {
+            _filterIntent = 'Women';
+          } else {
+            _filterIntent = 'Everyone';
+          }
+        }
       }
 
       final uniqueIgnoreIds = ignoreIds.toSet().toList();
@@ -154,10 +171,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
           .not('id', 'in', uniqueIgnoreIds)
           .or('is_paused.eq.false,is_paused.is.null');
 
-      if (_filterIntent != 'Default' && _filterIntent != 'Everyone') {
+      if (_filterIntent != 'Everyone') {
         query = query.eq('gender', _filterIntent == 'Men' ? 'Man' : 'Woman');
-      } else if (_filterIntent == 'Default') {
-        query = query.eq('gender', targetGender);
       }
 
       DateTime now = DateTime.now();
@@ -1552,7 +1567,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   late RangeValues _ht;
   String? _eth;
 
-  final List<String> _intents = ['Men', 'Women', 'Everyone', 'Default'];
+  final List<String> _intents = ['Men', 'Women', 'Everyone'];
   final List<String> _religions = ['Any', 'Christian', 'Muslim', 'Hindu', 'Buddhist', 'Jewish', 'Spiritual', 'Atheist', 'Other'];
   final List<String> _ethnicities = ['Any', 'Asian', 'Black', 'Hispanic/Latino', 'Middle Eastern', 'White', 'Mixed', 'Other'];
 
