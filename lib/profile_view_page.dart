@@ -52,7 +52,7 @@ class ProfileViewPage extends StatelessWidget {
       'Exercise': profile['exercise'],
     };
 
-    // 2. Prepare Lists for the "Mix" section
+    // 2. Prepare Lists for the "Mix" section 
     List<String> remainingPhotos = [];
     if (photoUrls.length > 1) {
       remainingPhotos.addAll(List<String>.from(photoUrls.sublist(1)));
