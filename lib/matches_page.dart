@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'chat_page.dart';
 import 'heart_loader.dart';
 import 'services/crypto_service.dart';
+import 'services/matching_service.dart';
 
 import 'theme/colors.dart';
 
@@ -19,6 +20,7 @@ class MatchesPage extends StatefulWidget {
 
 class _MatchesPageState extends State<MatchesPage> {
   final _supabase = Supabase.instance.client;
+  final MatchingService _matchingService = MatchingService();
   
   List<Map<String, dynamic>> matches = [];
   String? _myDisplayName;
@@ -120,11 +122,15 @@ class _MatchesPageState extends State<MatchesPage> {
             print("Error fetching last message for $roomId: $e");
           }
 
+          int unreadCount = await _matchingService.getUnreadCountForRoom(roomId, _myDisplayName ?? "Me", myId);
+
           loadedMatches.add({
             'match_uuid': otherId,
             'display_name': otherProfile['full_name'],
             'last_message': lastMessage,
             'last_message_time': lastMessageTime,
+            'unread_count': unreadCount,
+            'photo_url': otherProfile['photo_urls'] != null && (otherProfile['photo_urls'] as List).isNotEmpty ? otherProfile['photo_urls'][0] : null,
           });
         }
       }
@@ -161,6 +167,25 @@ class _MatchesPageState extends State<MatchesPage> {
     return "${ids[0]}_${ids[1]}";
   }
 
+  String _formatMessageTime(DateTime? time) {
+    if (time == null) return "";
+    final now = DateTime.now();
+    final localTime = time.toLocal();
+    final diff = now.difference(localTime);
+
+    if (diff.inDays == 0 && now.day == localTime.day) {
+      String tStr = "${localTime.hour > 12 ? localTime.hour - 12 : (localTime.hour == 0 ? 12 : localTime.hour)}:${localTime.minute.toString().padLeft(2, '0')} ${localTime.hour >= 12 ? 'PM' : 'AM'}";
+      return tStr;
+    } else if (diff.inDays == 1 || (diff.inDays == 0 && now.day != localTime.day)) {
+      return "Yesterday";
+    } else if (diff.inDays < 7) {
+      List<String> days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return days[localTime.weekday - 1];
+    } else {
+      return "${localTime.day}/${localTime.month}/${localTime.year.toString().substring(2)}";
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,14 +193,14 @@ class _MatchesPageState extends State<MatchesPage> {
       appBar: AppBar(
         title: Text(
           "Matches",
-          style: GoogleFonts.domine(fontSize: 26, fontWeight: FontWeight.w700, color: kBlack, letterSpacing: -0.5),
+          style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5),
         ),
         backgroundColor: kTan,
         elevation: 0,
         centerTitle: false,
       ),
       body: isLoading
-          ? const Center(child: HeartLoader(size: 60))
+          ? const Center(child: HeartLoader())
           : matches.isEmpty
               ? Center(
                   child: Column(
@@ -183,19 +208,18 @@ class _MatchesPageState extends State<MatchesPage> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
+                        decoration: BoxDecoration(color: kParchment,
                           shape: BoxShape.circle,
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 28, offset: const Offset(0, 12))
+                            BoxShadow(color: kInk.withOpacity(0.08), blurRadius: 28, offset: const Offset(0, 12))
                           ]
                         ),
                         child: Icon(Icons.favorite_border_rounded, size: 60, color: kRose.withOpacity(0.5)),
                       ),
                       const SizedBox(height: 24),
-                      Text("No matches yet.", style: GoogleFonts.domine(fontSize: 20, fontWeight: FontWeight.w600, color: kBlack)),
+                      Text("No matches yet.", style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 20, color: kBlack)),
                       const SizedBox(height: 8),
-                      Text("Keep swiping to find new people!", style: GoogleFonts.dmSans(color: Colors.black54)),
+                      Text("Keep swiping to find new people!", style: GoogleFonts.figtree(color: kInkMuted)),
                     ],
                   ).animate().fade(duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
                 )
@@ -206,12 +230,11 @@ class _MatchesPageState extends State<MatchesPage> {
                     final match = matches[index];
                     return Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
+                      decoration: BoxDecoration(color: kParchment,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
+                            color: kInk.withOpacity(0.08),
                             blurRadius: 18,
                             offset: const Offset(0, 6),
                           )
@@ -224,26 +247,60 @@ class _MatchesPageState extends State<MatchesPage> {
                           backgroundColor: kRose.withOpacity(0.1),
                           backgroundImage: match['photo_url'] != null ? NetworkImage(match['photo_url']) : null, // Assuming backend could return photo_url
                           child: match['photo_url'] == null 
-                                  ? Text(match['display_name'][0].toUpperCase(), style: GoogleFonts.domine(color: kRose, fontSize: 20, fontWeight: FontWeight.bold))
+                                  ? Text(match['display_name'][0].toUpperCase(), style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, color: kRose, fontSize: 20, ))
                                   : null,
                             ),
-                            title: Text(match['display_name'], style: GoogleFonts.domine(fontSize: 18, fontWeight: FontWeight.w600, color: kBlack)),
+                            title: Text(match['display_name'], style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 18, color: kBlack)),
                             subtitle: Text(
                               match['last_message'], 
-                              style: GoogleFonts.dmSans(
-                                color: match['last_message'] == "Tap to chat" ? Colors.black45 : Colors.black87,
-                                fontWeight: match['last_message'] == "Tap to chat" ? FontWeight.normal : FontWeight.w500,
+                              style: GoogleFonts.figtree(
+                                color: match['unread_count'] > 0 
+                                      ? kBlack 
+                                      : match['last_message'] == "Tap to chat" ? kInkMuted : kInk,
+                                fontWeight: match['unread_count'] > 0
+                                      ? FontWeight.bold
+                                      : match['last_message'] == "Tap to chat" ? FontWeight.normal : FontWeight.w500,
                               ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        trailing: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: kTan, shape: BoxShape.circle),
-                          child: const Icon(Icons.chevron_right_rounded, color: kRose, size: 24),
+                        trailing: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (match['last_message_time'] != null)
+                              Text(
+                                _formatMessageTime(match['last_message_time']),
+                                style: GoogleFonts.figtree(
+                                  fontSize: 12,
+                                  color: match['unread_count'] > 0 ? kRose : kInkMuted,
+                                  fontWeight: match['unread_count'] > 0 ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            if (match['unread_count'] > 0) ...[
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: const BoxDecoration(
+                                  color: kRose,
+                                  shape: BoxShape.rectangle,
+                                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                                ),
+                                child: Text(
+                                  match['unread_count'].toString(),
+                                  style: GoogleFonts.figtree(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                        onTap: () {
-                          Navigator.push(
+                        onTap: () async {
+                          await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => ChatScreen(
@@ -255,6 +312,8 @@ class _MatchesPageState extends State<MatchesPage> {
                               ),
                             ),
                           );
+                          // Refresh unread counts after coming back from chat page
+                          _fetchData();
                         },
                       ),
                     ).animate().fade(duration: 400.ms, delay: (50 * index).ms).slideX(begin: 0.1, end: 0, curve: Curves.easeOutQuad);

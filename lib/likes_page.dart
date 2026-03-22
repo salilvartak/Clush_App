@@ -75,14 +75,14 @@ class _LikesPageState extends State<LikesPage> {
       appBar: AppBar(
         title: Text(
           "Likes You", 
-          style: GoogleFonts.domine(fontSize: 26, fontWeight: FontWeight.w700, color: kBlack, letterSpacing: -0.5)
+          style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5)
         ),
         backgroundColor: kTan,
         elevation: 0,
         centerTitle: false,
       ),
       body: _isLoading 
-          ? const Center(child: HeartLoader(size: 60))
+          ? const Center(child: HeartLoader())
           : _likedByUsers.isEmpty
             ? _buildEmptyState()
             : ListView.builder(
@@ -106,11 +106,10 @@ class _LikesPageState extends State<LikesPage> {
         children: [
           Container(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(color: kParchment,
               shape: BoxShape.circle,
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 28, offset: const Offset(0, 12))
+                BoxShadow(color: kInk.withOpacity(0.08), blurRadius: 28, offset: const Offset(0, 12))
               ]
             ),
             child: Icon(Icons.favorite_border_rounded, size: 60, color: kRose.withOpacity(0.5)),
@@ -118,12 +117,12 @@ class _LikesPageState extends State<LikesPage> {
           const SizedBox(height: 24),
           Text(
             "No pending likes",
-            style: GoogleFonts.domine(fontSize: 20, fontWeight: FontWeight.w600, color: kBlack),
+            style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 20, color: kBlack),
           ),
           const SizedBox(height: 8),
           Text(
             "Go swipe to find more matches!",
-            style: GoogleFonts.dmSans(fontSize: 16, color: Colors.black54),
+            style: GoogleFonts.figtree(fontSize: 16, color: kInkMuted),
           ),
         ],
       ).animate().fade(duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
@@ -142,11 +141,10 @@ class _LikesPageState extends State<LikesPage> {
       key: key,
       margin: const EdgeInsets.only(bottom: 16.0),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+      decoration: BoxDecoration(color: kParchment,
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.07), blurRadius: 16, offset: const Offset(0, 6)),
+          BoxShadow(color: kInk.withOpacity(0.07), blurRadius: 16, offset: const Offset(0, 6)),
         ],
       ),
       child: Row(
@@ -163,12 +161,12 @@ class _LikesPageState extends State<LikesPage> {
               children: [
                 Text(
                   "$name, $age",
-                  style: GoogleFonts.domine(fontSize: 18, fontWeight: FontWeight.w600, color: kBlack),
+                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 18, color: kBlack),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   user['job_title'] ?? "No job title",
-                  style: GoogleFonts.dmSans(fontSize: 14, color: Colors.black54),
+                  style: GoogleFonts.figtree(fontSize: 14, color: kInkMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

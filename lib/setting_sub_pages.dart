@@ -12,6 +12,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 
 import 'theme/colors.dart';
 import 'heart_loader.dart';
@@ -37,7 +38,7 @@ BoxDecoration _cardDecor() => BoxDecoration(
 
 InputDecoration _inputDecor(String hint, {IconData? icon}) => InputDecoration(
   hintText: hint,
-  hintStyle: GoogleFonts.dmSans(color: _kInkMuted, fontSize: 14),
+  hintStyle: GoogleFonts.montserrat(color: _kInkMuted, fontSize: 14),
   filled: true,
   fillColor: _kParchment,
   prefixIcon: icon != null ? Icon(icon, color: _kRose, size: 20) : null,
@@ -60,7 +61,7 @@ Widget _saveButton(String label, bool isLoading, VoidCallback? onTap) {
       child: isLoading
           ? const SizedBox(width: 20, height: 20,
               child: const HeartLoader(size: 22, color: Colors.white))
-          : Text(label, style: GoogleFonts.dmSans(
+          : Text(label, style: GoogleFonts.montserrat(
               color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
     ),
   );
@@ -104,7 +105,7 @@ class BaseSettingsPage extends StatelessWidget {
                     onPressed: () => Navigator.pop(context),
                   ),
                   const SizedBox(width: 2),
-                  Expanded(child: Text(title, style: GoogleFonts.domine(
+                  Expanded(child: Text(title, style: GoogleFonts.montserrat(
                       color: _kInk, fontSize: 24, fontWeight: FontWeight.w400, letterSpacing: -0.3))),
                 ]),
               ),
@@ -161,13 +162,13 @@ class _PhoneNumberPageState extends State<PhoneNumberPage> {
     title: "Phone Number",
     body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text("Update your phone number",
-          style: GoogleFonts.domine(fontSize: 20, fontWeight: FontWeight.w400, color: _kInk)),
+          style: GoogleFonts.montserrat(fontSize: 20, fontWeight: FontWeight.w400, color: _kInk)),
       const SizedBox(height: 6),
       Text("Your number is kept private and only used for security.",
-          style: GoogleFonts.dmSans(fontSize: 13, color: _kInkMuted, height: 1.4)),
+          style: GoogleFonts.montserrat(fontSize: 13, color: _kInkMuted, height: 1.4)),
       const SizedBox(height: 24),
       TextField(controller: _ctrl, keyboardType: TextInputType.phone,
-          style: GoogleFonts.dmSans(color: _kInk, fontSize: 15),
+          style: GoogleFonts.montserrat(color: _kInk, fontSize: 15),
           decoration: _inputDecor("Phone number", icon: Icons.phone_outlined)),
       const SizedBox(height: 20),
       _saveButton("Save Number", _isLoading, _save),
@@ -214,13 +215,13 @@ class _EmailAddressPageState extends State<EmailAddressPage> {
     title: "Email Address",
     body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text("Update your email",
-          style: GoogleFonts.domine(fontSize: 20, fontWeight: FontWeight.w400, color: _kInk)),
+          style: GoogleFonts.montserrat(fontSize: 20, fontWeight: FontWeight.w400, color: _kInk)),
       const SizedBox(height: 6),
       Text("A verification link will be sent to your new address.",
-          style: GoogleFonts.dmSans(fontSize: 13, color: _kInkMuted, height: 1.4)),
+          style: GoogleFonts.montserrat(fontSize: 13, color: _kInkMuted, height: 1.4)),
       const SizedBox(height: 24),
       TextField(controller: _ctrl, keyboardType: TextInputType.emailAddress,
-          style: GoogleFonts.dmSans(color: _kInk, fontSize: 15),
+          style: GoogleFonts.montserrat(color: _kInk, fontSize: 15),
           decoration: _inputDecor("Email address", icon: Icons.email_outlined)),
       const SizedBox(height: 20),
       _saveButton("Save Email", _isLoading, _save),
@@ -272,7 +273,7 @@ class _PauseAccountPageState extends State<PauseAccountPage> {
     return BaseSettingsPage(
       title: "Pause Account",
       body: isLoading
-          ? const Center(child: HeartLoader(size: 40))
+          ? const Center(child: HeartLoader())
           : Container(
               padding: const EdgeInsets.all(28),
               decoration: _cardDecor(),
@@ -290,17 +291,17 @@ class _PauseAccountPageState extends State<PauseAccountPage> {
                 ),
                 const SizedBox(height: 20),
                 Text(isPaused ? "Account Paused" : "Account is Active",
-                    style: GoogleFonts.domine(fontSize: 24, fontWeight: FontWeight.w400, color: _kInk)),
+                    style: GoogleFonts.montserrat(fontSize: 24, fontWeight: FontWeight.w400, color: _kInk)),
                 const SizedBox(height: 10),
                 Text(
                   "Pausing hides you from Discover, but you can still chat with existing matches.",
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.dmSans(color: _kInkMuted, fontSize: 14, height: 1.5),
+                  style: GoogleFonts.montserrat(color: _kInkMuted, fontSize: 14, height: 1.5),
                 ),
                 const SizedBox(height: 32),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   Text("Pause my account",
-                      style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w500, color: _kInk)),
+                      style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w500, color: _kInk)),
                   Switch.adaptive(value: isPaused, activeColor: _kRose, onChanged: _toggle),
                 ]),
               ]),
@@ -436,12 +437,12 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
   Widget build(BuildContext context) => BaseSettingsPage(
     title: "Location",
     body: _isLoading
-        ? const Center(child: HeartLoader(size: 40))
+        ? const Center(child: HeartLoader())
         : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // Search Bar
             TextField(
               controller: _searchCtrl,
-              style: GoogleFonts.dmSans(color: _kInk, fontSize: 15),
+              style: GoogleFonts.montserrat(color: _kInk, fontSize: 15),
               onSubmitted: _searchMapLocation,
               decoration: _inputDecor("Search a city...", icon: Icons.search).copyWith(
                 suffixIcon: IconButton(
@@ -503,22 +504,22 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(color: _kRose, width: 1),
                   backgroundColor: _kCream,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 ),
                 onPressed: _isMapLoading ? null : _confirmMapLocation,
                 child: _isMapLoading 
                   ? const HeartLoader(size: 18)
-                  : Text("Confirm Pin Location", style: GoogleFonts.dmSans(color: _kRose, fontSize: 14, fontWeight: FontWeight.w600)),
+                  : Text("Confirm Pin Location", style: GoogleFonts.montserrat(color: _kRose, fontSize: 14, fontWeight: FontWeight.w600)),
               ),
             ),
             const SizedBox(height: 24),
-            Text("Your Location", style: GoogleFonts.domine(fontSize: 20, color: _kInk)),
+            Text("Your Location", style: GoogleFonts.montserrat(fontSize: 20, color: _kInk)),
             const SizedBox(height: 6),
             Text("This helps us show you people nearby. Tap map or type above.",
-                style: GoogleFonts.dmSans(fontSize: 13, color: _kInkMuted)),
+                style: GoogleFonts.montserrat(fontSize: 13, color: _kInkMuted)),
             const SizedBox(height: 20),
             TextField(controller: _ctrl, readOnly: true,
-                style: GoogleFonts.dmSans(color: _kInk, fontSize: 15),
+                style: GoogleFonts.montserrat(color: _kInk, fontSize: 15),
                 decoration: _inputDecor("Confirm location above", icon: Icons.location_on_outlined)),
             const SizedBox(height: 20),
             _saveButton("Save Location", _isSaving, _save),
@@ -546,12 +547,12 @@ class TravelModePage extends StatelessWidget {
             child: const Icon(Icons.flight_takeoff_rounded, color: _kRose, size: 28),
           ),
           const SizedBox(height: 20),
-          Text("Going somewhere?", style: GoogleFonts.domine(
+          Text("Going somewhere?", style: GoogleFonts.montserrat(
               fontSize: 24, fontWeight: FontWeight.w400, color: _kInk)),
           const SizedBox(height: 10),
           Text("Change your location to swipe in other cities before you arrive.",
               textAlign: TextAlign.center,
-              style: GoogleFonts.dmSans(fontSize: 14, color: _kInkMuted, height: 1.5)),
+              style: GoogleFonts.montserrat(fontSize: 14, color: _kInkMuted, height: 1.5)),
         ]),
       ),
       const SizedBox(height: 24),
@@ -632,19 +633,19 @@ class _VerificationPageState extends State<VerificationPage> {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: _kCream,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: _kBone)),
-      title: Text("Verification Failed", style: GoogleFonts.domine(fontSize: 22, color: _kInk)),
+      title: Text("Verification Failed", style: GoogleFonts.montserrat(fontSize: 22, color: _kInk)),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         Text("Your video did not match your profile picture.",
-            style: GoogleFonts.dmSans(color: _kInkMuted, height: 1.4)),
+            style: GoogleFonts.montserrat(color: _kInkMuted, height: 1.4)),
         const SizedBox(height: 10),
         Text("Match Score: ${score.toStringAsFixed(2)}",
-            style: GoogleFonts.dmSans(fontWeight: FontWeight.w600, color: _kInk)),
+            style: GoogleFonts.montserrat(fontWeight: FontWeight.w600, color: _kInk)),
         const SizedBox(height: 10),
         Text("Try again with a clearer face photo or better lighting.",
-            style: GoogleFonts.dmSans(fontSize: 12, color: _kInkMuted)),
+            style: GoogleFonts.montserrat(fontSize: 12, color: _kInkMuted)),
       ]),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx),
-          child: Text("Try Again", style: GoogleFonts.dmSans(color: _kRose, fontWeight: FontWeight.w600)))],
+          child: Text("Try Again", style: GoogleFonts.montserrat(color: _kRose, fontWeight: FontWeight.w600)))],
     ));
   }
 
@@ -652,7 +653,7 @@ class _VerificationPageState extends State<VerificationPage> {
   Widget build(BuildContext context) {
     if (_isFetchingProfile) {
       return BaseSettingsPage(title: "Verification",
-          body: const Center(child: HeartLoader(size: 40)));
+          body: const Center(child: HeartLoader()));
     }
     if (_isVerified) {
       return BaseSettingsPage(
@@ -668,11 +669,11 @@ class _VerificationPageState extends State<VerificationPage> {
               child: const Icon(Icons.verified_rounded, color: Colors.blue, size: 40),
             ),
             const SizedBox(height: 20),
-            Text("You're Verified!", style: GoogleFonts.domine(fontSize: 26, color: _kInk)),
+            Text("You're Verified!", style: GoogleFonts.montserrat(fontSize: 26, color: _kInk)),
             const SizedBox(height: 10),
             Text("Your verified badge is now visible on your profile.",
                 textAlign: TextAlign.center,
-                style: GoogleFonts.dmSans(color: _kInkMuted, fontSize: 14, height: 1.5)),
+                style: GoogleFonts.montserrat(color: _kInkMuted, fontSize: 14, height: 1.5)),
           ]),
         ),
       );
@@ -681,10 +682,10 @@ class _VerificationPageState extends State<VerificationPage> {
     return BaseSettingsPage(
       title: "Verification",
       body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text("Get the Verified Badge", style: GoogleFonts.domine(fontSize: 22, color: _kInk)),
+        Text("Get the Verified Badge", style: GoogleFonts.montserrat(fontSize: 22, color: _kInk)),
         const SizedBox(height: 6),
         Text("Complete these two steps to verify your identity.",
-            style: GoogleFonts.dmSans(color: _kInkMuted, fontSize: 13, height: 1.4)),
+            style: GoogleFonts.montserrat(color: _kInkMuted, fontSize: 13, height: 1.4)),
         const SizedBox(height: 24),
 
         // Step 1
@@ -701,8 +702,8 @@ class _VerificationPageState extends State<VerificationPage> {
             ),
             const SizedBox(width: 16),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text("Step 1", style: GoogleFonts.dmSans(fontSize: 11, color: _kInkMuted, letterSpacing: 1)),
-              Text("Profile Photo", style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w600, color: _kInk)),
+              Text("Step 1", style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted, letterSpacing: 1)),
+              Text("Profile Photo", style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w600, color: _kInk)),
             ])),
             Container(
               width: 28, height: 28,
@@ -728,7 +729,7 @@ class _VerificationPageState extends State<VerificationPage> {
                 width: 56, height: 56,
                 decoration: BoxDecoration(
                   color: _videoFile != null ? _kRosePale : _kCream,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: _kBone),
                 ),
                 child: Icon(_videoFile != null ? Icons.videocam_rounded : Icons.videocam_off_rounded,
@@ -736,9 +737,9 @@ class _VerificationPageState extends State<VerificationPage> {
               ),
               const SizedBox(width: 16),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text("Step 2", style: GoogleFonts.dmSans(fontSize: 11, color: _kInkMuted, letterSpacing: 1)),
+                Text("Step 2", style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted, letterSpacing: 1)),
                 Text(_videoFile == null ? "Record short video (5s)" : "Video Recorded ✓",
-                    style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w600,
+                    style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w600,
                         color: _videoFile != null ? _kRose : _kInk)),
               ])),
               Icon(Icons.chevron_right_rounded, color: _kBone, size: 20),
@@ -763,6 +764,8 @@ class BlockListPage extends StatefulWidget {
 class _BlockListPageState extends State<BlockListPage> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _blockedUsers = [];
+  int _selectedTab = 0;
+  final TextEditingController _phoneController = TextEditingController();
 
   @override
   void initState() { super.initState(); _fetchBlockedUsers(); }
@@ -796,14 +799,14 @@ class _BlockListPageState extends State<BlockListPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: _kCream,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: _kBone)),
-        title: Text('Unblock $name?', style: GoogleFonts.domine(fontSize: 22, color: _kInk)),
+        title: Text('Unblock $name?', style: GoogleFonts.montserrat(fontSize: 22, color: _kInk)),
         content: Text('You will be able to see each other in Discover again.',
-            style: GoogleFonts.dmSans(color: _kInkMuted, height: 1.4)),
+            style: GoogleFonts.montserrat(color: _kInkMuted, height: 1.4)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Cancel', style: GoogleFonts.dmSans(color: _kInkMuted))),
+              child: Text('Cancel', style: GoogleFonts.montserrat(color: _kInkMuted))),
           TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Unblock', style: GoogleFonts.dmSans(color: _kRose, fontWeight: FontWeight.w600))),
+              child: Text('Unblock', style: GoogleFonts.montserrat(color: _kRose, fontWeight: FontWeight.w600))),
         ],
       ),
     );
@@ -816,7 +819,7 @@ class _BlockListPageState extends State<BlockListPage> {
       if (mounted) {
         setState(() => _blockedUsers.removeWhere((u) => u['blocked_id'] == blockedId));
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('$name unblocked', style: GoogleFonts.dmSans(color: Colors.white)),
+          content: Text('$name unblocked', style: GoogleFonts.montserrat(color: Colors.white)),
           backgroundColor: _kRose, behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           margin: const EdgeInsets.all(16),
@@ -828,70 +831,249 @@ class _BlockListPageState extends State<BlockListPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Future<void> _blockByPhone() async {
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty) return;
+    _phoneController.clear();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Contact blocked', style: GoogleFonts.montserrat(color: Colors.white)), backgroundColor: _kRose)
+    );
+  }
+
+  Future<void> _importContacts() async {
+    final status = await FlutterContacts.permissions.request(PermissionType.read);
+    if (status == PermissionStatus.granted || status == PermissionStatus.limited) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: HeartLoader()),
+      );
+      List<Contact> contacts = await FlutterContacts.getAll(properties: {ContactProperty.phone});
+      if (mounted) Navigator.pop(context);
+      
+      if (!mounted) return;
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: _kCream,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        builder: (ctx) => DraggableScrollableSheet(
+          initialChildSize: 0.8,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (_, controller) => _buildContactsList(contacts, controller),
+        ),
+      );
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Permission denied to access contacts', style: GoogleFonts.montserrat(color: Colors.white)), backgroundColor: Colors.red)
+        );
+      }
+    }
+  }
+
+  Widget _buildContactsList(List<Contact> contacts, ScrollController controller) {
+    if (contacts.isEmpty) {
+      return Center(child: Text("No contacts found", style: GoogleFonts.montserrat(color: _kInkMuted)));
+    }
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text("Select Contact to Block", style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: _kInk)),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.builder(
+            controller: controller,
+            itemCount: contacts.length,
+            itemBuilder: (context, index) {
+              final c = contacts[index];
+              final phone = c.phones.isNotEmpty ? c.phones.first.number : null;
+              final displayName = c.displayName ?? 'Unknown';
+              
+              if (phone == null) return const SizedBox.shrink();
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: _kBone,
+                  child: Text(displayName.isNotEmpty ? displayName[0].toUpperCase() : '?', style: GoogleFonts.montserrat(color: _kInk)),
+                ),
+                title: Text(displayName, style: GoogleFonts.montserrat(color: _kInk, fontWeight: FontWeight.w500)),
+                subtitle: Text(phone, style: GoogleFonts.montserrat(color: _kInkMuted)),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _phoneController.text = phone);
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBlockedUsers() {
     if (_isLoading) {
-      return BaseSettingsPage(title: "Blocked Users",
-          body: const Center(child: HeartLoader(size: 40)));
+      return const Center(child: HeartLoader());
     }
     if (_blockedUsers.isEmpty) {
-      return BaseSettingsPage(
-        title: "Blocked Users",
-        body: Column(children: [
-          const SizedBox(height: 60),
-          Container(
-            width: 72, height: 72,
-            decoration: BoxDecoration(color: _kParchment, shape: BoxShape.circle, border: Border.all(color: _kBone)),
-            child: Icon(Icons.block_rounded, color: _kBone, size: 32),
-          ),
-          const SizedBox(height: 20),
-          Text("No blocked users", style: GoogleFonts.domine(fontSize: 22, color: _kInk)),
-          const SizedBox(height: 8),
-          Text("Users you block will appear here.",
-              style: GoogleFonts.dmSans(color: _kInkMuted, fontSize: 13), textAlign: TextAlign.center),
-        ]),
-      );
+      return Column(children: [
+        const SizedBox(height: 60),
+        Container(
+          width: 72, height: 72,
+          decoration: BoxDecoration(color: _kParchment, shape: BoxShape.circle, border: Border.all(color: _kBone)),
+          child: const Icon(Icons.block_rounded, color: _kBone, size: 32),
+        ),
+        const SizedBox(height: 20),
+        Text("No blocked users", style: GoogleFonts.montserrat(fontSize: 22, color: _kInk)),
+        const SizedBox(height: 8),
+        Text("Users you block will appear here.",
+            style: GoogleFonts.montserrat(color: _kInkMuted, fontSize: 13), textAlign: TextAlign.center),
+      ]);
     }
 
+    return Container(
+      decoration: _cardDecor(),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: _blockedUsers.length,
+        separatorBuilder: (_, __) => const Divider(height: 1, color: _kBone, indent: 72),
+        itemBuilder: (context, index) {
+          final user = _blockedUsers[index];
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(children: [
+              CircleAvatar(
+                radius: 24, backgroundColor: _kBone,
+                backgroundImage: user['photo_url'] != null ? NetworkImage(user['photo_url']) : null,
+                child: user['photo_url'] == null
+                    ? const Icon(Icons.person_outline_rounded, color: _kInkMuted) : null,
+              ),
+              const SizedBox(width: 14),
+              Expanded(child: Text(user['full_name'],
+                  style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w500, color: _kInk))),
+              GestureDetector(
+                onTap: () => _unblockUser(user['blocked_id'], user['full_name']),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: _kRose, width: 1.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text("Unblock", style: GoogleFonts.montserrat(
+                      color: _kRose, fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
+              ),
+            ]),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBlockedContacts() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("Pre-block Contacts", style: GoogleFonts.montserrat(fontSize: 20, color: _kInk)),
+        const SizedBox(height: 6),
+        Text("Block relatives or friends using their phone number.",
+            style: GoogleFonts.montserrat(color: _kInkMuted, fontSize: 13, height: 1.4)),
+        const SizedBox(height: 24),
+        TextField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          style: GoogleFonts.montserrat(color: _kInk, fontSize: 15),
+          decoration: _inputDecor("Enter phone number", icon: Icons.phone_outlined),
+        ),
+        const SizedBox(height: 16),
+        _saveButton("Block Contact", false, _blockByPhone),
+        const SizedBox(height: 32),
+        Center(child: Text("OR", style: GoogleFonts.montserrat(color: _kInkMuted, fontWeight: FontWeight.bold))),
+        const SizedBox(height: 32),
+        GestureDetector(
+          onTap: _importContacts,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _kRose, width: 1.5),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.contacts_outlined, color: _kRose),
+                const SizedBox(width: 8),
+                Text("Import Contacts", style: GoogleFonts.montserrat(
+                  color: _kRose, fontWeight: FontWeight.w600, fontSize: 15)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return BaseSettingsPage(
       title: "Blocked Users",
-      body: Container(
-        decoration: _cardDecor(),
-        child: ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _blockedUsers.length,
-          separatorBuilder: (_, __) => Divider(height: 1, color: _kBone, indent: 72),
-          itemBuilder: (context, index) {
-            final user = _blockedUsers[index];
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(children: [
-                CircleAvatar(
-                  radius: 24, backgroundColor: _kBone,
-                  backgroundImage: user['photo_url'] != null ? NetworkImage(user['photo_url']) : null,
-                  child: user['photo_url'] == null
-                      ? const Icon(Icons.person_outline_rounded, color: _kInkMuted) : null,
-                ),
-                const SizedBox(width: 14),
-                Expanded(child: Text(user['full_name'],
-                    style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w500, color: _kInk))),
-                GestureDetector(
-                  onTap: () => _unblockUser(user['blocked_id'], user['full_name']),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: _kRose, width: 1.5),
-                      borderRadius: BorderRadius.circular(10),
+      body: Column(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: _kParchment,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _kBone),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedTab = 0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: _selectedTab == 0 ? _kRose : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text("Blocked Users", style: GoogleFonts.montserrat(
+                          color: _selectedTab == 0 ? Colors.white : _kInk,
+                          fontWeight: _selectedTab == 0 ? FontWeight.w600 : FontWeight.w500,
+                        )),
+                      ),
                     ),
-                    child: Text("Unblock", style: GoogleFonts.dmSans(
-                        color: _kRose, fontWeight: FontWeight.w600, fontSize: 13)),
                   ),
                 ),
-              ]),
-            );
-          },
-        ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedTab = 1),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: _selectedTab == 1 ? _kRose : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text("Blocked Contacts", style: GoogleFonts.montserrat(
+                          color: _selectedTab == 1 ? Colors.white : _kInk,
+                          fontWeight: _selectedTab == 1 ? FontWeight.w600 : FontWeight.w500,
+                        )),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          _selectedTab == 0 ? _buildBlockedUsers() : _buildBlockedContacts(),
+        ],
       ),
     );
   }
@@ -908,7 +1090,7 @@ class LegalPage extends StatelessWidget {
     body: Container(
       padding: const EdgeInsets.all(20),
       decoration: _cardDecor(),
-      child: Text(content, style: GoogleFonts.dmSans(
+      child: Text(content, style: GoogleFonts.montserrat(
           fontSize: 15, color: _kInkMuted, height: 1.7)),
     ),
   );
@@ -928,7 +1110,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(children: [
-        Expanded(child: Text(label, style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w500, color: _kInk))),
+        Expanded(child: Text(label, style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w500, color: _kInk))),
         Switch.adaptive(value: val, activeColor: _kRose, onChanged: onChanged),
       ]),
     );
@@ -962,16 +1144,16 @@ class SubscriptionPage extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(children: [
-        Text("Clush Gold", style: GoogleFonts.domine(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w400)),
+        Text("Clush Gold", style: GoogleFonts.montserrat(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w400)),
         const SizedBox(height: 10),
-        Text("You are on the Free plan.", style: GoogleFonts.dmSans(color: Colors.white70)),
+        Text("You are on the Free plan.", style: GoogleFonts.montserrat(color: Colors.white70)),
         const SizedBox(height: 24),
         GestureDetector(
           onTap: () {},
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: Text("Upgrade Now", style: GoogleFonts.dmSans(
+            decoration: BoxDecoration(color: kParchment, borderRadius: BorderRadius.circular(20)),
+            child: Text("Upgrade Now", style: GoogleFonts.montserrat(
                 color: _kRose, fontWeight: FontWeight.w700, fontSize: 15)),
           ),
         ),
@@ -997,7 +1179,7 @@ class LanguagePage extends StatelessWidget {
           itemBuilder: (ctx, i) => Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(children: [
-              Expanded(child: Text(langs[i], style: GoogleFonts.dmSans(
+              Expanded(child: Text(langs[i], style: GoogleFonts.montserrat(
                   fontSize: 15, fontWeight: FontWeight.w400, color: _kInk))),
               if (i == 0) Icon(Icons.check_rounded, color: _kRose, size: 20),
             ]),

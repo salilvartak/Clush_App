@@ -65,6 +65,7 @@ dependencies:
   google_mlkit_face_detection: ^0.13.2
   image: ^4.8.0
   nsfw_detector_flutter: ^1.0.5
+  flutter_contacts: ^2.0.1
   
 
 dev_dependencies:

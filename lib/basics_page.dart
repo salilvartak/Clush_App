@@ -333,7 +333,7 @@ class _BasicsPageState extends State<BasicsPage> {
             Expanded(
               child: Text(
                 message,
-                style: GoogleFonts.dmSans(
+                style: GoogleFonts.figtree(
                   color: Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -344,7 +344,7 @@ class _BasicsPageState extends State<BasicsPage> {
         ),
         backgroundColor: kBlack,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         duration: const Duration(seconds: 4),
         elevation: 4,
@@ -566,15 +566,15 @@ class _BasicsPageState extends State<BasicsPage> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text("Add Custom $title", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text("Add Custom $title", style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 18)),
         content: TextField(
           controller: customCtrl,
           autofocus: true,
-          style: GoogleFonts.dmSans(color: kBlack),
+          style: GoogleFonts.figtree(color: kBlack),
           decoration: const InputDecoration(hintText: "Type here...", border: OutlineInputBorder()),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: GoogleFonts.dmSans(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: GoogleFonts.figtree(color: kInkMuted))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: kRose, foregroundColor: Colors.white),
             onPressed: () {
@@ -584,7 +584,7 @@ class _BasicsPageState extends State<BasicsPage> {
               }
               Navigator.pop(context);
             },
-            child: Text("Add", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold)),
+            child: Text("Add", style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
           )
         ],
       ),
@@ -620,7 +620,7 @@ class _BasicsPageState extends State<BasicsPage> {
                         child: LinearProgressIndicator(
                           value: progress,
                           color: kRose,
-                          backgroundColor: Colors.black12,
+                          backgroundColor: kBone,
                           minHeight: 4,
                         ),
                       ),
@@ -687,7 +687,7 @@ class _BasicsPageState extends State<BasicsPage> {
                       onPressed: (_currentQuestionIndex == _totalQuestionScreens - 1 && _isUploading) ? null : _nextPage,
                       child: _isUploading 
                         ? const HeartLoader(size: 24, color: Colors.white)
-                        : Text(_currentQuestionIndex == _totalQuestionScreens - 1 ? "Finish Profile" : "Continue", style: GoogleFonts.dmSans(fontSize: 18, fontWeight: FontWeight.bold)),
+                        : Text(_currentQuestionIndex == _totalQuestionScreens - 1 ? "Finish Profile" : "Continue", style: GoogleFonts.figtree(fontSize: 18, fontWeight: FontWeight.bold)),
                     ),
                   ),
                   // Optional Skip Button for specific screens
@@ -713,7 +713,7 @@ class _BasicsPageState extends State<BasicsPage> {
                           setState(() => _currentQuestionIndex++);
                         }
                       },
-                      child: Text("Skip for now", style: GoogleFonts.dmSans(color: kInkMuted, fontWeight: FontWeight.w500)),
+                      child: Text("Skip for now", style: GoogleFonts.figtree(color: kInkMuted, fontWeight: FontWeight.w500)),
                     )
                   ]
                 ],
@@ -735,7 +735,7 @@ class _BasicsPageState extends State<BasicsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 30), 
-          Text(title, style: GoogleFonts.domine(fontSize: 30, fontWeight: FontWeight.bold, height: 1.1, color: kBlack)),
+          Text(title, style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 30, height: 1.1, color: kBlack)),
           const SizedBox(height: 24),
           Expanded(child: child), 
         ],
@@ -751,7 +751,7 @@ class _BasicsPageState extends State<BasicsPage> {
           TextField(
             controller: controller,
             keyboardType: type,
-            style: GoogleFonts.dmSans(fontSize: 20, color: kBlack),
+            style: GoogleFonts.figtree(fontSize: 20, color: kBlack),
             decoration: InputDecoration(
               hintText: hint,
               filled: true,
@@ -782,10 +782,10 @@ class _BasicsPageState extends State<BasicsPage> {
                   label: Text(level),
                   selected: isSelected,
                   selectedColor: kRose,
-                  backgroundColor: Colors.white,
+                  backgroundColor: kCream,
                   showCheckmark: false,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  labelStyle: GoogleFonts.dmSans(
+                  labelStyle: GoogleFonts.figtree(
                     color: isSelected ? Colors.white : kBlack, 
                     fontSize: 16,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.w500
@@ -796,11 +796,11 @@ class _BasicsPageState extends State<BasicsPage> {
               }).toList(),
             ),
             const SizedBox(height: 24),
-            Text("School / College Name (Optional)", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, color: kBlack)),
+            Text("School / College Name (Optional)", style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: kBlack)),
             const SizedBox(height: 8),
             TextField(
               controller: schoolNameController,
-              style: GoogleFonts.dmSans(fontSize: 18, color: kBlack),
+              style: GoogleFonts.figtree(fontSize: 18, color: kBlack),
               decoration: InputDecoration(
                 hintText: "e.g. Harvard University",
                 filled: true,
@@ -839,7 +839,7 @@ class _BasicsPageState extends State<BasicsPage> {
                   builder: (context, index) {
                     final age = index + 18;
                     final isSelected = age == selectedAge;
-                    return Center(child: Text("$age", style: GoogleFonts.dmSans(fontSize: isSelected ? 34 : 24, color: isSelected ? kBlack : Colors.grey[400], fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)));
+                    return Center(child: Text("$age", style: GoogleFonts.figtree(fontSize: isSelected ? 34 : 24, color: isSelected ? kBlack : kInkMuted.withOpacity(0.7), fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)));
                   },
                   childCount: 82, 
                 ),
@@ -858,7 +858,7 @@ class _BasicsPageState extends State<BasicsPage> {
       child: Column(
         children: [
           Container(
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
+            decoration: BoxDecoration(color: kParchment, borderRadius: BorderRadius.circular(30)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [_buildToggleBtn("Feet", isFeet), _buildToggleBtn("CM", !isFeet)]),
           ),
           const SizedBox(height: 24),
@@ -887,7 +887,7 @@ class _BasicsPageState extends State<BasicsPage> {
                     builder: (context, index) {
                       if (index < 0 || index >= currentList.length) return null;
                       final isSelected = index == _selectedHeightIndex;
-                      return Center(child: Text(currentList[index], style: GoogleFonts.dmSans(fontSize: isSelected ? 26 : 20, color: isSelected ? kBlack : Colors.grey[400], fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)));
+                      return Center(child: Text(currentList[index], style: GoogleFonts.figtree(fontSize: isSelected ? 26 : 20, color: isSelected ? kBlack : kInkMuted.withOpacity(0.7), fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)));
                     },
                     childCount: currentList.length,
                   ),
@@ -914,7 +914,7 @@ class _BasicsPageState extends State<BasicsPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         decoration: BoxDecoration(color: isActive ? kRose : Colors.transparent, borderRadius: BorderRadius.circular(30)),
-        child: Text(label, style: GoogleFonts.dmSans(color: isActive ? Colors.white : kBlack, fontWeight: FontWeight.bold)),
+        child: Text(label, style: GoogleFonts.figtree(color: isActive ? Colors.white : kBlack, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -934,10 +934,10 @@ class _BasicsPageState extends State<BasicsPage> {
               label: Text(option),
               selected: isSelected,
               selectedColor: kRose,
-              backgroundColor: Colors.white,
+              backgroundColor: kCream,
               showCheckmark: false,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              labelStyle: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
+              labelStyle: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
               onSelected: (selected) { if (selected) onSelect(option); },
             );
@@ -961,10 +961,10 @@ class _BasicsPageState extends State<BasicsPage> {
                 label: Text(option),
                 selected: isSelected,
                 selectedColor: kRose,
-                backgroundColor: Colors.white,
+                backgroundColor: kCream,
                 showCheckmark: false,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                labelStyle: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
+                labelStyle: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
                 onSelected: (_) => onToggle(option),
               );
@@ -973,8 +973,8 @@ class _BasicsPageState extends State<BasicsPage> {
             ActionChip(
               label: Text("+ Add your own"),
               backgroundColor: kBone,
-              labelStyle: GoogleFonts.dmSans(color: kInkMuted, fontSize: 16, fontWeight: FontWeight.bold),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: Colors.grey.shade300)),
+              labelStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 16, fontWeight: FontWeight.bold),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: kBone)),
               onPressed: () {
                 _showAddCustomOptionDialog(title, currentSelections, (newVal) {
                   setState(() {
@@ -999,11 +999,11 @@ class _BasicsPageState extends State<BasicsPage> {
           // Search Bar
           TextField(
             controller: _mapSearchController,
-            style: GoogleFonts.dmSans(color: kBlack),
+            style: GoogleFonts.figtree(color: kBlack),
             onSubmitted: _searchMapLocation,
             decoration: InputDecoration(
               hintText: "Search a city...",
-              hintStyle: GoogleFonts.dmSans(color: Colors.grey),
+              hintStyle: GoogleFonts.figtree(color: kInkMuted),
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
@@ -1059,7 +1059,7 @@ class _BasicsPageState extends State<BasicsPage> {
                     right: 16,
                     child: FloatingActionButton(
                       mini: true,
-                      backgroundColor: Colors.white,
+                      backgroundColor: kCream,
                       onPressed: _fetchCurrentLocation,
                       child: const Icon(Icons.my_location, color: kBlack),
                     ),
@@ -1076,18 +1076,18 @@ class _BasicsPageState extends State<BasicsPage> {
             child: OutlinedButton(
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: kRose, width: 2),
-                backgroundColor: Colors.white,
+                backgroundColor: kCream,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
               ),
               onPressed: _isMapLoading ? null : _confirmMapLocation,
               child: _isMapLoading 
                 ? const HeartLoader(size: 24)
-                : Text("Confirm Pin Location", style: GoogleFonts.dmSans(color: kRose, fontSize: 16, fontWeight: FontWeight.bold)),
+                : Text("Confirm Pin Location", style: GoogleFonts.figtree(color: kRose, fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ),
           if (location != null) ...[
              const SizedBox(height: 16),
-             Text("Currently: ${_getDisplayLocation(location!)}", style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 14)),
+             Text("Currently: ${_getDisplayLocation(location!)}", style: GoogleFonts.figtree(color: kInkMuted, fontSize: 14)),
           ]
         ],
       ),
@@ -1117,7 +1117,7 @@ class _BasicsPageState extends State<BasicsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.dmSans(fontSize: 18, fontWeight: FontWeight.bold, color: kBlack)),
+        Text(label, style: GoogleFonts.figtree(fontSize: 18, fontWeight: FontWeight.bold, color: kBlack)),
         const SizedBox(height: 12),
         Wrap(spacing: 10, children: habitOptions.map((opt) {
           final isSelected = current == opt;
@@ -1125,10 +1125,10 @@ class _BasicsPageState extends State<BasicsPage> {
             label: Text(opt),
             selected: isSelected,
             selectedColor: kRose,
-            backgroundColor: Colors.white,
+            backgroundColor: kCream,
             showCheckmark: false,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            labelStyle: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
+            labelStyle: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
             onSelected: (val) => onSelect(opt),
           );
@@ -1163,8 +1163,8 @@ class _BasicsPageState extends State<BasicsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(title, style: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text(item['subtitle']!, style: GoogleFonts.dmSans(color: isSelected ? Colors.white70 : kInkMuted)),
+                        Text(title, style: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(item['subtitle']!, style: GoogleFonts.figtree(color: isSelected ? Colors.white70 : kInkMuted)),
                       ],
                     ),
                   ),
@@ -1191,9 +1191,9 @@ class _BasicsPageState extends State<BasicsPage> {
                 label: Text(option),
                 selected: isSelected,
                 selectedColor: kRose,
-                backgroundColor: Colors.white,
+                backgroundColor: kCream,
                 showCheckmark: false,
-                labelStyle: GoogleFonts.dmSans(color: isSelected ? Colors.white : kBlack, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
+                labelStyle: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
                 onSelected: (_) {
@@ -1214,8 +1214,8 @@ class _BasicsPageState extends State<BasicsPage> {
             ActionChip(
               label: Text("+ Add your own"),
               backgroundColor: kBone,
-              labelStyle: GoogleFonts.dmSans(color: kInkMuted, fontWeight: FontWeight.bold),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: Colors.grey.shade300)),
+              labelStyle: GoogleFonts.figtree(color: kInkMuted, fontWeight: FontWeight.bold),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: kBone)),
               onPressed: () {
                 if (_getTotalDiscoverySelections() >= 15) {
                    _showNotification("You can choose up to 15 combined discovery traits.");
@@ -1241,7 +1241,7 @@ class _BasicsPageState extends State<BasicsPage> {
       title: "Add your photos",
       child: Column(
         children: [
-          Text("Add at least 2 photos. Tap a slot to add.", style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 16)),
+          Text("Add at least 2 photos. Tap a slot to add.", style: GoogleFonts.figtree(color: kInkMuted, fontSize: 16)),
           const SizedBox(height: 20),
           Expanded(
             child: GridView.builder(
@@ -1259,23 +1259,22 @@ class _BasicsPageState extends State<BasicsPage> {
                 return GestureDetector(
                   onTap: () => (photoFile == null && !isValidating) ? _showPhotoOptions(index) : (photoFile != null ? _removeImage(index) : null),
                   child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
+                    decoration: BoxDecoration(color: kParchment,
                       borderRadius: BorderRadius.circular(15),
                       border: Border.all(color: photoFile == null && index < 2 ? kRose : Colors.transparent, width: 2), // Highlight required slots
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                      boxShadow: [BoxShadow(color: kInk.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
                     ),
                     child: isValidating
-                        ? const Center(child: HeartLoader(size: 40))
+                        ? const Center(child: HeartLoader())
                         : photoFile != null
                             ? Stack(
                                 fit: StackFit.expand,
                                 children: [
                                   ClipRRect(borderRadius: BorderRadius.circular(13), child: Image.file(photoFile, fit: BoxFit.cover)),
-                                  const Positioned(bottom: 4, right: 4, child: CircleAvatar(radius: 10, backgroundColor: Colors.white, child: Icon(Icons.close, size: 14, color: kRose))),
+                                  const Positioned(bottom: 4, right: 4, child: CircleAvatar(radius: 10, backgroundColor: kCream, child: Icon(Icons.close, size: 14, color: kRose))),
                                 ],
                               )
-                            : Icon(Icons.add_a_photo, color: index < 2 ? kRose : Colors.grey[300]),
+                            : Icon(Icons.add_a_photo, color: index < 2 ? kRose : kInkMuted.withOpacity(0.5)),
                   ),
                 );
               },
@@ -1364,7 +1363,7 @@ class _BasicsPageState extends State<BasicsPage> {
       title: "Write your profile answers",
       child: Column(
         children: [
-          Text("Pick 3 prompts to help others get to know you better.", style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 16)),
+          Text("Pick 3 prompts to help others get to know you better.", style: GoogleFonts.figtree(color: kInkMuted, fontSize: 16)),
           const SizedBox(height: 20),
           Expanded(
             child: ListView.separated(
@@ -1377,25 +1376,24 @@ class _BasicsPageState extends State<BasicsPage> {
                   child: Container(
                     padding: const EdgeInsets.all(20),
                     width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
+                    decoration: BoxDecoration(color: kParchment,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: kRose.withOpacity(0.5)),
                     ),
                     child: slot == null
-                        ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.add, color: kRose), const SizedBox(width: 8), Text("Select a Prompt", style: GoogleFonts.dmSans(color: kRose, fontWeight: FontWeight.bold))])
+                        ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.add, color: kRose), const SizedBox(width: 8), Text("Select a Prompt", style: GoogleFonts.figtree(color: kRose, fontWeight: FontWeight.bold))])
                         : Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Expanded(child: Text(slot['question']!.toUpperCase(), style: GoogleFonts.dmSans(fontSize: 11, fontWeight: FontWeight.bold, color: kRose, letterSpacing: 0.5))),
-                                  GestureDetector(onTap: () => setState(() => _promptSlots[index] = null), child: const Icon(Icons.close, size: 16, color: Colors.grey)),
+                                  Expanded(child: Text(slot['question']!.toUpperCase(), style: GoogleFonts.figtree(fontSize: 13, fontWeight: FontWeight.bold, color: kRose, letterSpacing: 0.5))),
+                                  GestureDetector(onTap: () => setState(() => _promptSlots[index] = null), child: const Icon(Icons.close, size: 16, color: kInkMuted)),
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Text(slot['answer']!, style: GoogleFonts.dmSans(fontSize: 16, color: kBlack, fontWeight: FontWeight.w500)),
+                              Text(slot['answer']!, style: GoogleFonts.figtree(fontSize: 16, color: kBlack, fontWeight: FontWeight.w500)),
                             ],
                           ),
                   ),
@@ -1416,7 +1414,7 @@ class _BasicsPageState extends State<BasicsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: kCream,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
       builder: (context) {
         return DraggableScrollableSheet(
@@ -1426,9 +1424,9 @@ class _BasicsPageState extends State<BasicsPage> {
             return Column(
               children: [
                 const SizedBox(height: 16),
-                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: kInkMuted.withOpacity(0.3), borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 16),
-                Text("Pick a Prompt", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, fontSize: 18, color: kBlack)),
+                Text("Pick a Prompt", style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 18, color: kBlack)),
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.separated(
@@ -1437,8 +1435,8 @@ class _BasicsPageState extends State<BasicsPage> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, idx) {
                       return ListTile(
-                        title: Text(availableQuestions[idx], style: GoogleFonts.dmSans(color: kBlack, fontWeight: FontWeight.w500)),
-                        trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                        title: Text(availableQuestions[idx], style: GoogleFonts.figtree(color: kBlack, fontWeight: FontWeight.w500)),
+                        trailing: const Icon(Icons.chevron_right, size: 16, color: kInkMuted),
                         onTap: () {
                           Navigator.pop(context);
                           _showAnswerDialog(index, availableQuestions[idx]);
@@ -1461,10 +1459,10 @@ class _BasicsPageState extends State<BasicsPage> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(question, style: GoogleFonts.dmSans(fontSize: 16, fontWeight: FontWeight.bold, color: kBlack)),
-        content: TextField(controller: textCtrl, autofocus: true, maxLines: 3, style: GoogleFonts.dmSans(color: kBlack), decoration: const InputDecoration(hintText: "Type your answer...", border: OutlineInputBorder())),
+        title: Text(question, style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.bold, color: kBlack)),
+        content: TextField(controller: textCtrl, autofocus: true, maxLines: 3, style: GoogleFonts.figtree(color: kBlack), decoration: const InputDecoration(hintText: "Type your answer...", border: OutlineInputBorder())),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: GoogleFonts.dmSans(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: GoogleFonts.figtree(color: kInkMuted))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: kRose, foregroundColor: Colors.white),
             onPressed: () {
@@ -1473,7 +1471,7 @@ class _BasicsPageState extends State<BasicsPage> {
                 Navigator.pop(context);
               }
             },
-            child: Text("Save", style: GoogleFonts.dmSans(fontWeight: FontWeight.bold)),
+            child: Text("Save", style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
           )
         ],
       ),

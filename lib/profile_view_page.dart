@@ -88,9 +88,7 @@ class ProfileViewPage extends StatelessWidget {
                       Flexible(
                         child: Text(
                           name,
-                          style: GoogleFonts.domine(
-                            fontSize: 38,
-                            fontWeight: FontWeight.w300,
+                          style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 38,
                             color: kInk,
                             letterSpacing: -1.0,
                             height: 1.0,
@@ -137,7 +135,7 @@ class ProfileViewPage extends StatelessWidget {
                   const SizedBox(width: 5),
                   Text(
                     "Active Today",
-                    style: GoogleFonts.dmSans(
+                    style: GoogleFonts.figtree(
                       fontSize: 11,
                       color: kRose,
                       fontWeight: FontWeight.w600,
@@ -299,7 +297,7 @@ class ProfileViewPage extends StatelessWidget {
         Container(width: 3, height: 16, color: kGold, margin: const EdgeInsets.only(right: 10)),
         Text(
           label.toUpperCase(),
-          style: GoogleFonts.dmSans(
+          style: GoogleFonts.figtree(
             fontSize: 11,
             fontWeight: FontWeight.w700,
             color: kInkMuted,
@@ -384,7 +382,7 @@ class ProfileViewPage extends StatelessWidget {
                       const SizedBox(width: 6),
                       Text(
                         value,
-                        style: GoogleFonts.dmSans(
+                        style: GoogleFonts.figtree(
                           fontWeight: FontWeight.w500,
                           fontSize: 13,
                           color: kInk,
@@ -411,7 +409,7 @@ class ProfileViewPage extends StatelessWidget {
                           const SizedBox(width: 14),
                           Text(
                             entry.key,
-                            style: GoogleFonts.dmSans(
+                            style: GoogleFonts.figtree(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: kInkMuted,
@@ -421,7 +419,7 @@ class ProfileViewPage extends StatelessWidget {
                           const Spacer(),
                           Text(
                             entry.value,
-                            style: GoogleFonts.dmSans(
+                            style: GoogleFonts.figtree(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
                               color: kInk,
@@ -485,8 +483,7 @@ class ProfileViewPage extends StatelessWidget {
           // Opening quote mark
           Text(
             "\u201C",
-            style: GoogleFonts.domine(
-              fontSize: 48,
+            style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 48,
               color: kRose.withOpacity(0.3),
               height: 0.8,
             ),
@@ -494,20 +491,18 @@ class ProfileViewPage extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             prompt['question'] as String,
-            style: GoogleFonts.dmSans(
+            style: GoogleFonts.figtree(
               color: kInkMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
               letterSpacing: 1.0,
             ),
           ),
           const SizedBox(height: 12),
           Text(
             prompt['answer'],
-            style: GoogleFonts.domine(
-              fontSize: 26,
+            style: GoogleFonts.ledger(fontWeight: FontWeight.bold, fontSize: 26,
               height: 1.3,
-              fontWeight: FontWeight.w600,
               color: kInk,
             ),
           ),
@@ -526,7 +521,7 @@ class ProfileViewPage extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.dmSans(
+        style: GoogleFonts.figtree(
           fontSize: 13,
           fontWeight: FontWeight.w500,
           color: kInk,

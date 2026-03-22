@@ -152,7 +152,7 @@ class _HomePageState extends State<HomePage> {
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: kCream,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(color: kBone, width: 1),
             boxShadow: [
               BoxShadow(
@@ -169,7 +169,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 20),
                 Text(
                   "Verification Required",
-                  style: GoogleFonts.domine(fontSize: 22, fontWeight: FontWeight.bold, color: kBlack),
+                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 22, color: kBlack),
                   textAlign: TextAlign.center,
                 ),
               const SizedBox(height: 12),

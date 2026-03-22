@@ -47,8 +47,8 @@ class AuraApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        fontFamily: GoogleFonts.dmSans().fontFamily,
-        textTheme: GoogleFonts.dmSansTextTheme(
+        fontFamily: GoogleFonts.figtree().fontFamily,
+        textTheme: GoogleFonts.figtreeTextTheme(
           Theme.of(context).textTheme,
         ),
         scaffoldBackgroundColor: kCream, // Updated to use kCream
@@ -456,12 +456,11 @@ class _LoginScreenState extends State<LoginScreen> {
       key: const ValueKey('phone_state'),
       children: [
         Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24.0),
+          decoration: BoxDecoration(color: kParchment,
+            borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: kInk.withOpacity(0.04),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -473,11 +472,11 @@ class _LoginScreenState extends State<LoginScreen> {
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
             decoration: InputDecoration(
               hintText: "Phone Number (e.g., +91...)",
-              hintStyle: const TextStyle(color: Colors.black38, fontSize: 16),
+              hintStyle: const TextStyle(color: kInkMuted, fontSize: 16),
               prefixIcon: const Icon(Icons.phone_outlined, color: kRose),
               filled: true,
               fillColor: Colors.transparent, // Let the container drive the color
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24.0), borderSide: BorderSide.none),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
               contentPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
             ),
           ),
@@ -492,7 +491,7 @@ class _LoginScreenState extends State<LoginScreen> {
               backgroundColor: kRose,
               elevation: 8,
               shadowColor: kRose.withOpacity(0.4),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             ),
             child: _isLoading 
                 ? const HeartLoader(size: 26, color: Colors.white) 
@@ -511,12 +510,12 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.symmetric(vertical: 32.0),
           child: Row(
             children: [
-              Expanded(child: Divider(color: Colors.grey.shade400)),
+              Expanded(child: Divider(color: kBone)),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text("OR", style: TextStyle(color: Colors.black45, fontWeight: FontWeight.bold, fontSize: 14)),
+                child: Text("OR", style: TextStyle(color: kInkMuted, fontWeight: FontWeight.bold, fontSize: 14)),
               ),
-              Expanded(child: Divider(color: Colors.grey.shade400)),
+              Expanded(child: Divider(color: kBone)),
             ],
           ),
         ),
@@ -527,13 +526,13 @@ class _LoginScreenState extends State<LoginScreen> {
           child: OutlinedButton.icon(
             onPressed: _isLoading ? null : () => _signInWithGoogle(context),
             icon: Image.network("https://cdn-icons-png.flaticon.com/512/2991/2991148.png", height: 26),
-            label: const Text("Continue with Google", style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w600, letterSpacing: 0.2)),
+            label: const Text("Continue with Google", style: TextStyle(fontSize: 16, color: kInk, fontWeight: FontWeight.w600, letterSpacing: 0.2)),
             style: OutlinedButton.styleFrom(
-              backgroundColor: Colors.white,
+              backgroundColor: kCream,
               elevation: 4,
-              shadowColor: Colors.black.withOpacity(0.05),
+              shadowColor: kInk.withOpacity(0.05),
               side: const BorderSide(color: Colors.transparent),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             ),
           ),
         ).animate().fade(duration: 400.ms, delay: 300.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
@@ -547,12 +546,11 @@ class _LoginScreenState extends State<LoginScreen> {
       key: const ValueKey('otp_state'),
       children: [
         Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24.0),
+          decoration: BoxDecoration(color: kParchment,
+            borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: kInk.withOpacity(0.04),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -567,11 +565,11 @@ class _LoginScreenState extends State<LoginScreen> {
             decoration: InputDecoration(
               counterText: "",
               hintText: "------",
-              hintStyle: const TextStyle(letterSpacing: 14.0, color: Colors.black26),
+              hintStyle: const TextStyle(letterSpacing: 14.0, color: kBone),
               filled: true,
               fillColor: Colors.transparent,
               prefixIcon: const Icon(Icons.lock_outline, color: kRose),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24.0), borderSide: BorderSide.none),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
               contentPadding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
             ),
           ),
@@ -586,7 +584,7 @@ class _LoginScreenState extends State<LoginScreen> {
               backgroundColor: kRose,
               elevation: 8,
               shadowColor: kRose.withOpacity(0.4),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             ),
             child: _isLoading 
                 ? const HeartLoader(size: 26, color: Colors.white)
@@ -609,7 +607,7 @@ class _LoginScreenState extends State<LoginScreen> {
             });
           },
           style: TextButton.styleFrom(
-            foregroundColor: Colors.black54,
+            foregroundColor: kInkMuted,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
           child: const Text("Use a different number", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),

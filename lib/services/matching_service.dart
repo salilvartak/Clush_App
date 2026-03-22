@@ -193,6 +193,30 @@ class MatchingService {
     }
   }
 
+  Future<int> getUnreadCountForRoom(String roomId, String myName, String myId) async {
+    try {
+      final readStatus = await _client.from('chat_read_status')
+          .select('last_read_at')
+          .eq('user_id', myId)
+          .eq('room_id', roomId)
+          .maybeSingle();
+
+      final lastRead = readStatus?['last_read_at'] ?? '1970-01-01T00:00:00Z';
+
+      final response = await _client.from('messages')
+          .select('id')
+          .eq('room_id', roomId)
+          .neq('sender', myName)
+          .gt('created_at', lastRead)
+          .count(CountOption.exact);
+
+      return response.count ?? 0;
+    } catch (e) {
+      print('Error getting unread count for room: $e');
+      return 0;
+    }
+  }
+
   String _getRoomId(String id1, String id2) {
     List<String> ids = [id1, id2];
     ids.sort();

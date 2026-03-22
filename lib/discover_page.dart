@@ -138,7 +138,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         });
       }
 
-      if (_filterIntent.isEmpty || _filterIntent == 'Default') {
+      // Prioritize user's intent from profile if _filterIntent is not set
+      if (_filterIntent.isEmpty) {
         if (myIntent != null && myIntent.isNotEmpty) {
           String mappedIntent = myIntent;
           if (mappedIntent.toLowerCase() == 'man') mappedIntent = 'Men';
@@ -152,7 +153,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
           }
         }
         
-        if (_filterIntent.isEmpty || _filterIntent == 'Default') {
+        // If _filterIntent is still empty, default based on gender
+        if (_filterIntent.isEmpty) {
           if (myGender?.toLowerCase() == 'woman') {
             _filterIntent = 'Men';
           } else if (myGender?.toLowerCase() == 'man') {
@@ -339,20 +341,16 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                 ),
                 Text(
                   "A PERFECT MATCH",
-                  style: GoogleFonts.domine(
-                    color: kRose,
+                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, color: kRose,
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
                     letterSpacing: 3.5,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   "It's Mutual",
-                  style: GoogleFonts.domine(
-                    color: kInk,
+                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, color: kInk,
                     fontSize: 36,
-                    fontWeight: FontWeight.w300,
                     letterSpacing: -0.5,
                     fontStyle: FontStyle.italic,
                   ),
@@ -380,8 +378,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                 Text(
                   "You and ${profile['full_name']} like each other.",
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.domine(
-                    fontSize: 18,
+                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 18,
                     color: kInkMuted,
                     fontStyle: FontStyle.italic,
                     height: 1.4,
@@ -402,7 +399,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                     ),
                     child: Text(
                       "Send a Message",
-                      style: GoogleFonts.dmSans(
+                      style: GoogleFonts.figtree(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
                         fontSize: 15,
@@ -416,7 +413,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                   onPressed: () => Navigator.pop(context),
                   child: Text(
                     "Keep Discovering",
-                    style: GoogleFonts.dmSans(
+                    style: GoogleFonts.figtree(
                       color: kInkMuted,
                       fontWeight: FontWeight.w500,
                       fontSize: 14,
@@ -438,7 +435,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       return Scaffold(
         backgroundColor: kCream,
         body: const Center(
-          child: HeartLoader(size: 80),
+          child: HeartLoader(),
         ),
       );
     }
@@ -452,7 +449,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             child: Text(
               _errorMessage!,
               textAlign: TextAlign.center,
-              style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 15),
+              style: GoogleFonts.figtree(color: kInkMuted, fontSize: 15),
             ),
           ),
         ),
@@ -480,9 +477,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                   const SizedBox(height: 20),
                   Text(
                     "You've seen everyone",
-                    style: GoogleFonts.domine(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w300,
+                    style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26,
                       color: kInk,
                       fontStyle: FontStyle.italic,
                     ),
@@ -490,7 +485,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                   const SizedBox(height: 8),
                   Text(
                     "Check back soon for new profiles",
-                    style: GoogleFonts.dmSans(
+                    style: GoogleFonts.figtree(
                       fontSize: 14,
                       color: kInkMuted,
                     ),
@@ -657,9 +652,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                       Flexible(
                         child: Text(
                           name,
-                          style: GoogleFonts.domine(
-                            fontSize: 38,
-                            fontWeight: FontWeight.w300,
+                          style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 38,
                             color: kInk,
                             letterSpacing: -1.0,
                             height: 1.0,
@@ -703,7 +696,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                   const SizedBox(width: 5),
                   Text(
                     "Active Today",
-                    style: GoogleFonts.dmSans(
+                    style: GoogleFonts.figtree(
                       fontSize: 11,
                       color: kRose,
                       fontWeight: FontWeight.w600,
@@ -868,7 +861,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
           const SizedBox(width: 6),
           Text(
             label,
-            style: GoogleFonts.dmSans(
+            style: GoogleFonts.figtree(
               color: kInkMuted.withOpacity(0.6),
               fontWeight: FontWeight.w500,
               fontSize: 13,
@@ -944,7 +937,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
           children: [
             Text(
               label,
-              style: GoogleFonts.dmSans(
+              style: GoogleFonts.figtree(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: kInk,
@@ -972,15 +965,13 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         ),
         title: Text(
           'Block ${profile['full_name']}?',
-          style: GoogleFonts.domine(
-            fontSize: 22,
-            fontWeight: FontWeight.w500,
+          style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 22,
             color: kInk,
           ),
         ),
         content: Text(
           'They will be removed from your Discover feed and won\'t be able to see you.',
-          style: GoogleFonts.dmSans(
+          style: GoogleFonts.figtree(
             fontSize: 14,
             color: kInkMuted,
             height: 1.5,
@@ -991,7 +982,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             onPressed: () => Navigator.pop(ctx),
             child: Text(
               'Cancel',
-              style: GoogleFonts.dmSans(color: kInkMuted, fontWeight: FontWeight.w500),
+              style: GoogleFonts.figtree(color: kInkMuted, fontWeight: FontWeight.w500),
             ),
           ),
           TextButton(
@@ -1007,7 +998,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             },
             child: Text(
               'Block',
-              style: GoogleFonts.dmSans(color: Colors.red.shade400, fontWeight: FontWeight.w600),
+              style: GoogleFonts.figtree(color: Colors.red.shade400, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -1054,17 +1045,14 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                   ),
                   Text(
                     "Report",
-                    style: GoogleFonts.domine(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w500,
+                    style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 24,
                       color: kInk,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     profile['full_name'] ?? '',
-                    style: GoogleFonts.domine(
-                      fontSize: 18,
+                    style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 18,
                       fontStyle: FontStyle.italic,
                       color: kInkMuted,
                     ),
@@ -1078,7 +1066,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                           contentPadding: EdgeInsets.zero,
                           title: Text(
                             entry.value,
-                            style: GoogleFonts.dmSans(
+                            style: GoogleFonts.figtree(
                               color: kInk,
                               fontSize: 15,
                               fontWeight: FontWeight.w400,
@@ -1123,7 +1111,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             Expanded(
               child: Text(
                 message,
-                style: GoogleFonts.dmSans(
+                style: GoogleFonts.figtree(
                   color: Colors.white,
                   fontWeight: FontWeight.w500,
                   fontSize: 14,
@@ -1159,7 +1147,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             color: Colors.white,
             shape: const CircleBorder(),
             elevation: 8,
-            shadowColor: Colors.black26,
+            shadowColor: kBone,
             child: InkWell(
               onTap: () => _onSwipe(currentProfileId, 'dislike'),
               customBorder: const CircleBorder(),
@@ -1220,7 +1208,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         Container(width: 3, height: 16, color: kGold, margin: const EdgeInsets.only(right: 10)),
         Text(
           label.toUpperCase(),
-          style: GoogleFonts.dmSans(
+          style: GoogleFonts.figtree(
             fontSize: 11,
             fontWeight: FontWeight.w700,
             color: kInkMuted,
@@ -1302,7 +1290,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                       const SizedBox(width: 6),
                       Text(
                         value,
-                        style: GoogleFonts.dmSans(
+                        style: GoogleFonts.figtree(
                           fontWeight: FontWeight.w500,
                           fontSize: 13,
                           color: kInk,
@@ -1329,7 +1317,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                           const SizedBox(width: 14),
                           Text(
                             entry.key,
-                            style: GoogleFonts.dmSans(
+                            style: GoogleFonts.figtree(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: kInkMuted,
@@ -1339,7 +1327,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                           const Spacer(),
                           Text(
                             entry.value,
-                            style: GoogleFonts.dmSans(
+                            style: GoogleFonts.figtree(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
                               color: kInk,
@@ -1403,8 +1391,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
           // Opening quote mark
           Text(
             "\u201C",
-            style: GoogleFonts.domine(
-              fontSize: 48,
+            style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 48,
               color: kRose.withOpacity(0.3),
               height: 0.8,
             ),
@@ -1412,20 +1399,18 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
           const SizedBox(height: 4),
           Text(
             prompt['question'] as String,
-            style: GoogleFonts.dmSans(
+            style: GoogleFonts.figtree(
               color: kInkMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
               letterSpacing: 1.0,
             ),
           ),
           const SizedBox(height: 12),
           Text(
             prompt['answer'],
-            style: GoogleFonts.domine(
-              fontSize: 26,
+            style: GoogleFonts.ledger(fontWeight: FontWeight.bold, fontSize: 26,
               height: 1.3,
-              fontWeight: FontWeight.w600,
               color: kInk,
             ),
           ),
@@ -1444,7 +1429,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       ),
       child: Text(
         label,
-        style: GoogleFonts.dmSans(
+        style: GoogleFonts.figtree(
           fontSize: 13,
           fontWeight: FontWeight.w500,
           color: kInk,
@@ -1606,9 +1591,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
             Expanded(
               child: Text(
                 'Premium Feature',
-                style: GoogleFonts.domine(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 22,
+                style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 22,
                   color: kInk,
                 ),
               ),
@@ -1617,7 +1600,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
         ),
         content: Text(
           'Unlock advanced filters like Religion, Height, and Ethnicity with Clush Premium.',
-          style: GoogleFonts.dmSans(
+          style: GoogleFonts.figtree(
             fontSize: 14,
             color: kInkMuted,
             height: 1.5,
@@ -1628,20 +1611,20 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
             onPressed: () => Navigator.pop(ctx),
             child: Text(
               'Maybe later',
-              style: GoogleFonts.dmSans(color: kInkMuted),
+              style: GoogleFonts.figtree(color: kInkMuted),
             ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: kRose,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
             onPressed: () => Navigator.pop(ctx),
             child: Text(
               'Upgrade',
-              style: GoogleFonts.dmSans(
+              style: GoogleFonts.figtree(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
               ),
@@ -1683,9 +1666,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
               children: [
                 Text(
                   "Discover",
-                  style: GoogleFonts.domine(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w300,
+                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 32,
                     color: kInk,
                     fontStyle: FontStyle.italic,
                   ),
@@ -1693,9 +1674,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                 const SizedBox(width: 8),
                 Text(
                   "Filters",
-                  style: GoogleFonts.domine(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w600,
+                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 32,
                     color: kRose,
                   ),
                 ),
@@ -1716,7 +1695,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                 // Intent
                 Text(
                   "Interested In",
-                  style: GoogleFonts.dmSans(
+                  style: GoogleFonts.figtree(
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
                     color: kInk,
@@ -1735,7 +1714,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                         decoration: BoxDecoration(
                           color: selected ? kRose : kParchment,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color: selected ? kRose : kBone,
                             width: 1,
@@ -1743,7 +1722,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                         ),
                         child: Text(
                           i,
-                          style: GoogleFonts.dmSans(
+                          style: GoogleFonts.figtree(
                             color: selected ? Colors.white : kInk,
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
@@ -1801,7 +1780,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                             const SizedBox(width: 3),
                             Text(
                               "Unlock",
-                              style: GoogleFonts.dmSans(
+                              style: GoogleFonts.figtree(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
                                 color: kGold,
@@ -1870,7 +1849,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                 },
                 child: Text(
                   "Apply Filters",
-                  style: GoogleFonts.dmSans(
+                  style: GoogleFonts.figtree(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
@@ -1899,7 +1878,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   Widget _buildSectionLabel(String label) {
     return Text(
       label,
-      style: GoogleFonts.dmSans(
+      style: GoogleFonts.figtree(
         fontSize: 11,
         fontWeight: FontWeight.w700,
         color: kInkMuted.withOpacity(0.6),
@@ -1916,7 +1895,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
         children: [
           Text(
             label,
-            style: GoogleFonts.dmSans(
+            style: GoogleFonts.figtree(
               fontWeight: FontWeight.w600,
               fontSize: 15,
               color: locked ? kInkMuted.withOpacity(0.4) : kInk,
@@ -1924,7 +1903,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
           ),
           Text(
             value,
-            style: GoogleFonts.dmSans(
+            style: GoogleFonts.figtree(
               fontWeight: FontWeight.w700,
               color: locked ? kInkMuted.withOpacity(0.4) : kRose,
               fontSize: 13,
@@ -1945,7 +1924,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
             children: [
               Text(
                 label,
-                style: GoogleFonts.dmSans(
+                style: GoogleFonts.figtree(
                   fontWeight: FontWeight.w600,
                   fontSize: 15,
                   color: widget.isPremium ? kInk : kInkMuted.withOpacity(0.4),
@@ -1962,7 +1941,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
               color: widget.isPremium ? kParchment : kParchment.withOpacity(0.4),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(color: kBone, width: 1),
             ),
             child: DropdownButtonHideUnderline(
@@ -1975,7 +1954,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                   size: 18,
                 ),
                 dropdownColor: kCream,
-                style: GoogleFonts.dmSans(
+                style: GoogleFonts.figtree(
                   color: widget.isPremium ? kInk : kInkMuted.withOpacity(0.4),
                   fontSize: 14,
                   fontWeight: FontWeight.w500,

@@ -93,9 +93,9 @@ class _SettingsPageState extends State<SettingsPage> {
       backgroundColor: kCream,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
       title: Text("Leaving so soon?", textAlign: TextAlign.center,
-          style: GoogleFonts.domine(fontSize: 22, color: kInk)),
+          style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
       content: Text("Delete your account?\n\nStay and get 1 WEEK OF PREMIUM FREE!", textAlign: TextAlign.center,
-          style: GoogleFonts.dmSans(color: kInkMuted, height: 1.5)),
+          style: GoogleFonts.montserrat(color: kInkMuted, height: 1.5)),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       actionsPadding: const EdgeInsets.all(16),
       actionsAlignment: MainAxisAlignment.center,
@@ -104,9 +104,9 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 10),
         _outlineBtn("Put Account on Hold", () { Navigator.pop(ctx); _navTo(const PauseAccountPage()); }),
         TextButton(onPressed: () { Navigator.pop(ctx); _confirmFinalDeletion(); },
-            child: Text("Delete Anyway", style: GoogleFonts.dmSans(color: Colors.red.shade400))),
+            child: Text("Delete Anyway", style: GoogleFonts.montserrat(color: Colors.red.shade400))),
         TextButton(onPressed: () => Navigator.pop(ctx),
-            child: Text("Cancel", style: GoogleFonts.dmSans(color: kInkMuted))),
+            child: Text("Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
       ])],
     ));
   }
@@ -115,14 +115,14 @@ class _SettingsPageState extends State<SettingsPage> {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: kCream,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
-      title: Text("Are you sure?", style: GoogleFonts.domine(fontSize: 22, color: kInk)),
+      title: Text("Are you sure?", style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
       content: Text("This is permanent. All data, matches and messages will be lost.",
-          style: GoogleFonts.dmSans(color: kInkMuted, height: 1.5)),
+          style: GoogleFonts.montserrat(color: kInkMuted, height: 1.5)),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx),
-            child: Text("Cancel", style: GoogleFonts.dmSans(color: kInkMuted))),
+            child: Text("Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
         TextButton(onPressed: () async { Navigator.pop(ctx); await _deleteAccount(); },
-            child: Text("Yes, Delete", style: GoogleFonts.dmSans(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
+            child: Text("Yes, Delete", style: GoogleFonts.montserrat(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
       ],
     ));
   }
@@ -145,12 +145,21 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _toast(String msg, {bool err = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.w500)),
+      content: Text(msg, style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w500)),
       backgroundColor: err ? Colors.red.shade400 : kRose,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.all(16),
     ));
+  }
+
+  String _formatLocation(String? loc) {
+    if (loc == null || loc.isEmpty) return "Not set";
+    int parenIndex = loc.indexOf('(');
+    if (parenIndex != -1) loc = loc.substring(0, parenIndex).trim();
+    List<String> parts = loc.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (parts.length >= 2) return '${parts[0]}, ${parts[1]}';
+    return loc;
   }
 
   @override
@@ -189,7 +198,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   _sectionLabel("Discovery"),
                   _card([
                     _tile(icon: Icons.location_on_outlined, title: "Location",
-                        subtitle: (_userLocation?.isNotEmpty == true) ? _userLocation : "Not set",
+                        subtitle: _formatLocation(_userLocation),
                         onTap: () => _navTo(const CurrentLocationPage())),
                     _divider(),
                     _tile(icon: Icons.flight_takeoff_rounded, title: "Travel Mode",
@@ -206,7 +215,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         subtitle: "Get that verified badge",
                         onTap: () => _navTo(const VerificationPage())),
                     _divider(),
-                    _tile(icon: Icons.block_outlined, title: "Blocked Contacts",
+                    _tile(icon: Icons.block_outlined, title: "Blocked Users",
                         onTap: () => _navTo(const BlockListPage())),
                   ]),
                   _sectionLabel("Notifications"),
@@ -232,13 +241,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 12),
                   Center(child: TextButton(
                     onPressed: _showRetentionDialog,
-                    child: Text("Delete Account", style: GoogleFonts.dmSans(
+                    child: Text("Delete Account", style: GoogleFonts.montserrat(
                         color: kInkMuted, fontSize: 14,
                         decoration: TextDecoration.underline, decorationColor: kInkMuted)),
                   )),
                   const SizedBox(height: 20),
                   Center(child: Text("Version 1.0.0 (Build 24)",
-                      style: GoogleFonts.dmSans(color: kBone, fontSize: 12))),
+                      style: GoogleFonts.montserrat(color: kBone, fontSize: 12))),
                   const SizedBox(height: 60),
                 ]),
               ),
@@ -263,7 +272,7 @@ class _SettingsPageState extends State<SettingsPage> {
           padding: const EdgeInsets.fromLTRB(24, 52, 24, 12),
           child: Align(
             alignment: Alignment.bottomLeft,
-            child: Text("Settings", style: GoogleFonts.domine(
+            child: Text("Settings", style: GoogleFonts.montserrat(
                 color: kInk, fontSize: 30, fontWeight: FontWeight.w400, letterSpacing: -0.5)),
           ),
         ),
@@ -276,7 +285,7 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.only(left: 4, top: 28, bottom: 10),
       child: Row(children: [
         Container(width: 3, height: 14, color: kGold, margin: const EdgeInsets.only(right: 9)),
-        Text(label.toUpperCase(), style: GoogleFonts.dmSans(
+        Text(label.toUpperCase(), style: GoogleFonts.montserrat(
             fontSize: 11, fontWeight: FontWeight.w700, color: kInkMuted, letterSpacing: 1.8)),
       ]),
     );
@@ -309,10 +318,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Icon(icon, color: kRose, size: 18)),
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w500, color: kInk)),
+              Text(title, style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w500, color: kInk)),
               if (subtitle != null) ...[
                 const SizedBox(height: 2),
-                Text(subtitle, style: GoogleFonts.dmSans(fontSize: 13, color: kInkMuted),
+                Text(subtitle, style: GoogleFonts.montserrat(fontSize: 13, color: kInkMuted),
                     overflow: TextOverflow.ellipsis),
               ],
             ])),
@@ -331,7 +340,7 @@ class _SettingsPageState extends State<SettingsPage> {
       borderRadius: BorderRadius.circular(8),
       border: Border.all(color: kGold.withOpacity(0.4)),
     ),
-    child: Text("PREMIUM", style: GoogleFonts.dmSans(
+    child: Text("PREMIUM", style: GoogleFonts.montserrat(
         color: kGold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
   );
 
@@ -340,8 +349,8 @@ class _SettingsPageState extends State<SettingsPage> {
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: kRose, borderRadius: BorderRadius.circular(12)),
-      child: Text(label, style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
+      decoration: BoxDecoration(color: kRose, borderRadius: BorderRadius.circular(20)),
+      child: Text(label, style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
     ),
   );
 
@@ -351,10 +360,10 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.symmetric(vertical: 14),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: kRose, width: 1.5),
       ),
-      child: Text(label, style: GoogleFonts.dmSans(color: kRose, fontWeight: FontWeight.w600, fontSize: 15)),
+      child: Text(label, style: GoogleFonts.montserrat(color: kRose, fontWeight: FontWeight.w600, fontSize: 15)),
     ),
   );
 
@@ -363,13 +372,13 @@ class _SettingsPageState extends State<SettingsPage> {
       onTap: () => showDialog(context: context, builder: (ctx) => AlertDialog(
         backgroundColor: kCream,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
-        title: Text("Log Out?", style: GoogleFonts.domine(fontSize: 22, color: kInk)),
-        content: Text("Are you sure you want to log out?", style: GoogleFonts.dmSans(color: kInkMuted)),
+        title: Text("Log Out?", style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
+        content: Text("Are you sure you want to log out?", style: GoogleFonts.montserrat(color: kInkMuted)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
-              child: Text("Cancel", style: GoogleFonts.dmSans(color: kInkMuted))),
+              child: Text("Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
           TextButton(onPressed: () { Navigator.pop(ctx); _logout(); },
-              child: Text("Log Out", style: GoogleFonts.dmSans(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
+              child: Text("Log Out", style: GoogleFonts.montserrat(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
         ],
       )),
       child: Container(
@@ -379,7 +388,7 @@ class _SettingsPageState extends State<SettingsPage> {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: kBone, width: 1),
         ),
-        child: Text("Log Out", style: GoogleFonts.dmSans(
+        child: Text("Log Out", style: GoogleFonts.montserrat(
             color: Colors.red.shade400, fontSize: 15, fontWeight: FontWeight.w600)),
       ),
     ),

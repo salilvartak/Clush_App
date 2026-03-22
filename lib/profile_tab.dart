@@ -39,7 +39,7 @@ class ProfileTab extends StatelessWidget {
           future: _fetchProfile(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: HeartLoader(size: 50));
+              return const Center(child: HeartLoader());
             }
             if (snapshot.hasError || !snapshot.hasData) {
               return Center(child: Text("Error loading profile: ${snapshot.error}"));
@@ -63,9 +63,9 @@ class ProfileTab extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("My Profile", style: GoogleFonts.domine(fontSize: 32, fontWeight: FontWeight.w700, color: kBlack, letterSpacing: -0.5)),
+                      Text("My Profile", style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5)),
                       Container(
-                        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]),
+                        decoration: BoxDecoration(color: kParchment, shape: BoxShape.circle, boxShadow: [BoxShadow(color: kInk.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]),
                         child: IconButton(
                           onPressed: () {
                             Navigator.push(
@@ -95,7 +95,7 @@ class ProfileTab extends StatelessWidget {
                   Center(
                     child: Text(
                       "This is how you appear to others", 
-                      style: GoogleFonts.dmSans(color: Colors.black54, fontSize: 16, fontWeight: FontWeight.w500)
+                      style: GoogleFonts.figtree(color: kInkMuted, fontSize: 16, fontWeight: FontWeight.w500)
                     ).animate().fade(duration: 600.ms, delay: 400.ms),
                   ),
                 ],
@@ -112,11 +112,10 @@ class ProfileTab extends StatelessWidget {
     return Container(
       height: 500,
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(color: kParchment,
         borderRadius: BorderRadius.circular(25),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 24, offset: const Offset(0, 8))
+          BoxShadow(color: kInk.withOpacity(0.12), blurRadius: 24, offset: const Offset(0, 8))
         ],
       ),
       child: Stack(
@@ -126,7 +125,7 @@ class ProfileTab extends StatelessWidget {
             borderRadius: BorderRadius.circular(25),
             child: photoUrl.isNotEmpty
                 ? Image.network(photoUrl, fit: BoxFit.cover)
-                : Container(color: Colors.grey.shade300, child: const Icon(Icons.person, size: 50)),
+                : Container(color: kBone, child: const Icon(Icons.person, size: 50)),
           ),
           Container(
             decoration: BoxDecoration(
@@ -134,7 +133,7 @@ class ProfileTab extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withOpacity(0.6)],
+                colors: [Colors.transparent, kInk.withOpacity(0.6)],
                 stops: const [0.7, 1.0],
               ),
             ),
@@ -150,13 +149,11 @@ class ProfileTab extends StatelessWidget {
                   children: [
                     Text(
                       "$name, $age", 
-                      style: GoogleFonts.domine(
-                        color: Colors.white, 
+                      style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, color: Colors.white, 
                         fontSize: 36, 
-                        fontWeight: FontWeight.w600,
                         letterSpacing: -0.5,
                         shadows: [
-                           Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2)),
+                           Shadow(color: kInk.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2)),
                         ]
                       )
                     ),
@@ -182,21 +179,20 @@ class ProfileTab extends StatelessWidget {
 
   Widget _buildPreviewBadge() {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(20),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.15), 
-            borderRadius: BorderRadius.circular(24),
+          decoration: BoxDecoration(color: kParchment.withOpacity(0.15), 
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(color: Colors.white.withOpacity(0.3))
           ),
           child: Row(
             children: [
               const Icon(Icons.visibility_rounded, color: Colors.white, size: 16),
               const SizedBox(width: 6),
-              Text("Preview", style: GoogleFonts.dmSans(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+              Text("Preview", style: GoogleFonts.figtree(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
             ],
           ),
         ),

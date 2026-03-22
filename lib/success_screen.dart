@@ -50,7 +50,7 @@ class _SuccessScreenState extends State<SuccessScreen> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: kCream,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -72,7 +72,7 @@ class _SuccessScreenState extends State<SuccessScreen> with SingleTickerProvider
               opacity: _opacityAnimation,
               child: const Text(
                 "You're all set!",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: kInk),
               ),
             ),
           ],

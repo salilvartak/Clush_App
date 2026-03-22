@@ -320,7 +320,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             const SizedBox(height: 16),
                             Text(
                               "Say Hello!",
-                              style: GoogleFonts.dmSans(
+                              style: GoogleFonts.figtree(
                                 color: kInk,
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
@@ -329,7 +329,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             const SizedBox(height: 6),
                             Text(
                               "Your messages are end-to-end encrypted",
-                              style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 13),
+                              style: GoogleFonts.figtree(color: kInkMuted, fontSize: 13),
                             ),
                           ],
                         ).animate().fade(duration: 600.ms).scale(begin: const Offset(0.92, 0.92)),
@@ -367,7 +367,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                                     child: Text(
                                       _formatDateGroup(time),
-                                      style: GoogleFonts.dmSans(
+                                      style: GoogleFonts.figtree(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
                                         color: kInkMuted,
@@ -398,7 +398,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       color: isMe ? null : Colors.white,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: (isMe ? kRose : Colors.black).withOpacity(isMe ? 0.18 : 0.04),
+                                          color: (isMe ? kRose : kInk).withOpacity(isMe ? 0.18 : 0.04),
                                           blurRadius: 12,
                                           offset: const Offset(0, 4),
                                         ),
@@ -430,12 +430,11 @@ class _ChatScreenState extends State<ChatScreen> {
                         onTap: _scrollToBottom,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
+                          decoration: BoxDecoration(color: kParchment,
                             borderRadius: BorderRadius.circular(30),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.08),
+                                color: kInk.withOpacity(0.08),
                                 blurRadius: 16,
                                 offset: const Offset(0, 4),
                               ),
@@ -454,7 +453,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ),
                                   child: Text(
                                     "$_unreadCount new",
-                                    style: GoogleFonts.dmSans(
+                                    style: GoogleFonts.figtree(
                                       color: Colors.white,
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -481,7 +480,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: Colors.white,
+      backgroundColor: kCream,
       foregroundColor: kInk,
       elevation: 0,
       scrolledUnderElevation: 1,
@@ -518,9 +517,7 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               Text(
                 widget.matchName,
-                style: GoogleFonts.domine(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 18,
                   color: kInk,
                   height: 1.1,
                 ),
@@ -538,7 +535,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   const SizedBox(width: 4),
                   Text(
                     "End-to-End Encrypted",
-                    style: GoogleFonts.dmSans(fontSize: 11, color: Colors.green.shade600, fontWeight: FontWeight.w600),
+                    style: GoogleFonts.figtree(fontSize: 11, color: Colors.green.shade600, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -550,7 +547,7 @@ class _ChatScreenState extends State<ChatScreen> {
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert_rounded, color: kInkMuted),
           color: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           onSelected: (value) {
             if (value == 'block') _showBlockConfirmation();
             else if (value == 'report') _showReportDialog();
@@ -562,7 +559,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   Icon(Icons.flag_outlined, color: kInkMuted, size: 18),
                   const SizedBox(width: 10),
-                  Text('Report User', style: GoogleFonts.dmSans(color: kInk)),
+                  Text('Report User', style: GoogleFonts.figtree(color: kInk)),
                 ],
               ),
             ),
@@ -572,7 +569,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   const Icon(Icons.block_rounded, color: Colors.redAccent, size: 18),
                   const SizedBox(width: 10),
-                  Text('Block User', style: GoogleFonts.dmSans(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                  Text('Block User', style: GoogleFonts.figtree(color: Colors.redAccent, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -586,8 +583,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildMessageInput() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      decoration: BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(color: kParchment,
         border: Border(top: BorderSide(color: kBone, width: 1)),
       ),
       child: SafeArea(
@@ -610,16 +606,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 decoration: BoxDecoration(
                   color: kCream,
                   border: Border.all(color: kBone, width: 1.5),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: TextField(
                   controller: _controller,
                   textCapitalization: TextCapitalization.sentences,
                   maxLines: null,
-                  style: GoogleFonts.dmSans(fontSize: 15, color: kInk),
+                  style: GoogleFonts.figtree(fontSize: 15, color: kInk),
                   decoration: InputDecoration(
                     hintText: "Write a message…",
-                    hintStyle: GoogleFonts.dmSans(color: kInkMuted, fontSize: 15),
+                    hintStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 15),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                   ),
@@ -663,17 +659,17 @@ class _ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        backgroundColor: Colors.white,
+        backgroundColor: kCream,
         title: Text('Block ${widget.matchName}?',
-            style: GoogleFonts.dmSans(fontWeight: FontWeight.bold, color: kInk)),
+            style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: kInk)),
         content: Text(
           'This action cannot be undone and will unmatch you.',
-          style: GoogleFonts.dmSans(color: kInkMuted),
+          style: GoogleFonts.figtree(color: kInkMuted),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: GoogleFonts.dmSans(color: kInkMuted)),
+            child: Text('Cancel', style: GoogleFonts.figtree(color: kInkMuted)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -691,7 +687,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _showThemedToast('Failed to block. Try again.', isError: true);
               }
             },
-            child: Text('Block', style: GoogleFonts.dmSans(fontWeight: FontWeight.bold)),
+            child: Text('Block', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -707,7 +703,7 @@ class _ChatScreenState extends State<ChatScreen> {
     ];
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: kCream,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -728,14 +724,14 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const SizedBox(height: 20),
               Text("Report User",
-                  style: GoogleFonts.dmSans(fontSize: 20, fontWeight: FontWeight.bold, color: kInk)),
+                  style: GoogleFonts.figtree(fontSize: 20, fontWeight: FontWeight.bold, color: kInk)),
               const SizedBox(height: 4),
-              Text("Select a reason", style: GoogleFonts.dmSans(color: kInkMuted, fontSize: 14)),
+              Text("Select a reason", style: GoogleFonts.figtree(color: kInkMuted, fontSize: 14)),
               const SizedBox(height: 16),
               ...reasons.map((reason) => ListTile(
                     contentPadding: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    title: Text(reason, style: GoogleFonts.dmSans(color: kInk, fontSize: 15)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    title: Text(reason, style: GoogleFonts.figtree(color: kInk, fontSize: 15)),
                     trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: kInkMuted),
                     onTap: () async {
                       Navigator.pop(ctx);
@@ -767,7 +763,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(message,
-                  style: GoogleFonts.dmSans(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: GoogleFonts.figtree(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -785,7 +781,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (msg['type'] == 'text') {
       return Text(
         msg['data'],
-        style: GoogleFonts.dmSans(
+        style: GoogleFonts.figtree(
           color: isMe ? Colors.white : kInk,
           fontSize: 15,
           fontWeight: FontWeight.w500,
@@ -800,7 +796,7 @@ class _ChatScreenState extends State<ChatScreen> {
             return const SizedBox(
                 height: 150,
                 width: 150,
-                child: const Center(child: HeartLoader(size: 40)));
+                child: const Center(child: HeartLoader()));
           }
           if (snapshot.hasError || !snapshot.hasData) {
             return const SizedBox(
