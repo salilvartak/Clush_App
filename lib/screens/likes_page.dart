@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart'; // Typography
-import 'package:flutter_animate/flutter_animate.dart'; // Animations
-import 'services/matching_service.dart';
-import 'heart_loader.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:clush/services/matching_service.dart';
+import 'package:clush/widgets/match_animation_dialog.dart';
+import 'package:clush/widgets/heart_loader.dart';
 
-import 'theme/colors.dart';
+import 'package:clush/l10n/app_localizations.dart';
+
+import 'package:clush/theme/colors.dart';
 
 class LikesPage extends StatefulWidget {
   const LikesPage({super.key});
@@ -17,11 +23,29 @@ class _LikesPageState extends State<LikesPage> {
   final MatchingService _matchingService = MatchingService();
   List<Map<String, dynamic>> _likedByUsers = [];
   bool _isLoading = true;
+  String? _myPhotoUrl;
 
   @override
   void initState() {
     super.initState();
     _fetchLikes();
+    _fetchMyPhoto();
+  }
+
+  Future<void> _fetchMyPhoto() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('photo_urls')
+          .eq('id', uid)
+          .maybeSingle();
+      final photos = data?['photo_urls'];
+      if (photos is List && photos.isNotEmpty && mounted) {
+        setState(() => _myPhotoUrl = photos[0] as String?);
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchLikes() async {
@@ -48,23 +72,36 @@ class _LikesPageState extends State<LikesPage> {
   }
 
   Future<void> _handleAccept(String userId) async {
-    // 1. Perform Swipe Right
+    final user = _likedByUsers.firstWhere((u) => u['id'] == userId,
+        orElse: () => {});
+
     final isMatch = await _matchingService.swipeRight(userId);
-    
-    // 2. Show User Feedback
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isMatch ? "It's a Match! Check your Chats." : "You liked them back!"),
-          backgroundColor: kRose,
-          duration: const Duration(seconds: 2),
-        ),
+
+    if (!mounted) return;
+
+    setState(() => _likedByUsers.removeWhere((u) => u['id'] == userId));
+
+    if (isMatch) {
+      final photos = user['photo_urls'];
+      final matchPhoto = (photos is List && photos.isNotEmpty)
+          ? photos[0] as String
+          : '';
+      showMatchAnimation(
+        context,
+        myPhotoUrl: _myPhotoUrl ?? '',
+        matchPhotoUrl: matchPhoto,
+        matchName: user['full_name'] as String? ?? 'them',
+        onMessage: () {},
       );
-      
-      // 3. Remove from this list (they move to Matches now)
-      setState(() {
-        _likedByUsers.removeWhere((user) => user['id'] == userId);
-      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context)?.likedBack ?? 'You liked them back!',
+            style: GoogleFonts.figtree(color: Colors.white)),
+        backgroundColor: kRose,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ));
     }
   }
 
@@ -74,7 +111,7 @@ class _LikesPageState extends State<LikesPage> {
       backgroundColor: kTan, 
       appBar: AppBar(
         title: Text(
-          "Likes You", 
+          AppLocalizations.of(context)?.likesYou ?? "Likes You", 
           style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5)
         ),
         backgroundColor: kTan,
@@ -101,37 +138,33 @@ class _LikesPageState extends State<LikesPage> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: kParchment,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(color: kInk.withOpacity(0.08), blurRadius: 28, offset: const Offset(0, 12))
-              ]
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 36),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SvgPicture.asset('assets/images/1.svg', width: 180, height: 180),
+            const SizedBox(height: 28),
+            Text(
+              AppLocalizations.of(context)?.heartsDrifting ?? "Hearts are drifting just beyond your beam.",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 20, color: kBlack),
             ),
-            child: Icon(Icons.favorite_border_rounded, size: 60, color: kRose.withOpacity(0.5)),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            "No pending likes",
-            style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 20, color: kBlack),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "Go swipe to find more matches!",
-            style: GoogleFonts.figtree(fontSize: 16, color: kInkMuted),
-          ),
-        ],
+            const SizedBox(height: 10),
+            Text(
+              AppLocalizations.of(context)?.helpNavigateConnection ?? "We can help you navigate to more connections, sooner.",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.figtree(fontSize: 15, color: kInkMuted, height: 1.5),
+            ),
+          ],
+        ),
       ).animate().fade(duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
     );
   }
 
   Widget _buildUserTile(Map<String, dynamic> user, {Key? key}) {
-    final photoUrl = (user['photo_urls'] != null && (user['photo_urls'] as List).isNotEmpty)
-        ? user['photo_urls'][0]
+    final photoUrl = (user['photo_urls'] as List?)?.isNotEmpty == true
+        ? user['photo_urls'][0] as String
         : 'https://via.placeholder.com/150';
     final name = user['full_name'] ?? 'User';
     final age = _calculateAge(user['birthday']);
@@ -161,11 +194,13 @@ class _LikesPageState extends State<LikesPage> {
               children: [
                 Text(
                   "$name, $age",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 18, color: kBlack),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  user['job_title'] ?? "No job title",
+                  user['job_title'] ?? AppLocalizations.of(context)?.noJobTitle ?? "No job title",
                   style: GoogleFonts.figtree(fontSize: 14, color: kInkMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

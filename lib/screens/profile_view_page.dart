@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'theme/colors.dart';
+import 'package:clush/theme/colors.dart';
 
 
 class ProfileViewPage extends StatelessWidget {

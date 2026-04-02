@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'discover_page.dart';
-import 'likes_page.dart';
-import 'matches_page.dart';
-import 'profile_tab.dart'; 
-import 'setting_sub_pages.dart'; // REQUIRED for VerificationPage
-import 'services/matching_service.dart';
-import 'theme/colors.dart'; 
-import 'heart_loader.dart'; 
+import 'package:clush/screens/discover_page.dart';
+import 'package:clush/screens/likes_page.dart';
+import 'package:clush/screens/matches_page.dart';
+import 'package:clush/screens/profile_tab.dart'; 
+import 'package:clush/screens/setting_sub_pages.dart';
+import 'package:clush/services/matching_service.dart';
+import 'package:clush/theme/colors.dart'; 
+import 'package:clush/widgets/heart_loader.dart'; 
 import 'package:google_fonts/google_fonts.dart'; 
+import 'package:clush/l10n/app_localizations.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -95,7 +96,23 @@ class _HomePageState extends State<HomePage> {
     }
 
     return Scaffold(
-      body: activeBody,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, 0.025), end: Offset.zero)
+                .animate(animation),
+            child: child,
+          ),
+        ),
+        child: KeyedSubtree(
+          key: ValueKey('${_selectedIndex}_$_isVerified'),
+          child: activeBody,
+        ),
+      ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: kCream, // Updated
@@ -168,15 +185,15 @@ class _HomePageState extends State<HomePage> {
               const Icon(Icons.lock_outline_rounded, size: 60, color: kRose),
               const SizedBox(height: 20),
                 Text(
-                  "Verification Required",
+                  AppLocalizations.of(context)?.verificationRequired ?? "Verification Required",
                   style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 22, color: kBlack),
                   textAlign: TextAlign.center,
                 ),
               const SizedBox(height: 12),
-              const Text(
-                "To access Matches, Likes, and Discovery, you must verify your identity first.",
+              Text(
+                AppLocalizations.of(context)?.verificationRequiredMessage ?? "To access Matches, Likes, and Discovery, you must verify your identity first.",
                 textAlign: TextAlign.center,
-                style: TextStyle(color: kInkMuted, fontSize: 15),
+                style: const TextStyle(color: kInkMuted, fontSize: 15),
               ),
               const SizedBox(height: 30),
               SizedBox(
@@ -187,7 +204,21 @@ class _HomePageState extends State<HomePage> {
                     // Navigate to the real Verification Page
                     await Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const VerificationPage()),
+                      PageRouteBuilder(
+                        pageBuilder: (_, animation, __) => const VerificationPage(),
+                        transitionDuration: const Duration(milliseconds: 350),
+                        reverseTransitionDuration: const Duration(milliseconds: 280),
+                        transitionsBuilder: (_, animation, __, child) {
+                          final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+                          return FadeTransition(
+                            opacity: curved,
+                            child: SlideTransition(
+                              position: Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(curved),
+                              child: child,
+                            ),
+                          );
+                        },
+                      ),
                     );
                     // Check status again when they return
                     _checkVerificationStatus();
@@ -197,7 +228,10 @@ class _HomePageState extends State<HomePage> {
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
                   ),
-                  child: const Text("Verify Now", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    AppLocalizations.of(context)?.verifyNow ?? "Verify Now",
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ],

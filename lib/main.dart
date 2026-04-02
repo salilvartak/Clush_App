@@ -4,18 +4,21 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:path_drawing/path_drawing.dart'; // <-- Added for SVG Path drawing
 import 'package:supabase_flutter/supabase_flutter.dart' hide User; 
-import 'firebase_options.dart';
-import 'basics_page.dart'; 
-import 'home_page.dart';
+import 'package:clush/firebase_options.dart';
+import 'package:clush/screens/basics_page.dart'; 
+import 'package:clush/screens/home_page.dart';
 import 'dart:ui';
-import 'theme/colors.dart'; // NEW IMPORT
+import 'package:clush/theme/colors.dart';
 
 import 'package:google_fonts/google_fonts.dart'; // <-- Added for typography
 import 'package:flutter_animate/flutter_animate.dart'; // <-- Added for animations
 
 // Import the notification service
-import 'services/notification_service.dart'; 
-import 'heart_loader.dart'; // <-- Added here
+import 'package:clush/services/notification_service.dart'; 
+import 'package:clush/services/language_service.dart';
+import 'package:clush/widgets/heart_loader.dart'; 
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:clush/l10n/app_localizations.dart';
 
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
@@ -33,8 +36,10 @@ void main() async {
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvYmx3a2xndnl2anJndnl1bXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzOTY0OTgsImV4cCI6MjA4NTk3MjQ5OH0.7kpPNmAHnGthepUIimiw_HovLOVjfX5mIWcr8WH-NrQ',
   );
 
-  // Note: We DO NOT initialize notifications here anymore so we don't block the UI!
-  
+  // 3. Initialize Language Service
+  final languageService = LanguageService();
+  await languageService.init();
+
   runApp(const AuraApp());
 }
 
@@ -43,24 +48,41 @@ class AuraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: GoogleFonts.figtree().fontFamily,
-        textTheme: GoogleFonts.figtreeTextTheme(
-          Theme.of(context).textTheme,
-        ),
-        scaffoldBackgroundColor: kCream, // Updated to use kCream
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: kRose,
-          primary: kRose,
-          secondary: kGold,
-          surface: kTan,
-          onSurface: kBlack,
-        ),
-      ),
-      home: const AnimatedSplashScreen(),
+    return ValueListenableBuilder<Locale>(
+      valueListenable: LanguageService().localeNotifier,
+      builder: (context, locale, child) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          locale: locale,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('en'),
+            Locale('hi'),
+            Locale('mr'),
+          ],
+          theme: ThemeData(
+            useMaterial3: true,
+            fontFamily: GoogleFonts.figtree().fontFamily,
+            textTheme: GoogleFonts.figtreeTextTheme(
+              Theme.of(context).textTheme,
+            ),
+            scaffoldBackgroundColor: kCream, 
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: kRose,
+              primary: kRose,
+              secondary: kGold,
+              surface: kTan,
+              onSurface: kBlack,
+            ),
+          ),
+          home: const AnimatedSplashScreen(),
+        );
+      },
     );
   }
 }

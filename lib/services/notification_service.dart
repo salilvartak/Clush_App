@@ -4,8 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../main.dart'; 
-import '../theme/colors.dart';
+import 'package:clush/main.dart'; 
+import 'package:clush/theme/colors.dart';
 
 // TOP-LEVEL FUNCTION FOR BACKGROUND MESSAGES
 @pragma('vm:entry-point')
@@ -16,17 +16,29 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
 
-  Future<void> initNotifications() async {
+  Future<void> initNotifications({BuildContext? context, bool force = false}) async {
     // 1. Check if the user has disabled notifications locally
     final prefs = await SharedPreferences.getInstance();
     final isEnabled = prefs.getBool('notifications_enabled') ?? true;
 
-    if (!isEnabled) {
+    if (!isEnabled && !force) {
       print('Notifications are turned OFF in settings. Skipping init.');
       return; 
     }
 
     // 2. Request permissions (shows the OS popup)
+    // If context is provided, we can show a custom gateway first
+    if (context != null) {
+      // Check current status first
+      NotificationSettings currentSettings = await _fcm.getNotificationSettings();
+      if (currentSettings.authorizationStatus == AuthorizationStatus.notDetermined || force) {
+        // Show our premium custom gate!
+        // Note: we don't necessarily call PermissionRequestPage.show here 
+        // if it's already handled by the caller (like BasicsPage).
+        // But for safety, we keep it logic-only here or call it if not yet shown.
+      }
+    }
+
     NotificationSettings settings = await _fcm.requestPermission(
       alert: true,
       badge: true,

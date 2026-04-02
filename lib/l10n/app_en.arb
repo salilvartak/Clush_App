@@ -1,0 +1,95 @@
+{
+  "@@locale": "en",
+
+  "myProfile": "My Profile",
+  "settings": "Settings",
+  "language": "Language",
+  "selectLanguage": "Select Language",
+  "english": "English",
+  "hindi": "Hindi",
+  "marathi": "Marathi",
+  "thisIsHowYouAppear": "This is how you appear to others",
+
+  "account": "Account",
+  "editProfile": "Edit Profile",
+  "phoneNumber": "Phone Number",
+  "emailAddress": "Email Address",
+  "pauseAccount": "Pause Account",
+  "notProvided": "Not provided",
+
+  "discovery": "Discovery",
+  "location": "Location",
+  "travelMode": "Travel Mode",
+  "notSet": "Not set",
+
+  "privacyAndSafety": "Privacy & Safety",
+  "activityStatus": "Activity Status",
+  "verification": "Verification",
+  "getVerifiedBadge": "Get that verified badge",
+  "blockedUsers": "Blocked Users",
+
+  "notifications": "Notifications",
+  "pushNotifications": "Push Notifications",
+  "emailUpdates": "Email Updates",
+
+  "appSettings": "App Settings",
+
+  "legal": "Legal",
+  "privacyPolicy": "Privacy Policy",
+  "termsOfService": "Terms of Service",
+  "communityGuidelines": "Community Guidelines",
+  "safeDating": "Safe Dating",
+
+  "logOut": "Log Out",
+  "logOutConfirm": "Are you sure you want to log out?",
+  "cancel": "Cancel",
+  "deleteAccount": "Delete Account",
+
+  "leavingSoSoon": "Leaving so soon?",
+  "deleteRetentionMessage": "Delete your account?\n\nStay and get 1 WEEK OF PREMIUM FREE!",
+  "claimPremium": "Claim 1 Week Premium",
+  "putOnHold": "Put Account on Hold",
+  "deleteAnyway": "Delete Anyway",
+
+  "areYouSure": "Are you sure?",
+  "deleteWarning": "This is permanent. All data, matches and messages will be lost.",
+  "yesDelete": "Yes, Delete",
+
+  "verificationRequired": "Verification Required",
+  "verificationRequiredMessage": "To access Matches, Likes, and Discovery, you must verify your identity first.",
+  "verifyNow": "Verify Now",
+
+  "premium": "PREMIUM",
+
+  "likesYou": "Likes You",
+  "heartsDrifting": "Hearts are drifting just beyond your beam.",
+  "helpNavigateConnection": "We can help you navigate to more connections, sooner.",
+  "likedBack": "You liked them back!",
+  "noJobTitle": "No job title",
+
+  "matches": "Matches",
+  "signalsReachingOut": "Your signals are reaching out wide, but a clear return frequency is still far off.",
+  "fineTuneTransmission": "We can help you fine-tune your transmission and find your match soon.",
+  "tapToChat": "Tap to chat",
+  "newMessage": "new message",
+  "newMessages": "new messages",
+
+  "allow": "Allow",
+  "maybeLater": "Maybe Later",
+  "accessCamera": "Access Your Camera",
+  "cameraDescription": "To verify your identity and show you're real, we need access to your camera for a 5-second video.",
+  "findPeopleNearby": "Find People Nearby",
+  "locationDescription": "We use your location to show you amazing people in your city. Your exact coordinates are never shared.",
+  "stayConnected": "Stay Connected",
+  "notificationsDescription": "Get notified instantly when someone likes you back or sends you a message. Don't miss a beat.",
+  "syncContacts": "Sync Contacts",
+  "contactsDescription": "Find friends already on Clush or ensure you don't run into people you already know.",
+
+  "save": "Save",
+  "submit": "Submit",
+  "verify": "Verify",
+  "update": "Update",
+  "loading": "Loading...",
+  "success": "Success",
+  "error": "Error"
+}

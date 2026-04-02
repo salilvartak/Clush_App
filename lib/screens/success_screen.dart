@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'home_page.dart'; 
-import 'theme/colors.dart';
+import 'package:clush/screens/home_page.dart'; 
+import 'package:clush/theme/colors.dart';
 
 class SuccessScreen extends StatefulWidget {
   const SuccessScreen({super.key});

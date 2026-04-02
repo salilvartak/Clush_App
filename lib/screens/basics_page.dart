@@ -6,13 +6,15 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'main.dart';
-import 'profile_store.dart';
-import 'services/image_validation_service.dart';
-import 'services/matching_service.dart';
-import 'heart_loader.dart';
-import 'services/content_moderator.dart';
-import 'success_screen.dart'; 
+import 'package:clush/main.dart';
+import 'package:clush/services/profile_store.dart';
+import 'package:clush/services/image_validation_service.dart';
+import 'package:clush/services/matching_service.dart';
+import 'package:clush/widgets/heart_loader.dart';
+import 'package:clush/services/content_moderator.dart';
+import 'package:clush/screens/success_screen.dart'; 
+import 'package:clush/screens/permission_request_page.dart';
+import 'package:clush/services/notification_service.dart';
 
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -21,7 +23,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 // --- Premium Theme Constants ---
-import 'theme/colors.dart';
+import 'package:clush/theme/colors.dart';
 
 const double kPadding = 24.0;
 
@@ -47,7 +49,7 @@ class _BasicsPageState extends State<BasicsPage> {
   final ImageValidationService _validationService = ImageValidationService();
   
   // Total steps
-  final int _totalQuestionScreens = 24; 
+  final int _totalQuestionScreens = 25; 
 
   // --- Controllers (Text) ---
   final TextEditingController nameController = TextEditingController();
@@ -260,7 +262,7 @@ class _BasicsPageState extends State<BasicsPage> {
     _saveToStore();
 
     if (_currentQuestionIndex == _totalQuestionScreens - 1) {
-      _submitProfile();
+      _showLegalConsentPopup();
     } else {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 350),
@@ -314,6 +316,7 @@ class _BasicsPageState extends State<BasicsPage> {
           }
         }
         return _promptSlots.every((slot) => slot != null); 
+      case 24: return true; // Permissions step
     }
     return true;
   }
@@ -452,6 +455,139 @@ class _BasicsPageState extends State<BasicsPage> {
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  void _showLegalConsentPopup() {
+    bool isAgeTruthChecked = false;
+    bool isLegalAgreementsChecked = false;
+    bool isBiometricConsentChecked = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            bool allChecked = isAgeTruthChecked && isLegalAgreementsChecked && isBiometricConsentChecked;
+
+            return AlertDialog(
+              backgroundColor: kTan,
+              surfaceTintColor: Colors.transparent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              title: Text(
+                "Legal Confirmation",
+                style: GoogleFonts.gabarito(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 26,
+                  color: kBlack,
+                ),
+              ),
+              content: Container(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildConsentTile(
+                        "Legal Age & Truthfulness: I declare under penalty of perjury that I am at least 18 years of age. I affirm that all information and photographs I provide are entirely truthful, accurate, and represent my actual identity.",
+                        isAgeTruthChecked,
+                        (val) => setState(() => isAgeTruthChecked = val ?? false),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildConsentTile(
+                        "Master Legal Agreements: I have read, understood, and agree to be bound by the Clush Terms of Service, Privacy Policy, and Community Guidelines.",
+                        isLegalAgreementsChecked,
+                        (val) => setState(() => isLegalAgreementsChecked = val ?? false),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildConsentTile(
+                        "Explicit Biometric Consent: I explicitly consent to the temporary processing of my facial biometric data strictly for the purpose of identity verification. I understand this video will not be permanently stored, shared, or sold to third parties.",
+                        isBiometricConsentChecked,
+                        (val) => setState(() => isBiometricConsentChecked = val ?? false),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              actions: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text("Cancel", style: GoogleFonts.figtree(color: kInkMuted, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: allChecked
+                            ? () {
+                                Navigator.pop(context);
+                                _submitProfile();
+                              }
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kRose,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: kRose.withOpacity(0.3),
+                          disabledForegroundColor: Colors.white70,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                        ),
+                        child: Text("Continue", style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildConsentTile(String text, bool value, ValueChanged<bool?> onChanged) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 24,
+              width: 24,
+              child: Checkbox(
+                value: value,
+                onChanged: onChanged,
+                activeColor: kRose,
+                checkColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                side: BorderSide(color: kInkMuted.withOpacity(0.4), width: 1.5),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: GoogleFonts.figtree(
+                  color: kBlack,
+                  fontSize: 13,
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // --- Location Logic ---
@@ -666,6 +802,7 @@ class _BasicsPageState extends State<BasicsPage> {
                   _buildDiscoveryStep("Favorite Places", placeOptions, selectedPlaces),
                   _buildPhotoStep(),
                   _buildPromptsStep(),
+                  _buildPermissionsStep(),
                 ],
               ),
             ),
@@ -1477,5 +1614,104 @@ class _BasicsPageState extends State<BasicsPage> {
       ),
     );
   }
+
+  Widget _buildPermissionsStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: kPadding, vertical: 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: kRosePale,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.security_rounded, color: kRose, size: 32),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            "Final Permissions",
+            style: GoogleFonts.gabarito(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: kBlack,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Grant these permissions to get the full Clush experience. We prioritize your privacy.",
+            style: GoogleFonts.figtree(
+              fontSize: 16,
+              color: kInkMuted,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 48),
+          
+          _buildPermissionTile(
+            "Location",
+            "To find amazing people near you.",
+            Icons.location_on_outlined,
+            () async {
+              final granted = await PermissionRequestPage.show(context, PermissionType.location);
+              if (granted == true) {
+                await _fetchCurrentLocation();
+              }
+            }
+          ),
+          
+          const SizedBox(height: 16),
+          
+          _buildPermissionTile(
+            "Notifications",
+            "To never miss a match or message.",
+            Icons.notifications_none_outlined,
+            () async {
+              final granted = await PermissionRequestPage.show(context, PermissionType.notifications);
+              if (granted == true) {
+                await NotificationService().initNotifications(context: context, force: true);
+              }
+            }
+          ),
+          
+          const SizedBox(height: 100),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionTile(String title, String subtitle, IconData icon, VoidCallback onTap) {
+    return Container(
+      decoration: BoxDecoration(
+        color: kParchment,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kBone),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: kCream,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: kRose, size: 24),
+        ),
+        title: Text(
+          title,
+          style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: kBlack, fontSize: 16),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: GoogleFonts.figtree(fontSize: 13, color: kInkMuted),
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: kInkMuted),
+        onTap: onTap,
+      ),
+    );
+  }
 }
+
 // End of file

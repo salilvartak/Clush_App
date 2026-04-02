@@ -3,15 +3,29 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart'; // Typography
 import 'package:flutter_animate/flutter_animate.dart'; // Animations
-import 'profile_view_page.dart'; 
-import 'settings_page.dart';
+import 'package:clush/screens/profile_view_page.dart'; 
+import 'package:clush/screens/settings_page.dart';
 import 'dart:ui'; // For blur effects
-import 'heart_loader.dart';
+import 'package:clush/widgets/heart_loader.dart';
+import 'package:clush/l10n/app_localizations.dart';
 
-import 'theme/colors.dart';
+import 'package:clush/theme/colors.dart';
 
-class ProfileTab extends StatelessWidget {
+class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
+
+  @override
+  State<ProfileTab> createState() => _ProfileTabState();
+}
+
+class _ProfileTabState extends State<ProfileTab> {
+  late Future<Map<String, dynamic>?> _profileFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = _fetchProfile();
+  }
 
   Future<Map<String, dynamic>?> _fetchProfile() async {
     final sw = Stopwatch()..start();
@@ -22,10 +36,11 @@ class ProfileTab extends StatelessWidget {
         .from('profiles')
         .select()
         .eq('id', userId)
-        .single();
-    
+        .maybeSingle();
+    if (data == null) return null;
+
     final elapsed = sw.elapsedMilliseconds;
-    if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
+    if (elapsed < 1200) await Future.delayed(Duration(milliseconds: 1200 - elapsed));
     return data;
   }
 
@@ -36,7 +51,7 @@ class ProfileTab extends StatelessWidget {
       backgroundColor: kTan,
       body: SafeArea(
         child: FutureBuilder<Map<String, dynamic>?>(
-          future: _fetchProfile(),
+          future: _profileFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: HeartLoader());
@@ -63,7 +78,10 @@ class ProfileTab extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("My Profile", style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5)),
+                      Text(
+                        AppLocalizations.of(context)?.myProfile ?? "My Profile", 
+                        style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5)
+                      ),
                       Container(
                         decoration: BoxDecoration(color: kParchment, shape: BoxShape.circle, boxShadow: [BoxShadow(color: kInk.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]),
                         child: IconButton(
@@ -74,27 +92,37 @@ class ProfileTab extends StatelessWidget {
                             );
                           },
                           icon: const Icon(Icons.settings_rounded, color: kBlack),
-                          tooltip: "Settings",
+                          tooltip: AppLocalizations.of(context)?.settings ?? "Settings",
                         ),
                       ),
                     ],
                   ).animate().fade(duration: 400.ms).slideY(begin: -0.2, end: 0, curve: Curves.easeOutQuad),
                   const SizedBox(height: 32),
                   
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context, 
-                        MaterialPageRoute(builder: (_) => ProfileViewPage(profile: profile)) // Assumes ProfileViewPage handles profile map
-                      );
-                    },
-                    // 2. PASS STATUS TO WIDGET
-                    child: _buildProfilePreviewCard(firstPhoto, name, age, isVerified).animate().fade(duration: 600.ms, delay: 200.ms).scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1), curve: Curves.easeOutCubic),
-                  ),
+                  // Use InkWell for better hit testing and feedback
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(25),
+                      onTap: () {
+                        Navigator.push(
+                          context, 
+                          MaterialPageRoute(builder: (context) => ProfileViewPage(profile: profile))
+                        );
+                      },
+                      child: _buildProfilePreviewCard(
+                        firstPhoto, 
+                        name, 
+                        age, 
+                        isVerified, 
+                        (MediaQuery.sizeOf(context).height * 0.55).clamp(380.0, 520.0)
+                      ),
+                    ),
+                  ).animate().fade(duration: 600.ms, delay: 200.ms).scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1), curve: Curves.easeOutCubic),
                   const SizedBox(height: 24),
                   Center(
                     child: Text(
-                      "This is how you appear to others", 
+                      AppLocalizations.of(context)?.thisIsHowYouAppear ?? "This is how you appear to others", 
                       style: GoogleFonts.figtree(color: kInkMuted, fontSize: 16, fontWeight: FontWeight.w500)
                     ).animate().fade(duration: 600.ms, delay: 400.ms),
                   ),
@@ -108,9 +136,9 @@ class ProfileTab extends StatelessWidget {
   }
 
   // 3. UPDATED WIDGET SIGNATURE
-  Widget _buildProfilePreviewCard(String photoUrl, String name, int age, bool isVerified) {
+  Widget _buildProfilePreviewCard(String photoUrl, String name, int age, bool isVerified, double cardHeight) {
     return Container(
-      height: 500,
+      height: cardHeight,
       width: double.infinity,
       decoration: BoxDecoration(color: kParchment,
         borderRadius: BorderRadius.circular(25),
@@ -124,8 +152,16 @@ class ProfileTab extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(25),
             child: photoUrl.isNotEmpty
-                ? Image.network(photoUrl, fit: BoxFit.cover)
-                : Container(color: kBone, child: const Icon(Icons.person, size: 50)),
+                ? Image.network(
+                    photoUrl,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, progress) => progress == null
+                        ? child
+                        : Container(color: kBone, child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: kRose))),
+                    errorBuilder: (context, error, stack) =>
+                        Container(color: kBone, child: const Icon(Icons.person, size: 50, color: kInkMuted)),
+                  )
+                : Container(color: kBone, child: const Icon(Icons.person, size: 50, color: kInkMuted)),
           ),
           Container(
             decoration: BoxDecoration(
@@ -141,34 +177,30 @@ class ProfileTab extends StatelessWidget {
           Positioned(
             bottom: 30,
             left: 24,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            right: 24,
+            child: Row(
               children: [
-                // 4. ROW FOR NAME + TICK
-                Row(
-                  children: [
-                    Text(
-                      "$name, $age", 
-                      style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, color: Colors.white, 
-                        fontSize: 36, 
-                        letterSpacing: -0.5,
-                        shadows: [
-                           Shadow(color: kInk.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2)),
-                        ]
-                      )
+                Flexible(
+                  child: Text(
+                    "$name, $age",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.gabarito(
+                      fontWeight: FontWeight.bold, 
+                      color: Colors.white,
+                      fontSize: 36,
+                      letterSpacing: -0.5,
+                      shadows: [
+                        Shadow(color: kInk.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2)),
+                      ]
                     ),
-                    
-                    // --- THE BLUE TICK ---
-                    if (isVerified) ...[
-                      const SizedBox(width: 8),
-                      const Icon(Icons.verified, color: Colors.blue, size: 28),
-                    ],
-                    // ---------------------
-                  ],
+                  ),
                 ),
-                
-                const SizedBox(height: 5),
-                _buildPreviewBadge(),
+
+                if (isVerified) ...[
+                  const SizedBox(width: 8),
+                  const Icon(Icons.verified, color: Colors.blue, size: 28),
+                ],
               ],
             ),
           ),
@@ -177,28 +209,6 @@ class ProfileTab extends StatelessWidget {
     );
   }
 
-  Widget _buildPreviewBadge() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(color: kParchment.withOpacity(0.15), 
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.3))
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.visibility_rounded, color: Colors.white, size: 16),
-              const SizedBox(width: 6),
-              Text("Preview", style: GoogleFonts.figtree(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   int _calculateAge(String? birthdayString) {
     if (birthdayString == null) return 0;

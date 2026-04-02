@@ -12,10 +12,12 @@ import 'package:geocoding/geocoding.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:flutter_contacts/flutter_contacts.dart' as fc;
+import 'package:camera/camera.dart';
 
-import 'theme/colors.dart';
-import 'heart_loader.dart';
+import 'package:clush/theme/colors.dart';
+import 'package:clush/widgets/heart_loader.dart';
+import 'package:clush/screens/permission_request_page.dart';
 
 // ─── PALETTE (mapped to theme/colors.dart) ───────────────────────────────────
 const Color _kRose      = kRose;
@@ -48,19 +50,20 @@ InputDecoration _inputDecor(String hint, {IconData? icon}) => InputDecoration(
 );
 
 Widget _saveButton(String label, bool isLoading, VoidCallback? onTap) {
+  final bool isDisabled = isLoading || onTap == null;
   return GestureDetector(
-    onTap: isLoading ? null : onTap,
+    onTap: isDisabled ? null : onTap,
     child: Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 16),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: isLoading ? _kRose.withOpacity(0.5) : _kRose,
+        color: isDisabled ? _kRose.withOpacity(0.4) : _kRose,
         borderRadius: BorderRadius.circular(14),
       ),
       child: isLoading
           ? const SizedBox(width: 20, height: 20,
-              child: const HeartLoader(size: 22, color: Colors.white))
+              child: HeartLoader(size: 22, color: Colors.white))
           : Text(label, style: GoogleFonts.montserrat(
               color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
     ),
@@ -247,8 +250,8 @@ class _PauseAccountPageState extends State<PauseAccountPage> {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) return;
       final data = await Supabase.instance.client
-          .from('profiles').select('is_paused').eq('id', userId).single();
-      if (mounted) setState(() { isPaused = data['is_paused'] ?? false; isLoading = false; });
+          .from('profiles').select('is_paused').eq('id', userId).maybeSingle();
+      if (mounted) setState(() { isPaused = data?['is_paused'] ?? false; isLoading = false; });
     } catch (_) { if (mounted) setState(() => isLoading = false); }
   }
 
@@ -356,6 +359,9 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
       if (!serviceEnabled) return;
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
+        final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.location);
+        if (gateGranted != true) return;
+        
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) return;
       }
@@ -582,10 +588,10 @@ class _VerificationPageState extends State<VerificationPage> {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) return;
       final data = await Supabase.instance.client
-          .from('profiles').select('photo_urls, is_verified').eq('id', userId).single();
-      final List photos = data['photo_urls'] ?? [];
+          .from('profiles').select('photo_urls, is_verified').eq('id', userId).maybeSingle();
+      final List photos = data?['photo_urls'] ?? [];
       setState(() {
-        _isVerified = data['is_verified'] ?? false;
+        _isVerified = data?['is_verified'] ?? false;
         if (photos.isNotEmpty) _profileImageUrl = photos[0];
         _isFetchingProfile = false;
       });
@@ -593,11 +599,75 @@ class _VerificationPageState extends State<VerificationPage> {
   }
 
   Future<void> _recordVideo() async {
-    final XFile? video = await _picker.pickVideo(
-        source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.front,
-        maxDuration: const Duration(seconds: 5));
-    if (video != null) setState(() => _videoFile = File(video.path));
+    final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.camera);
+    if (gateGranted != true) return;
+
+    final XFile? result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const VerificationCameraPage()),
+    );
+    if (result != null) {
+      setState(() => _videoFile = File(result.path));
+    }
+  }
+
+  void _showInstructionDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _kCream,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28), side: BorderSide(color: _kBone)),
+        title: Text("Face Verification", style: GoogleFonts.montserrat(fontSize: 22, color: _kInk, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
+              child: const Icon(Icons.face_retouching_natural_rounded, color: _kRose, size: 48),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              "Please record a short 5-second video clearly showing your face. Ensure you are in a well-lit area.",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.montserrat(color: _kInkMuted, height: 1.5, fontSize: 14),
+            ),
+          ],
+        ),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text("Cancel", style: GoogleFonts.montserrat(color: _kInkMuted, fontWeight: FontWeight.w600)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _recordVideo();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kRose,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text("Start Recording", style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ],
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      ),
+    );
   }
 
   Future<void> _submitVerification() async {
@@ -715,41 +785,214 @@ class _VerificationPageState extends State<VerificationPage> {
         const SizedBox(height: 12),
 
         // Step 2
-        GestureDetector(
-          onTap: _recordVideo,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _kParchment,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: _videoFile != null ? _kRose : _kBone, width: _videoFile != null ? 1.5 : 1),
-            ),
-            child: Row(children: [
-              Container(
-                width: 56, height: 56,
-                decoration: BoxDecoration(
-                  color: _videoFile != null ? _kRosePale : _kCream,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _kBone),
-                ),
-                child: Icon(_videoFile != null ? Icons.videocam_rounded : Icons.videocam_off_rounded,
-                    color: _videoFile != null ? _kRose : _kInkMuted, size: 24),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _showInstructionDialog,
+            borderRadius: BorderRadius.circular(20),
+            child: Ink(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _videoFile != null ? _kRose.withOpacity(0.08) : _kParchment,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _videoFile != null ? _kRose : _kBone, width: _videoFile != null ? 1.5 : 1),
+                boxShadow: _videoFile == null ? [
+                  BoxShadow(color: _kInk.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                ] : null,
               ),
-              const SizedBox(width: 16),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text("Step 2", style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted, letterSpacing: 1)),
-                Text(_videoFile == null ? "Record short video (5s)" : "Video Recorded ✓",
-                    style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w600,
-                        color: _videoFile != null ? _kRose : _kInk)),
-              ])),
-              Icon(Icons.chevron_right_rounded, color: _kBone, size: 20),
-            ]),
+              child: Row(children: [
+                Container(
+                  width: 56, height: 56,
+                  decoration: BoxDecoration(
+                    color: _videoFile != null ? _kRosePale : _kCream,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _kBone),
+                  ),
+                  child: Icon(_videoFile != null ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+                      color: _videoFile != null ? _kRose : _kInkMuted, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text("Step 2", style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted, letterSpacing: 1)),
+                  Text(_videoFile == null ? "Record short video (5s)" : "Video Recorded ✓",
+                      style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.bold,
+                          color: _videoFile != null ? _kRose : _kInk)),
+                ])),
+                Icon(_videoFile != null ? Icons.check_circle_rounded : Icons.chevron_right_rounded, 
+                     color: _videoFile != null ? _kRose : _kBone, size: 24),
+              ]),
+            ),
           ),
         ),
         const SizedBox(height: 32),
         _saveButton("Verify Me", _isLoading,
             (_isLoading || _profileImageUrl == null || _videoFile == null) ? null : _submitVerification),
       ]),
+    );
+  }
+}
+
+// ─── CUSTOM CAMERA PAGE ──────────────────────────────────────────────────────
+class VerificationCameraPage extends StatefulWidget {
+  const VerificationCameraPage({super.key});
+  @override
+  State<VerificationCameraPage> createState() => _VerificationCameraPageState();
+}
+
+class _VerificationCameraPageState extends State<VerificationCameraPage> {
+  CameraController? _controller;
+  bool _isRecording = false;
+  int _secondsLeft = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    final cameras = await availableCameras();
+    final front = cameras.firstWhere(
+      (c) => c.lensDirection == CameraLensDirection.front,
+      orElse: () => cameras.first,
+    );
+    _controller = CameraController(front, ResolutionPreset.high, enableAudio: false);
+    await _controller!.initialize();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _startRecording() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    await _controller!.startVideoRecording();
+    setState(() => _isRecording = true);
+    
+    // Timer for visual feedback
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted || !_isRecording) return false;
+      setState(() => _secondsLeft--);
+      if (_secondsLeft <= 0) {
+        _stopRecording();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  Future<void> _stopRecording() async {
+    if (_controller == null || !_isRecording) return;
+    final file = await _controller!.stopVideoRecording();
+    if (mounted) {
+      setState(() => _isRecording = false);
+      Navigator.pop(context, file);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: HeartLoader(color: Colors.white, size: 40)),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
+            child: AspectRatio(
+              aspectRatio: 1 / _controller!.value.aspectRatio,
+              child: CameraPreview(_controller!),
+            ),
+          ),
+          // Gradient Overlay
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.transparent,
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.7),
+                  ],
+                  stops: const [0, 0.2, 0.8, 1],
+                ),
+              ),
+            ),
+          ),
+          // UI
+          Positioned(
+            top: 60, left: 24,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          Positioned(
+            top: 70, left: 0, right: 0,
+            child: Center(
+              child: Text(
+                "VERIFICATION",
+                style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 2),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 80, left: 0, right: 0,
+            child: Column(
+              children: [
+                if (_isRecording)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)),
+                    child: Text(
+                      "00:0$_secondsLeft",
+                      style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  )
+                else
+                  Text(
+                    "Center your face in the camera",
+                    style: GoogleFonts.montserrat(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                const SizedBox(height: 30),
+                GestureDetector(
+                  onTap: _isRecording ? null : _startRecording,
+                  child: Container(
+                    height: 84, width: 84,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
+                    ),
+                    padding: const EdgeInsets.all(6),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _isRecording ? Colors.red : Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: _isRecording 
+                        ? null 
+                        : const Icon(Icons.videocam_rounded, color: Colors.black, size: 32),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -841,14 +1084,17 @@ class _BlockListPageState extends State<BlockListPage> {
   }
 
   Future<void> _importContacts() async {
-    final status = await FlutterContacts.permissions.request(PermissionType.read);
-    if (status == PermissionStatus.granted || status == PermissionStatus.limited) {
+    final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.contacts);
+    if (gateGranted != true) return;
+    
+    final fc.PermissionStatus status = await fc.FlutterContacts.permissions.request(fc.PermissionType.read);
+    if (status == fc.PermissionStatus.granted || status == fc.PermissionStatus.limited) {
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (_) => const Center(child: HeartLoader()),
       );
-      List<Contact> contacts = await FlutterContacts.getAll(properties: {ContactProperty.phone});
+      List<fc.Contact> contacts = await fc.FlutterContacts.getAll(properties: {fc.ContactProperty.phone});
       if (mounted) Navigator.pop(context);
       
       if (!mounted) return;
@@ -874,7 +1120,7 @@ class _BlockListPageState extends State<BlockListPage> {
     }
   }
 
-  Widget _buildContactsList(List<Contact> contacts, ScrollController controller) {
+  Widget _buildContactsList(List<fc.Contact> contacts, ScrollController controller) {
     if (contacts.isEmpty) {
       return Center(child: Text("No contacts found", style: GoogleFonts.montserrat(color: _kInkMuted)));
     }

@@ -4,10 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui'; // For blur effects
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'services/matching_service.dart';
-import 'heart_loader.dart';
+import 'package:clush/services/matching_service.dart';
+import 'package:clush/widgets/heart_loader.dart';
+import 'package:clush/widgets/match_animation_dialog.dart';
 
-import 'theme/colors.dart';
+import 'package:clush/theme/colors.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -29,6 +30,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
   // Track swipe direction for animation
   String _lastSwipeDirection = 'like';
+
+  String? _myPhotoUrl;
 
   // Filter States
   bool _isPremium = false;
@@ -103,7 +106,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
-          .select('gender, is_premium, location, intent')
+          .select('gender, is_premium, location, intent, photo_urls')
           .eq('id', myId)
           .maybeSingle();
 
@@ -134,6 +137,10 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             _isPremium = premiumVal.toLowerCase() == 'true';
           } else {
             _isPremium = false;
+          }
+          final photos = myProfileResponse['photo_urls'];
+          if (photos is List && photos.isNotEmpty) {
+            _myPhotoUrl = photos[0] as String?;
           }
         });
       }
@@ -303,128 +310,17 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   }
 
   void _showMatchDialog(Map<String, dynamic> profile) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: kInk.withOpacity(0.6),
-      builder: (context) {
-        final photoUrl = (profile['photo_urls'] != null && (profile['photo_urls'] as List).isNotEmpty)
-            ? profile['photo_urls'][0]
-            : 'https://via.placeholder.com/150';
+    final matchPhotoUrl = (profile['photo_urls'] is List &&
+            (profile['photo_urls'] as List).isNotEmpty)
+        ? profile['photo_urls'][0] as String
+        : '';
 
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(24),
-          child: Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: kCream,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: kBone, width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: kInk.withOpacity(0.18),
-                  blurRadius: 40,
-                  offset: const Offset(0, 16),
-                )
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Decorative top line
-                Container(
-                  width: 40,
-                  height: 2,
-                  color: kGold,
-                  margin: const EdgeInsets.only(bottom: 20),
-                ),
-                Text(
-                  "A PERFECT MATCH",
-                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, color: kRose,
-                    fontSize: 11,
-                    letterSpacing: 3.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "It's Mutual",
-                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, color: kInk,
-                    fontSize: 36,
-                    letterSpacing: -0.5,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: kBone, width: 3),
-                    boxShadow: [
-                      BoxShadow(
-                        color: kRose.withOpacity(0.2),
-                        blurRadius: 20,
-                        spreadRadius: 4,
-                      )
-                    ],
-                  ),
-                  child: ClipOval(
-                    child: Image.network(photoUrl, fit: BoxFit.cover),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  "You and ${profile['full_name']} like each other.",
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 18,
-                    color: kInkMuted,
-                    fontStyle: FontStyle.italic,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kRose,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      "Send a Message",
-                      style: GoogleFonts.figtree(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    "Keep Discovering",
-                    style: GoogleFonts.figtree(
-                      color: kInkMuted,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    showMatchAnimation(
+      context,
+      myPhotoUrl: _myPhotoUrl ?? '',
+      matchPhotoUrl: matchPhotoUrl,
+      matchName: profile['full_name'] as String? ?? 'them',
+      onMessage: () {},
     );
   }
 
@@ -532,7 +428,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                 final rotationAnimation = Tween<double>(
                   begin: isLike ? 0.1 : -0.1,
                   end: 0.0,
-                ).animate(animation);
+                ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
                 return FadeTransition(
                   opacity: animation,
                   child: SlideTransition(

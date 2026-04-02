@@ -10,8 +10,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:clush/services/image_validation_service.dart';
 import 'package:clush/services/content_moderator.dart';
 
-import 'theme/colors.dart';
-import 'heart_loader.dart';
+import 'package:clush/theme/colors.dart';
+import 'package:clush/widgets/heart_loader.dart';
 
 class EditProfilePage extends StatefulWidget {
   final Map<String, dynamic> currentData;

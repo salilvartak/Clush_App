@@ -5,13 +5,16 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'services/notification_service.dart';
-import 'main.dart';
-import 'setting_sub_pages.dart';
-import 'edit_profile_page.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:clush/services/notification_service.dart';
+import 'package:clush/main.dart';
+import 'package:clush/screens/setting_sub_pages.dart';
+import 'package:clush/screens/edit_profile_page.dart';
 
-import 'theme/colors.dart';
-import 'heart_loader.dart';
+import 'package:clush/theme/colors.dart';
+import 'package:clush/widgets/heart_loader.dart';
+import 'package:clush/services/language_service.dart';
+import 'package:clush/l10n/app_localizations.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -68,7 +71,8 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _isLoadingProfile = true);
     try {
       final data = await Supabase.instance.client
-          .from('profiles').select().eq('id', userId).single();
+          .from('profiles').select().eq('id', userId).maybeSingle();
+      if (data == null) throw Exception('Profile not found');
       if (!mounted) return;
       await Navigator.push(context,
           MaterialPageRoute(builder: (_) => EditProfilePage(currentData: data)));
@@ -92,21 +96,21 @@ class _SettingsPageState extends State<SettingsPage> {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: kCream,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
-      title: Text("Leaving so soon?", textAlign: TextAlign.center,
+      title: Text(AppLocalizations.of(context)?.leavingSoSoon ?? "Leaving so soon?", textAlign: TextAlign.center,
           style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
-      content: Text("Delete your account?\n\nStay and get 1 WEEK OF PREMIUM FREE!", textAlign: TextAlign.center,
+      content: Text(AppLocalizations.of(context)?.deleteRetentionMessage ?? "Delete your account?\n\nStay and get 1 WEEK OF PREMIUM FREE!", textAlign: TextAlign.center,
           style: GoogleFonts.montserrat(color: kInkMuted, height: 1.5)),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       actionsPadding: const EdgeInsets.all(16),
       actionsAlignment: MainAxisAlignment.center,
       actions: [Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _solidBtn("Claim 1 Week Premium", () { Navigator.pop(ctx); _claimPremium(); }),
+        _solidBtn(AppLocalizations.of(context)?.claimPremium ?? "Claim 1 Week Premium", () { Navigator.pop(ctx); _claimPremium(); }),
         const SizedBox(height: 10),
-        _outlineBtn("Put Account on Hold", () { Navigator.pop(ctx); _navTo(const PauseAccountPage()); }),
+        _outlineBtn(AppLocalizations.of(context)?.putOnHold ?? "Put Account on Hold", () { Navigator.pop(ctx); _navTo(const PauseAccountPage()); }),
         TextButton(onPressed: () { Navigator.pop(ctx); _confirmFinalDeletion(); },
-            child: Text("Delete Anyway", style: GoogleFonts.montserrat(color: Colors.red.shade400))),
+            child: Text(AppLocalizations.of(context)?.deleteAnyway ?? "Delete Anyway", style: GoogleFonts.montserrat(color: Colors.red.shade400))),
         TextButton(onPressed: () => Navigator.pop(ctx),
-            child: Text("Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
+            child: Text(AppLocalizations.of(context)?.cancel ?? "Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
       ])],
     ));
   }
@@ -115,14 +119,14 @@ class _SettingsPageState extends State<SettingsPage> {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: kCream,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
-      title: Text("Are you sure?", style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
-      content: Text("This is permanent. All data, matches and messages will be lost.",
+      title: Text(AppLocalizations.of(context)?.areYouSure ?? "Are you sure?", style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
+      content: Text(AppLocalizations.of(context)?.deleteWarning ?? "This is permanent. All data, matches and messages will be lost.",
           style: GoogleFonts.montserrat(color: kInkMuted, height: 1.5)),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx),
-            child: Text("Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
+            child: Text(AppLocalizations.of(context)?.cancel ?? "Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
         TextButton(onPressed: () async { Navigator.pop(ctx); await _deleteAccount(); },
-            child: Text("Yes, Delete", style: GoogleFonts.montserrat(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
+            child: Text(AppLocalizations.of(context)?.yesDelete ?? "Yes, Delete", style: GoogleFonts.montserrat(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
       ],
     ));
   }
@@ -141,6 +145,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _navTo(Widget page) async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => page));
     _loadSettings();
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      _toast('Could not open link', err: true);
+    }
   }
 
   void _toast(String msg, {bool err = false}) {
@@ -166,7 +177,18 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kCream,
-      body: Stack(children: [
+      body: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) => Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - value)),
+            child: child,
+          ),
+        ),
+        child: Stack(children: [
         CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
@@ -175,66 +197,81 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _sectionLabel("Account"),
+                  _sectionLabel(AppLocalizations.of(context)?.account ?? "Account"),
                   _card([
-                    _tile(icon: Icons.edit_outlined, title: "Edit Profile",
+                    _tile(icon: Icons.edit_outlined, title: AppLocalizations.of(context)?.editProfile ?? "Edit Profile",
                         trailing: _isLoadingProfile
                             ? SizedBox(width: 18, height: 18,
                                 child: const HeartLoader(size: 20))
                             : null,
                         onTap: _isLoadingProfile ? null : _handleEditProfile),
                     _divider(),
-                    _tile(icon: Icons.phone_outlined, title: "Phone Number",
-                        subtitle: (_userPhone?.isNotEmpty == true) ? _userPhone : "Not provided",
+                    _tile(icon: Icons.phone_outlined, title: AppLocalizations.of(context)?.phoneNumber ?? "Phone Number",
+                        subtitle: (_userPhone?.isNotEmpty == true) ? _userPhone : (AppLocalizations.of(context)?.notProvided ?? "Not provided"),
                         onTap: () => _navTo(const PhoneNumberPage())),
                     _divider(),
-                    _tile(icon: Icons.email_outlined, title: "Email Address",
-                        subtitle: (_userEmail?.isNotEmpty == true) ? _userEmail : "Not provided",
+                    _tile(icon: Icons.email_outlined, title: AppLocalizations.of(context)?.emailAddress ?? "Email Address",
+                        subtitle: (_userEmail?.isNotEmpty == true) ? _userEmail : (AppLocalizations.of(context)?.notProvided ?? "Not provided"),
                         onTap: () => _navTo(const EmailAddressPage())),
                     _divider(),
-                    _tile(icon: Icons.pause_circle_outline, title: "Pause Account",
+                    _tile(icon: Icons.pause_circle_outline, title: AppLocalizations.of(context)?.pauseAccount ?? "Pause Account",
                         onTap: () => _navTo(const PauseAccountPage())),
                   ]),
-                  _sectionLabel("Discovery"),
+                  _sectionLabel(AppLocalizations.of(context)?.discovery ?? "Discovery"),
                   _card([
-                    _tile(icon: Icons.location_on_outlined, title: "Location",
-                        subtitle: _formatLocation(_userLocation),
+                    _tile(icon: Icons.location_on_outlined, title: AppLocalizations.of(context)?.location ?? "Location",
+                        subtitle: _userLocation != null ? _formatLocation(_userLocation) : (AppLocalizations.of(context)?.notSet ?? "Not set"),
                         onTap: () => _navTo(const CurrentLocationPage())),
                     _divider(),
-                    _tile(icon: Icons.flight_takeoff_rounded, title: "Travel Mode",
+                    _tile(icon: Icons.flight_takeoff_rounded, title: AppLocalizations.of(context)?.travelMode ?? "Travel Mode",
                         trailing: _premiumBadge(),
                         onTap: () => _navTo(const TravelModePage())),
                   ]),
-                  _sectionLabel("Privacy & Safety"),
+                  _sectionLabel(AppLocalizations.of(context)?.privacyAndSafety ?? "Privacy & Safety"),
                   _card([
-                    _tile(icon: Icons.access_time_rounded, title: "Activity Status",
+                    _tile(icon: Icons.access_time_rounded, title: AppLocalizations.of(context)?.activityStatus ?? "Activity Status",
                         trailing: Switch.adaptive(value: activityStatus, activeColor: kRose,
                             onChanged: (v) => setState(() => activityStatus = v))),
                     _divider(),
-                    _tile(icon: Icons.verified_user_outlined, title: "Verification",
-                        subtitle: "Get that verified badge",
+                    _tile(icon: Icons.verified_user_outlined, title: AppLocalizations.of(context)?.verification ?? "Verification",
+                        subtitle: AppLocalizations.of(context)?.getVerifiedBadge ?? "Get that verified badge",
                         onTap: () => _navTo(const VerificationPage())),
                     _divider(),
-                    _tile(icon: Icons.block_outlined, title: "Blocked Users",
+                    _tile(icon: Icons.block_outlined, title: AppLocalizations.of(context)?.blockedUsers ?? "Blocked Users",
                         onTap: () => _navTo(const BlockListPage())),
                   ]),
-                  _sectionLabel("Notifications"),
+                  _sectionLabel(AppLocalizations.of(context)?.notifications ?? "Notifications"),
                   _card([
-                    _tile(icon: Icons.notifications_none_rounded, title: "Push Notifications",
+                    _tile(icon: Icons.notifications_none_rounded, title: AppLocalizations.of(context)?.pushNotifications ?? "Push Notifications",
                         trailing: Switch.adaptive(value: notificationsEnabled, activeColor: kRose,
                             onChanged: _toggleNotifications)),
                     _divider(),
-                    _tile(icon: Icons.mail_outline_rounded, title: "Email Updates",
+                    _tile(icon: Icons.mail_outline_rounded, title: AppLocalizations.of(context)?.emailUpdates ?? "Email Updates",
                         trailing: Switch.adaptive(value: emailUpdates, activeColor: kRose,
                             onChanged: (v) => setState(() => emailUpdates = v))),
                   ]),
-                  _sectionLabel("Community"),
+                  _sectionLabel(AppLocalizations.of(context)?.appSettings ?? "App Settings"),
                   _card([
-                    _tile(icon: Icons.favorite_border_rounded, title: "Safe Dating Tips",
-                        onTap: () => _navTo(const LegalPage(title: "Safe Dating", content: "..."))),
+                    _tile(
+                      icon: Icons.language_rounded, 
+                      title: AppLocalizations.of(context)?.language ?? "Language",
+                      subtitle: _getLanguageName(LanguageService().localeNotifier.value.languageCode),
+                      onTap: _showLanguageSelector,
+                    ),
+                  ]),
+                  _sectionLabel(AppLocalizations.of(context)?.legal ?? "Legal"),
+                  _card([
+                    _tile(icon: Icons.privacy_tip_outlined, title: AppLocalizations.of(context)?.privacyPolicy ?? "Privacy Policy",
+                        isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/privacy')),
                     _divider(),
-                    _tile(icon: Icons.description_outlined, title: "Legal & Licenses",
-                        onTap: () => _navTo(const LegalPage(title: "Legal", content: "..."))),
+                    _tile(icon: Icons.gavel_rounded, title: AppLocalizations.of(context)?.termsOfService ?? "Terms of Service",
+                        isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/terms')),
+                    _divider(),
+                    _tile(icon: Icons.people_outline_rounded, title: AppLocalizations.of(context)?.communityGuidelines ?? "Community Guidelines",
+                        isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/community')),
+                    _divider(),
+                    _tile(icon: Icons.favorite_border_rounded, title: AppLocalizations.of(context)?.safeDating ?? "Safe Dating",
+                        isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/safe-dating')),
                   ]),
                   const SizedBox(height: 48),
                   _buildLogoutButton(),
@@ -256,6 +293,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         Positioned(top: 0, left: 0, right: 0, child: _buildHeader()),
       ]),
+      ),
     );
   }
 
@@ -304,7 +342,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _divider() => Divider(height: 1, thickness: 1, color: kBone, indent: 56);
 
   Widget _tile({required IconData icon, required String title,
-      String? subtitle, Widget? trailing, VoidCallback? onTap}) {
+      String? subtitle, Widget? trailing, VoidCallback? onTap, bool isExternal = false}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -326,6 +364,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ])),
             if (trailing != null) trailing
+            else if (isExternal) Icon(Icons.open_in_new_rounded, color: kBone, size: 18)
             else if (onTap != null) Icon(Icons.chevron_right_rounded, color: kBone, size: 22),
           ]),
         ),
@@ -366,6 +405,60 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Text(label, style: GoogleFonts.montserrat(color: kRose, fontWeight: FontWeight.w600, fontSize: 15)),
     ),
   );
+
+  void _showLanguageSelector() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: kCream,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              AppLocalizations.of(context)?.selectLanguage ?? "Select Language",
+              style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: kInk),
+            ),
+            const SizedBox(height: 20),
+            _languageTile("en", "English", "English"),
+            _divider(),
+            _languageTile("hi", "Hindi", "हिंदी"),
+            _divider(),
+            _languageTile("mr", "Marathi", "मराठी"),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _languageTile(String code, String name, String nativeName) {
+    bool isSelected = LanguageService().localeNotifier.value.languageCode == code;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 4),
+      title: Text(name, style: GoogleFonts.montserrat(
+          fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: kInk)),
+      trailing: isSelected ? const Icon(Icons.check_circle, color: kRose) : null,
+      onTap: () {
+        LanguageService().changeLanguage(code);
+        Navigator.pop(context);
+        setState(() {}); // Refresh settings page
+      },
+    );
+  }
+
+  String _getLanguageName(String code) {
+    switch (code) {
+      case 'en': return 'English';
+      case 'hi': return 'हिंदी (Hindi)';
+      case 'mr': return 'मराठी (Marathi)';
+      default: return code;
+    }
+  }
 
   Widget _buildLogoutButton() => Center(
     child: GestureDetector(

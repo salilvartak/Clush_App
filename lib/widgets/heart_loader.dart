@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:path_drawing/path_drawing.dart';
-import 'theme/colors.dart';
+import 'package:clush/theme/colors.dart';
 
 class HeartLoader extends StatefulWidget {
   final double size;

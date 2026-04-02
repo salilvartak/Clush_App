@@ -152,40 +152,16 @@ class MatchingService {
     if (myId == null) return 0;
 
     try {
-      // 1. Get my display name (since the messages table currently uses names for senders)
-      final myProfile = await _client.from('profiles').select('full_name').eq('id', myId).single();
-      final myName = myProfile['full_name'];
-
-      // 2. Get all matches to get room IDs
-      final matches = await _client.from('matches')
+      final matches = await _client
+          .from('matches')
           .select('user_a, user_b')
           .or('user_a.eq.$myId,user_b.eq.$myId');
 
       int totalUnread = 0;
-
-      for (var m in matches) {
+      for (final m in matches) {
         final roomId = _getRoomId(m['user_a'], m['user_b']);
-
-        // 3. Get last read status for this room
-        final readStatus = await _client.from('chat_read_status')
-            .select('last_read_at')
-            .eq('user_id', myId)
-            .eq('room_id', roomId)
-            .maybeSingle();
-
-        final lastRead = readStatus?['last_read_at'] ?? '1970-01-01T00:00:00Z';
-
-        // 4. Count messages that are newer than lastRead and NOT sent by me
-        final response = await _client.from('messages')
-            .select('id')
-            .eq('room_id', roomId)
-            .neq('sender', myName)
-            .gt('created_at', lastRead)
-            .count(CountOption.exact);
-
-        totalUnread += (response.count as num? ?? 0).toInt();
+        totalUnread += await getUnreadCountForRoom(roomId, myId, myId);
       }
-
       return totalUnread;
     } catch (e) {
       print('Error calculating unread count: $e');
@@ -193,9 +169,12 @@ class MatchingService {
     }
   }
 
-  Future<int> getUnreadCountForRoom(String roomId, String myName, String myId) async {
+  /// [senderId] is the current user's UID — messages with this sender are
+  /// excluded from the unread count (they were sent by me).
+  Future<int> getUnreadCountForRoom(String roomId, String senderId, String myId) async {
     try {
-      final readStatus = await _client.from('chat_read_status')
+      final readStatus = await _client
+          .from('chat_read_status')
           .select('last_read_at')
           .eq('user_id', myId)
           .eq('room_id', roomId)
@@ -203,14 +182,15 @@ class MatchingService {
 
       final lastRead = readStatus?['last_read_at'] ?? '1970-01-01T00:00:00Z';
 
-      final response = await _client.from('messages')
+      final response = await _client
+          .from('messages')
           .select('id')
           .eq('room_id', roomId)
-          .neq('sender', myName)
+          .neq('sender', senderId)
           .gt('created_at', lastRead)
           .count(CountOption.exact);
 
-      return response.count ?? 0;
+      return response.count;
     } catch (e) {
       print('Error getting unread count for room: $e');
       return 0;
