@@ -1,4 +1,4 @@
-package com.example.clush
+package com.clush.app
 
 import io.flutter.embedding.android.FlutterActivity
 

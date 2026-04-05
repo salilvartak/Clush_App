@@ -130,7 +130,7 @@ class ImageValidationService {
 
   Future<ImageValidationResult> checkTextModeration(File file) async {
     // 🔴 IMPORTANT: Replace with your current Ngrok URL!
-    final String serverUrl = 'https://nina-unpumped-linus.ngrok-free.dev/moderate_image';
+    final String serverUrl = 'https://nonterminable-ideologically-meagan.ngrok-free.dev/moderate_image';
     
     // Skip if URL is not set or is still the placeholder tutorial text
     if (serverUrl.isEmpty || serverUrl.contains("YOUR_NGROK_URL")) {
@@ -147,11 +147,16 @@ class ImageValidationService {
       
       if (response.statusCode == 200) {
         var data = jsonDecode(response.body);
-        
+        debugPrint("📥 Moderation response: ${response.body}");
+        final confidence = data['confidence'] ?? data['score'] ?? data['probability'] ?? data['confidence_score'];
+        debugPrint("🔍 Moderation status: ${data['status']}  |  confidence: $confidence");
+
         if (data['status'] == 'rejected') {
           return ImageValidationResult.failure(
               "Blocked: Images with text, numbers, or handles are not allowed.");
         }
+      } else {
+        debugPrint("⚠️ Moderation server returned ${response.statusCode}: ${response.body}");
       }
       return ImageValidationResult.success();
     } catch (e) {

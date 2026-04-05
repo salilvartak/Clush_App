@@ -71,9 +71,9 @@ class MatchingService {
 
       if (userIds.isEmpty) return [];
 
-      // 4. Get their profile details
+      // 4. Get their profile details via the secure discovery view
       final List<dynamic> profilesData = await _client
-          .from('profiles')
+          .from('profile_discovery')
           .select()
           .filter('id', 'in', userIds);
 

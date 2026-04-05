@@ -14,8 +14,10 @@ import 'package:google_fonts/google_fonts.dart'; // <-- Added for typography
 import 'package:flutter_animate/flutter_animate.dart'; // <-- Added for animations
 
 // Import the notification service
-import 'package:clush/services/notification_service.dart'; 
+import 'package:clush/services/notification_service.dart';
 import 'package:clush/services/language_service.dart';
+import 'package:clush/services/presence_service.dart';
+import 'package:clush/services/stream_service.dart';
 import 'package:clush/widgets/heart_loader.dart'; 
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:clush/l10n/app_localizations.dart';
@@ -36,7 +38,18 @@ void main() async {
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvYmx3a2xndnl2anJndnl1bXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzOTY0OTgsImV4cCI6MjA4NTk3MjQ5OH0.7kpPNmAHnGthepUIimiw_HovLOVjfX5mIWcr8WH-NrQ',
   );
 
-  // 3. Initialize Language Service
+  // 3. Establish Supabase auth session (anonymous) so authenticated-role
+  //    RLS policies work before any widget runs.
+  try {
+    if (Supabase.instance.client.auth.currentSession == null) {
+      await Supabase.instance.client.auth.signInAnonymously();
+    }
+  } catch (_) {}
+
+  // 4. Initialize Stream Chat client
+  await StreamService.instance.init();
+
+  // 5. Initialize Language Service
   final languageService = LanguageService();
   await languageService.init();
 
@@ -100,9 +113,15 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
-    // 3. Initialize notifications AFTER the UI starts drawing
-    // This will prompt the user for permission without freezing the app
     NotificationService().initNotifications();
+    PresenceService.instance.start();
+  }
+
+  @override
+  void dispose() {
+    PresenceService.instance.stop();
+    StreamService.instance.disconnect().catchError((_) {});
+    super.dispose();
   }
 
   @override
@@ -147,8 +166,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
     final sw = Stopwatch()..start();
     try {
       final data = await Supabase.instance.client
-          .from('profiles')
-          .select()
+          .from('profile_discovery')
+          .select('id')
           .eq('id', userId)
           .maybeSingle(); 
       final elapsed = sw.elapsedMilliseconds;

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import 'package:clush/widgets/activity_badge.dart';
 import 'package:clush/theme/colors.dart';
 
 
@@ -114,37 +114,7 @@ class ProfileViewPage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            // Moved Active indicator pill here
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: kRosePale,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                      color: kRose,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    "Active Today",
-                    style: GoogleFonts.figtree(
-                      fontSize: 11,
-                      color: kRose,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ActivityBadge(lastSeenAt: profile['last_seen_at'] as String?),
             // Thin decorative rule under the name
             const SizedBox(height: 12),
             Row(
@@ -416,13 +386,18 @@ class ProfileViewPage extends StatelessWidget {
                               letterSpacing: 0.5,
                             ),
                           ),
-                          const Spacer(),
-                          Text(
-                            entry.value,
-                            style: GoogleFonts.figtree(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: kInk,
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              entry.value,
+                              textAlign: TextAlign.end,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.figtree(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: kInk,
+                              ),
                             ),
                           ),
                         ],

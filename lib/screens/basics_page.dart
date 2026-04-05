@@ -49,12 +49,16 @@ class _BasicsPageState extends State<BasicsPage> {
   final ImageValidationService _validationService = ImageValidationService();
   
   // Total steps
-  final int _totalQuestionScreens = 25; 
+  final int _totalQuestionScreens = 26;
 
   // --- Controllers (Text) ---
   final TextEditingController nameController = TextEditingController();
   final TextEditingController jobController = TextEditingController();
   final TextEditingController schoolNameController = TextEditingController();
+  final TextEditingController _contactController = TextEditingController();
+
+  // Whether the user authenticated via phone (true) or email (false)
+  bool _loggedInWithPhone = false;
 
   // --- State Variables (Basics) ---
   int? selectedAge; 
@@ -145,6 +149,8 @@ class _BasicsPageState extends State<BasicsPage> {
     _generateHeightOptions();
     _loadFromStore();
     _validationService.initialize();
+    final user = FirebaseAuth.instance.currentUser;
+    _loggedInWithPhone = user?.phoneNumber != null && user!.phoneNumber!.isNotEmpty;
   }
 
   @override
@@ -276,47 +282,67 @@ class _BasicsPageState extends State<BasicsPage> {
 
   bool _validateCurrentStep() {
     switch (_currentQuestionIndex) {
-      case 0: 
-        final error = ContentModerator.validatePromptText(nameController.text);
-        if (error != null) { _showNotification(error); return false; }
+      case 0:
+        final nameError = ContentModerator.validatePromptText(nameController.text);
+        if (nameError != null) { _showNotification(nameError); return false; }
         return nameController.text.trim().length >= 2;
-      case 1: return selectedAge != null;
-      case 2: return selectedGender != null;
-      case 3: return selectedOrientation != null;
-      case 4: return selectedPronouns != null;
-      case 5: return location != null;
-      case 6: return selectedEthnicity != null;
-      case 7: return selectedHeight != null;
-      case 8: return selectedReligion != null;
-      case 9: 
-        final error = ContentModerator.validatePromptText(schoolNameController.text);
-        if (error != null) { _showNotification(error); return false; }
-        return true; 
-      case 10: 
-        final error = ContentModerator.validatePromptText(jobController.text);
-        if (error != null) { _showNotification(error); return false; }
-        return true; 
-      case 11: return selectedLanguages.isNotEmpty;
-      case 12: return true; // Optional: selectedPolitics != null;
-      case 13: return true; // Optional: selectedKids != null;
-      case 14: return selectedStarSign != null;
-      case 15: return true; // Optional: selectedPets != null;
-      case 16: return true; // Optional: selectedExercise != null;
-      case 17: return true; // Optional: drinkStatus != null && smokeStatus != null && weedStatus != null;
-      case 18: return selectedIntent != null;
-      case 19: return selectedInterests.isNotEmpty; 
-      case 20: return selectedFoods.isNotEmpty; 
-      case 21: return selectedPlaces.isNotEmpty; 
-      case 22: return _photos.where((p) => p != null).length >= 2; 
-      case 23: 
-        for (var slot in _promptSlots) {
-          if (slot != null) {
-            final error = ContentModerator.validatePromptText(slot['answer']);
-            if (error != null) { _showNotification(error); return false; }
+      case 1:
+        final val = _contactController.text.trim();
+        if (val.isEmpty) {
+          _showNotification(_loggedInWithPhone ? 'Please enter your email address' : 'Please enter your phone number');
+          return false;
+        }
+        if (_loggedInWithPhone) {
+          // asking for email — basic format check
+          if (!val.contains('@') || !val.contains('.')) {
+            _showNotification('Please enter a valid email address');
+            return false;
+          }
+        } else {
+          // asking for phone — must be digits only, 7–15 chars
+          if (!RegExp(r'^\+?[\d\s\-]{7,15}$').hasMatch(val)) {
+            _showNotification('Please enter a valid phone number');
+            return false;
           }
         }
-        return _promptSlots.every((slot) => slot != null); 
-      case 24: return true; // Permissions step
+        return true;
+      case 2: return selectedAge != null;
+      case 3: return selectedGender != null;
+      case 4: return selectedOrientation != null;
+      case 5: return selectedPronouns != null;
+      case 6: return location != null;
+      case 7: return selectedEthnicity != null;
+      case 8: return selectedHeight != null;
+      case 9: return selectedReligion != null;
+      case 10:
+        final eduError = ContentModerator.validatePromptText(schoolNameController.text);
+        if (eduError != null) { _showNotification(eduError); return false; }
+        return true;
+      case 11:
+        final jobError = ContentModerator.validatePromptText(jobController.text);
+        if (jobError != null) { _showNotification(jobError); return false; }
+        return true;
+      case 12: return selectedLanguages.isNotEmpty;
+      case 13: return true;
+      case 14: return true;
+      case 15: return selectedStarSign != null;
+      case 16: return true;
+      case 17: return true;
+      case 18: return true;
+      case 19: return selectedIntent != null;
+      case 20: return selectedInterests.isNotEmpty;
+      case 21: return selectedFoods.isNotEmpty;
+      case 22: return selectedPlaces.isNotEmpty;
+      case 23: return _photos.where((p) => p != null).length >= 2;
+      case 24:
+        for (var slot in _promptSlots) {
+          if (slot != null) {
+            final promptError = ContentModerator.validatePromptText(slot['answer']);
+            if (promptError != null) { _showNotification(promptError); return false; }
+          }
+        }
+        return _promptSlots.every((slot) => slot != null);
+      case 25: return true; // Permissions step
     }
     return true;
   }
@@ -440,6 +466,8 @@ class _BasicsPageState extends State<BasicsPage> {
         'prompts': _promptSlots,
         'is_verified': false,
         'created_at': DateTime.now().toIso8601String(),
+        if (_contactController.text.trim().isNotEmpty)
+          (_loggedInWithPhone ? 'email' : 'phone'): _contactController.text.trim(),
       };
 
       await supabase.from('profiles').upsert(profileData);
@@ -777,6 +805,7 @@ class _BasicsPageState extends State<BasicsPage> {
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
                   _buildSimpleInputStep("What's your first name?", nameController, "Your Name", TextInputType.name),
+                  _buildContactStep(),
                   _buildAgeLadderStep(),
                   _buildChipStep("How do you identify?", genderOptions, selectedGender, (val) => setState(() => selectedGender = val)),
                   _buildChipStep("Sexual Orientation", orientationOptions, selectedOrientation, (val) => setState(() => selectedOrientation = val)),
@@ -875,6 +904,41 @@ class _BasicsPageState extends State<BasicsPage> {
           Text(title, style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 30, height: 1.1, color: kBlack)),
           const SizedBox(height: 24),
           Expanded(child: child), 
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContactStep() {
+    final isPhone = _loggedInWithPhone;
+    return _buildStepContainer(
+      title: isPhone ? "What's your email?" : "What's your phone number?",
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            isPhone
+                ? "Add an email so you can recover your account if you lose access to your number."
+                : "Add a phone number for account security and recovery.",
+            style: GoogleFonts.figtree(fontSize: 15, color: kInkMuted, height: 1.5),
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _contactController,
+            keyboardType: isPhone ? TextInputType.emailAddress : TextInputType.phone,
+            style: GoogleFonts.figtree(fontSize: 20, color: kBlack),
+            decoration: InputDecoration(
+              hintText: isPhone ? "your@email.com" : "+1 234 567 8900",
+              prefixIcon: Icon(
+                isPhone ? Icons.email_outlined : Icons.phone_outlined,
+                color: kRose,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.all(20),
+            ),
+          ),
         ],
       ),
     );
@@ -1165,8 +1229,8 @@ class _BasicsPageState extends State<BasicsPage> {
                       initialCenter: _currentMapCenter,
                       initialZoom: 13.0,
                       onPositionChanged: (position, hasGesture) {
-                        if (hasGesture && position.center != null) {
-                          _currentMapCenter = position.center!;
+                        if (hasGesture) {
+                          _currentMapCenter = position.center;
                         }
                       },
                     ),

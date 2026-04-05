@@ -1,17 +1,19 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 
 import 'package:clush/screens/chat_page.dart';
-import 'package:clush/widgets/heart_loader.dart';
-
-import 'package:clush/l10n/app_localizations.dart';
-
+import 'package:clush/screens/setting_sub_pages.dart';
+import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart';
+import 'package:clush/widgets/activity_badge.dart';
+import 'package:clush/widgets/heart_loader.dart';
 
 class MatchesPage extends StatefulWidget {
   const MatchesPage({super.key});
@@ -27,90 +29,73 @@ class _MatchesPageState extends State<MatchesPage> {
   String? _myDisplayName;
   String? _myId;
   bool isLoading = true;
-  RealtimeChannel? _unreadChannel;
+
+  // Stream Chat live-event subscription for new messages
+  StreamSubscription<Event>? _streamEventSub;
 
   @override
   void initState() {
     super.initState();
     _myId = FirebaseAuth.instance.currentUser?.uid;
     _fetchData();
-    _subscribeUnread();
   }
 
   @override
   void dispose() {
-    _unreadChannel?.unsubscribe();
+    _streamEventSub?.cancel();
     super.dispose();
   }
 
-  void _subscribeUnread() {
+  /// Subscribe to new-message events so unread badges update in real time.
+  void _subscribeStreamEvents() {
     final myId = _myId;
     if (myId == null) return;
-    _unreadChannel = _supabase.channel('matches_read_$myId');
-    _unreadChannel!
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'chat_read_status',
-          callback: (payload) async {
-            final row = payload.newRecord;
-            // Only care about the match reading (not me reading)
-            if (row['user_id'] == myId) return;
-            final roomId = row['room_id'] as String?;
-            if (roomId == null) return;
-            final idx = matches.indexWhere((m) {
-              final otherId = m['match_uuid'] as String;
-              return _getRoomId(myId, otherId) == roomId;
-            });
-            if (idx < 0 || !mounted) return;
-            // Recalculate unread for this room
-            final count = await _getUnreadCount(roomId, myId);
-            if (mounted) setState(() => matches[idx]['unread_count'] = count);
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'messages',
-          callback: (payload) async {
-            final row = payload.newRecord;
-            final roomId = row['room_id'] as String?;
-            final sender = row['sender'] as String?;
-            if (roomId == null || sender == null || sender == myId) return;
-            if (!roomId.contains(myId)) return;
-            final idx = matches.indexWhere((m) {
-              final otherId = m['match_uuid'] as String;
-              return _getRoomId(myId, otherId) == roomId;
-            });
-            if (idx < 0 || !mounted) return;
-            setState(() {
-              matches[idx]['unread_count'] =
-                  (matches[idx]['unread_count'] as int) + 1;
-            });
-          },
-        )
-        .subscribe();
+    _streamEventSub = StreamService.instance.client
+        .on(EventType.messageNew)
+        .listen((event) {
+      // cid format: "messaging:<channelId>"
+      final channelId = event.cid?.split(':').lastOrNull;
+      final sender = event.message?.user?.id;
+      if (channelId == null || sender == null || sender == myId) return;
+
+      final idx = matches.indexWhere((m) {
+        final otherId = m['match_uuid'] as String;
+        return _getRoomId(myId, otherId) == channelId;
+      });
+      if (idx >= 0 && mounted) {
+        setState(
+            () => matches[idx]['unread_count'] = (matches[idx]['unread_count'] as int) + 1);
+      }
+    });
   }
 
-  Future<int> _getUnreadCount(String roomId, String myId) async {
+  /// Fetch unread counts for all matches via a single Stream queryChannels call.
+  Future<void> _loadStreamUnreadCounts() async {
+    final myId = _myId;
+    if (myId == null) return;
     try {
-      final rs = await _supabase
-          .from('chat_read_status')
-          .select('last_read_at')
-          .eq('user_id', myId)
-          .eq('room_id', roomId)
-          .maybeSingle();
-      final lastRead = rs?['last_read_at'] ?? '1970-01-01T00:00:00Z';
-      final resp = await _supabase
-          .from('messages')
-          .select('id')
-          .eq('room_id', roomId)
-          .neq('sender', myId)
-          .gt('created_at', lastRead)
-          .count(CountOption.exact);
-      return resp.count;
-    } catch (_) {
-      return 0;
+      final channelList = await StreamService.instance.client
+          .queryChannels(
+            filter: Filter.in_('members', [myId]),
+            state: true,
+            watch: false,
+          )
+          .first;
+
+      for (final ch in channelList) {
+        final channelId = ch.id;
+        if (channelId == null) continue;
+        final unread = ch.state?.unreadCount ?? 0;
+        if (unread == 0) continue;
+        final idx = matches.indexWhere((m) {
+          final otherId = m['match_uuid'] as String;
+          return _getRoomId(myId, otherId) == channelId;
+        });
+        if (idx >= 0) matches[idx]['unread_count'] = unread;
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Stream unread counts: $e');
     }
   }
 
@@ -147,11 +132,11 @@ class _MatchesPageState extends State<MatchesPage> {
         }
       } catch (_) {}
 
-      // 3. Fetch matches with joined profiles (including photo_urls)
+      // 3. Fetch matches with joined profiles
       final data = await _supabase.from('matches').select('''
             *,
-            profile_a:profiles!user_a(id, full_name, photo_urls),
-            profile_b:profiles!user_b(id, full_name, photo_urls)
+            profile_a:profiles!user_a(id, full_name, photo_urls, last_seen_at),
+            profile_b:profiles!user_b(id, full_name, photo_urls, last_seen_at)
           ''').or('user_a.eq.$myId,user_b.eq.$myId');
 
       final List<Map<String, dynamic>> loadedMatches = [];
@@ -168,21 +153,13 @@ class _MatchesPageState extends State<MatchesPage> {
             ? photoUrls[0] as String?
             : null;
 
-        final roomId = _getRoomId(myId, otherId);
-        int unread = 0;
-        try {
-          unread = await _getUnreadCount(roomId, myId);
-        } catch (_) {}
-
         loadedMatches.add({
           'match_uuid': otherId,
           'display_name': otherProfile['full_name'],
           'photo_url': photoUrl,
-          'unread_count': unread,
+          'unread_count': 0, // populated below via Stream
+          'last_seen_at': otherProfile['last_seen_at'],
         });
-
-        // Preload messages in background so chat opens instantly
-        unawaited(ChatCache.preload(roomId));
       }
 
       if (mounted) {
@@ -194,6 +171,10 @@ class _MatchesPageState extends State<MatchesPage> {
           matches = loadedMatches;
           isLoading = false;
         });
+
+        // Load unread counts from Stream + start live listener
+        _loadStreamUnreadCounts();
+        _subscribeStreamEvents();
       }
     } catch (e) {
       debugPrint('❌ Error fetching matches: $e');
@@ -212,14 +193,13 @@ class _MatchesPageState extends State<MatchesPage> {
     return '${ids[0]}_${ids[1]}';
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kTan,
       appBar: AppBar(
         title: Text(
-          AppLocalizations.of(context)?.matches ?? 'Matches',
+          'Matches',
           style: GoogleFonts.gabarito(
               fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5),
         ),
@@ -244,16 +224,56 @@ class _MatchesPageState extends State<MatchesPage> {
                           SvgPicture.asset('assets/images/2.svg', width: 180, height: 180),
                           const SizedBox(height: 28),
                           Text(
-                            AppLocalizations.of(context)?.signalsReachingOut ?? 'Your signals are reaching out wide, but a clear return frequency is still far off.',
+                            "You're reaching far, but the right connection hasn't locked in yet.",
                             textAlign: TextAlign.center,
                             style: GoogleFonts.gabarito(
                                 fontWeight: FontWeight.bold, fontSize: 20, color: kBlack),
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            AppLocalizations.of(context)?.fineTuneTransmission ?? 'We can help you fine-tune your transmission and find your match soon.',
+                            "We're tuning your signal—your match is coming soon.",
                             textAlign: TextAlign.center,
-                            style: GoogleFonts.figtree(fontSize: 15, color: kInkMuted, height: 1.5),
+                            style: GoogleFonts.figtree(
+                                fontSize: 15, color: kInkMuted, height: 1.5),
+                          ),
+                          const SizedBox(height: 28),
+                          GestureDetector(
+                            onTap: () => Navigator.push(context,
+                                MaterialPageRoute(builder: (_) => const SubscriptionsPage())),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF1A0010), Color(0xFF5C0030), kRose],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: kRose.withValues(alpha: 0.3),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 6))
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.auto_awesome_rounded, color: kGold, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text('Get Clush+',
+                                      style: GoogleFonts.figtree(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15)),
+                                  const SizedBox(width: 4),
+                                  Text('and match faster',
+                                      style: GoogleFonts.figtree(
+                                          color: Colors.white70, fontSize: 14)),
+                                ],
+                              ),
+                            ),
                           ),
                         ],
                       )
@@ -278,7 +298,7 @@ class _MatchesPageState extends State<MatchesPage> {
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: kInk.withOpacity(0.08),
+                              color: kInk.withValues(alpha: 0.08),
                               blurRadius: 18,
                               offset: const Offset(0, 6),
                             )
@@ -292,7 +312,7 @@ class _MatchesPageState extends State<MatchesPage> {
                             children: [
                               CircleAvatar(
                                 radius: 26,
-                                backgroundColor: kRose.withOpacity(0.1),
+                                backgroundColor: kRose.withValues(alpha: 0.1),
                                 backgroundImage: match['photo_url'] != null
                                     ? NetworkImage(match['photo_url'] as String)
                                     : null,
@@ -316,8 +336,8 @@ class _MatchesPageState extends State<MatchesPage> {
                                       color: kRose,
                                       shape: BoxShape.circle,
                                     ),
-                                    constraints: const BoxConstraints(
-                                        minWidth: 18, minHeight: 18),
+                                    constraints:
+                                        const BoxConstraints(minWidth: 18, minHeight: 18),
                                     child: Text(
                                       unread > 99 ? '99+' : '$unread',
                                       style: GoogleFonts.figtree(
@@ -327,6 +347,15 @@ class _MatchesPageState extends State<MatchesPage> {
                                       textAlign: TextAlign.center,
                                     ),
                                   ),
+                                )
+                              else
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: ActivityBadge(
+                                    lastSeenAt: match['last_seen_at'] as String?,
+                                    compact: true,
+                                  ),
                                 ),
                             ],
                           ),
@@ -334,22 +363,18 @@ class _MatchesPageState extends State<MatchesPage> {
                               style: GoogleFonts.gabarito(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 18,
-                                  color: hasUnread ? kBlack : kBlack)),
-                          subtitle: Text(
-                            hasUnread
-                                ? '$unread ${unread == 1 ? (AppLocalizations.of(context)?.newMessage ?? 'new message') : (AppLocalizations.of(context)?.newMessages ?? 'new messages')}'
-                                : (AppLocalizations.of(context)?.tapToChat ?? 'Tap to chat'),
-                            style: GoogleFonts.figtree(
-                              color: hasUnread ? kRose : kInkMuted,
-                              fontWeight: hasUnread
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: const Icon(Icons.chevron_right_rounded,
-                              color: kInkMuted),
+                                  color: kBlack)),
+                          subtitle: hasUnread
+                              ? Text(
+                                  '$unread ${unread == 1 ? 'new message' : 'new messages'}',
+                                  style: GoogleFonts.figtree(
+                                      color: kRose, fontWeight: FontWeight.w600),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                )
+                              : ActivityBadge(lastSeenAt: match['last_seen_at'] as String?),
+                          trailing:
+                              const Icon(Icons.chevron_right_rounded, color: kInkMuted),
                           onTap: () async {
                             // Optimistically clear badge before navigating
                             setState(() => matches[index]['unread_count'] = 0);
@@ -365,16 +390,15 @@ class _MatchesPageState extends State<MatchesPage> {
                                 ),
                               ),
                             );
-                            // Recheck after returning from chat
+                            // Recheck unread after returning from chat
                             final myId = _myId;
                             if (myId == null || !mounted) return;
-                            final roomId = _getRoomId(
-                                myId, match['match_uuid'] as String);
-                            final count =
-                                await _getUnreadCount(roomId, myId);
+                            final channelId =
+                                _getRoomId(myId, match['match_uuid'] as String);
+                            final ch = StreamService.instance.client.state.channels[channelId];
+                            final count = ch?.state?.unreadCount ?? 0;
                             if (mounted) {
-                              setState(
-                                  () => matches[index]['unread_count'] = count);
+                              setState(() => matches[index]['unread_count'] = count);
                             }
                           },
                         ),

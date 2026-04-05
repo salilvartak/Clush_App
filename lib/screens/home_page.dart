@@ -53,7 +53,7 @@ class _HomePageState extends State<HomePage> {
       if (userId == null) return;
 
       final data = await Supabase.instance.client
-          .from('profiles')
+          .from('profile_discovery')
           .select('is_verified')
           .eq('id', userId)
           .maybeSingle();

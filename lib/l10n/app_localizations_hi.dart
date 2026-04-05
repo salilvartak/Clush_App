@@ -154,4 +154,95 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get premium => 'प्रीमियम';
+
+  @override
+  String get likesYou => 'आपको पसंद करने वाले';
+
+  @override
+  String get heartsDrifting => 'दिल आपके प्रभाव से बस थोड़ी दूर भटक रहे हैं।';
+
+  @override
+  String get helpNavigateConnection =>
+      'हम आपको जल्द ही अधिक कनेक्शन तक पहुँचने में मदद कर सकते हैं।';
+
+  @override
+  String get likedBack => 'आपने उन्हें वापस पसंद किया!';
+
+  @override
+  String get noJobTitle => 'कार्य शीर्षक नहीं';
+
+  @override
+  String get matches => 'मैच';
+
+  @override
+  String get signalsReachingOut =>
+      'आपके संकेत दूर तक पहुँच रहे हैं, लेकिन अभी वापसी आवृत्ति स्पष्ट नहीं है।';
+
+  @override
+  String get fineTuneTransmission =>
+      'हम आपको अपना मैच जल्द ही खोजने में मदद कर सकते हैं।';
+
+  @override
+  String get tapToChat => 'चैट करने के लिए टैप करें';
+
+  @override
+  String get newMessage => 'नया संदेश';
+
+  @override
+  String get newMessages => 'नए संदेश';
+
+  @override
+  String get allow => 'अनुमति दें';
+
+  @override
+  String get maybeLater => 'बाद में';
+
+  @override
+  String get accessCamera => 'कैमरा एक्सेस';
+
+  @override
+  String get cameraDescription =>
+      'अपनी पहचान सत्यापित करने के लिए हमें आपके कैमरे के उपयोग की आवश्यकता है।';
+
+  @override
+  String get findPeopleNearby => 'आसपास के लोग खोजें';
+
+  @override
+  String get locationDescription =>
+      'हम आपके स्थान का उपयोग आपके शहर के शानदार लोगों को दिखाने के लिए करते हैं।';
+
+  @override
+  String get stayConnected => 'जुड़े रहें';
+
+  @override
+  String get notificationsDescription =>
+      'नया लाइक या संदेश मिलने पर तुरंत सूचना प्राप्त करें।';
+
+  @override
+  String get syncContacts => 'संपर्क सिंक करें';
+
+  @override
+  String get contactsDescription =>
+      'Clush पर मौजूद दोस्तों को खोजें या उन लोगों से बचने के लिए जिन्हें आप पहले से जानते हैं।';
+
+  @override
+  String get save => 'सहेजें';
+
+  @override
+  String get submit => 'जमा करें';
+
+  @override
+  String get verify => 'सत्यापित करें';
+
+  @override
+  String get update => 'अपडेट करें';
+
+  @override
+  String get loading => 'लोड हो रहा है...';
+
+  @override
+  String get success => 'सफलता';
+
+  @override
+  String get error => 'त्रुटि';
 }

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:math';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cryptography/cryptography.dart';
@@ -12,40 +12,19 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/services/crypto_service.dart';
 import 'package:clush/services/matching_service.dart';
+import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart';
 
-// ─── Static row cache — filled by MatchesPage preload ────────────────────────
+// ─── ChatCache — no-op stub kept for MatchesPage compatibility ────────────────
 class ChatCache {
   ChatCache._();
-  // roomId → raw rows from Supabase (unprocessed)
-  static final Map<String, List<Map<String, dynamic>>> _rows = {};
-
-  static void store(String roomId, List<Map<String, dynamic>> rows) =>
-      _rows[roomId] = rows;
-
-  static List<Map<String, dynamic>>? take(String roomId) {
-    final rows = _rows[roomId];
-    _rows.remove(roomId); // consume once
-    return rows;
-  }
-
-  /// Preload raw rows for a room in the background (called from MatchesPage).
-  static Future<void> preload(String roomId) async {
-    if (_rows.containsKey(roomId)) return; // already cached
-    try {
-      final rows = await Supabase.instance.client
-          .from('messages')
-          .select()
-          .eq('room_id', roomId)
-          .order('created_at');
-      _rows[roomId] = List<Map<String, dynamic>>.from(rows);
-    } catch (_) {}
-  }
+  static Future<void> preload(String roomId) async {}
 }
 
 class ChatScreen extends StatefulWidget {
@@ -69,6 +48,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
+  // Supabase kept only for Storage (media upload/download) and MatchingService
   final _supabase = Supabase.instance.client;
   final _matchingService = MatchingService();
   final _textController = TextEditingController();
@@ -95,17 +75,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   SecretKey? _conversationKey;
   bool _cryptoReady = false;
 
-  // Realtime
-  RealtimeChannel? _channel;
+  // Stream Chat
+  Channel? _streamChannel;
+  StreamSubscription<List<Message>>? _msgSub;
+  StreamSubscription<Event>? _typingStartSub;
+  StreamSubscription<Event>? _typingStopSub;
+  StreamSubscription<Event>? _readSub;
+  bool _initialLoadDone = false;
+  int _prevMsgCount = 0;
   late String _roomId;
 
-  // Read receipts — when the match last read this room
+  // Read receipts — when the match last read this channel
   DateTime? _matchLastReadAt;
 
   // Typing debounce
   bool _wasTyping = false;
   Timer? _typingDebounce;
-  Timer? _typingExpiry;
 
   // Unread divider
   bool _hasUnreadDivider = false;
@@ -129,10 +114,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _channel?.unsubscribe();
+    _msgSub?.cancel();
+    _typingStartSub?.cancel();
+    _typingStopSub?.cancel();
+    _readSub?.cancel();
+    _streamChannel?.stopTyping().catchError((_) {});
     _typingDebounce?.cancel();
-    _typingExpiry?.cancel();
-    _clearTypingStatus();
     _textController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -143,7 +130,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) _clearTypingStatus();
+    if (state == AppLifecycleState.paused) {
+      _streamChannel?.stopTyping().catchError((_) {});
+    }
   }
 
   String _buildRoomId(String a, String b) {
@@ -157,8 +146,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _initChat() async {
     await _setupCrypto();
-    await _loadHistory();
-    _subscribeAll();
+    await _setupChannel();
   }
 
   Future<void> _setupCrypto() async {
@@ -181,67 +169,63 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _loadHistory() async {
+  Future<void> _setupChannel() async {
     try {
-      // Use preloaded cache if available for instant display
-      final cached = ChatCache.take(_roomId);
-      final rawRows = cached != null && cached.isNotEmpty
-          ? cached
-          : List<Map<String, dynamic>>.from(
-              await _supabase
-                  .from('messages')
-                  .select()
-                  .eq('room_id', _roomId)
-                  .order('created_at'),
-            );
+      _streamChannel = StreamService.instance.channel(widget.myId, widget.matchId);
+      await _streamChannel!.watch();
 
-      // Fetch read statuses — optional (table may not exist yet)
-      List readRows = [];
-      try {
-        readRows = await _supabase
-            .from('chat_read_status')
-            .select('user_id, last_read_at')
-            .eq('room_id', _roomId);
-      } catch (_) {}
+      final streamMessages = _streamChannel!.state!.messages;
+      final unreadCount = _streamChannel!.state!.unreadCount;
 
-      DateTime? myLastReadAt;
-      DateTime? matchLastReadAt;
-      for (final r in readRows) {
-        final uid = r['user_id'] as String?;
-        final ts = DateTime.tryParse(r['last_read_at'] as String? ?? '');
-        if (uid == widget.myId) myLastReadAt = ts;
-        if (uid == widget.matchId) matchLastReadAt = ts;
-      }
-      _matchLastReadAt = matchLastReadAt;
-
-      // Decrypt / parse all messages
+      // Parse all messages from Stream history
       final parsed = <Map<String, dynamic>>[];
-      for (final row in rawRows) {
-        final msg = await _parseRow(row);
-        if (msg != null) parsed.add(msg);
+      for (final msg in streamMessages) {
+        final m = await _parseStreamMessage(msg);
+        if (m != null) parsed.add(m);
       }
 
-      // Find first unread message from the other person
+      // Insert unread divider before first unread message from the other user
       int firstUnreadIdx = -1;
-      if (myLastReadAt != null) {
-        for (int i = 0; i < parsed.length; i++) {
-          if (parsed[i]['isMe'] as bool) continue;
-          final ts = DateTime.tryParse(parsed[i]['timestamp'] as String? ?? '');
-          if (ts != null && ts.isAfter(myLastReadAt)) {
+      if (unreadCount > 0) {
+        // Unread messages are at the end of the list
+        final candidateStart = parsed.length - unreadCount;
+        for (int i = max(0, candidateStart); i < parsed.length; i++) {
+          if (parsed[i]['isMe'] != true) {
             firstUnreadIdx = i;
             break;
           }
         }
       }
 
-      final unreadCount = firstUnreadIdx >= 0
-          ? parsed.sublist(firstUnreadIdx).where((m) => !(m['isMe'] as bool)).length
-          : 0;
-
-      if (firstUnreadIdx >= 0 && unreadCount > 0) {
+      if (firstUnreadIdx >= 0) {
         parsed.insert(
             firstUnreadIdx, _dividerItem(unreadCount, parsed[firstUnreadIdx]['timestamp']));
       }
+
+      _prevMsgCount = streamMessages.length;
+      _initialLoadDone = true;
+
+      // Subscribe to live message updates
+      _msgSub = _streamChannel!.state!.messagesStream.listen(_onMessagesChanged);
+
+      // Typing indicators
+      _typingStartSub = _streamChannel!.on(EventType.typingStart).listen((event) {
+        if (event.user?.id == widget.matchId && mounted) {
+          setState(() => _isMatchTyping = true);
+        }
+      });
+      _typingStopSub = _streamChannel!.on(EventType.typingStop).listen((event) {
+        if (event.user?.id == widget.matchId && mounted) {
+          setState(() => _isMatchTyping = false);
+        }
+      });
+
+      // Read receipts
+      _readSub = _streamChannel!.on(EventType.messageRead).listen((event) {
+        if (event.user?.id == widget.matchId) _refreshMatchReadAt();
+      });
+
+      _refreshMatchReadAt();
 
       if (!mounted) return;
       setState(() {
@@ -249,24 +233,74 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ..clear()
           ..addAll(parsed);
         _isLoading = false;
-        _hasUnreadDivider = firstUnreadIdx >= 0 && unreadCount > 0;
+        _hasUnreadDivider = firstUnreadIdx >= 0;
       });
 
       if (_hasUnreadDivider) {
-        // Small delay so list measures before we scroll
         Future.delayed(const Duration(milliseconds: 80), () {
           if (mounted) _scrollToIndex(firstUnreadIdx);
         });
       } else {
-        // Delay to let the ListView finish layout before jumping to bottom
         Future.delayed(const Duration(milliseconds: 80), () {
           if (mounted) _scrollToBottom(animate: false);
         });
         Future.delayed(const Duration(milliseconds: 300), () => _markAsRead());
       }
     } catch (e, st) {
-      debugPrint('_loadHistory error: $e\n$st');
+      debugPrint('_setupChannel error: $e\n$st');
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Stream live updates
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> _onMessagesChanged(List<Message> streamMessages) async {
+    if (!_initialLoadDone || !mounted) return;
+
+    final newCount = streamMessages.length;
+
+    // Check for deletions/updates in already-processed messages
+    for (int i = 0; i < min(_prevMsgCount, newCount); i++) {
+      final sm = streamMessages[i];
+      if (sm.type == 'deleted') {
+        final localIdx = _messages.indexWhere((m) => m['id'] == sm.id);
+        if (localIdx >= 0 && _messages[localIdx]['isDeleted'] != true) {
+          if (mounted) {
+            setState(() => _messages[localIdx] = {
+                  ..._messages[localIdx],
+                  'type': 'deleted',
+                  'isDeleted': true,
+                  'data': '',
+                });
+          }
+        }
+      }
+    }
+
+    // Process new messages
+    if (newCount > _prevMsgCount) {
+      for (int i = _prevMsgCount; i < newCount; i++) {
+        final sm = streamMessages[i];
+        final msg = await _parseStreamMessage(sm);
+        if (msg == null || !mounted) return;
+        final isMe = msg['isMe'] as bool;
+        final id = msg['id']?.toString();
+
+        if (!isMe && id != null) _freshIds.add(id);
+
+        setState(() {
+          _messages.add(msg);
+          if (!isMe && !_isAtBottom) _unreadCount++;
+        });
+
+        if (!isMe && _isAtBottom) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+          _markAsRead();
+        }
+      }
+      _prevMsgCount = newCount;
     }
   }
 
@@ -281,157 +315,41 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Realtime — single channel for all events
-  // ─────────────────────────────────────────────────────────────────────────
-
-  void _subscribeAll() {
-    _channel = _supabase.channel('room_$_roomId')
-
-        // New / updated messages
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'messages',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'room_id', value: _roomId),
-          callback: _onMessageInsert,
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'messages',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'room_id', value: _roomId),
-          callback: _onMessageUpdate,
-        )
-
-        // Read receipts
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'chat_read_status',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'room_id', value: _roomId),
-          callback: _onReadStatusChange,
-        )
-
-        // Typing
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'typing_status',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'room_id', value: _roomId),
-          callback: _onTypingChange,
-        )
-
-        .subscribe();
-  }
-
-  Future<void> _onMessageInsert(PostgresChangePayload payload) async {
-    final row = payload.newRecord;
-    // Ignore our own optimistic inserts (we already added them)
-    if (row['sender'] == widget.myId) return;
-    final msg = await _parseRow(row);
-    if (msg == null || !mounted) return;
-    final id = msg['id']?.toString();
-    if (id != null) _freshIds.add(id);
-    setState(() {
-      _messages.add(msg);
-      if (!_isAtBottom) _unreadCount++;
-    });
-    if (_isAtBottom) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-      _markAsRead();
-    }
-  }
-
-  Future<void> _onMessageUpdate(PostgresChangePayload payload) async {
-    final row = payload.newRecord;
-    final id = row['id'] as String?;
-    if (id == null || !mounted) return;
-    final idx = _messages.indexWhere((m) => m['id'] == id);
-    if (idx < 0) return;
-    final updated = await _parseRow(row);
-    if (updated == null || !mounted) return;
-    setState(() => _messages[idx] = updated);
-  }
-
-  void _onReadStatusChange(PostgresChangePayload payload) {
-    final row = payload.newRecord;
-    final uid = row['user_id'] as String?;
-    // Only care about match's read status for blue ticks
-    if (uid != widget.matchId) return;
-    final ts = DateTime.tryParse(row['last_read_at'] as String? ?? '');
-    if (ts != null && mounted) {
-      // Only update if newer than what we have
-      if (_matchLastReadAt == null || ts.isAfter(_matchLastReadAt!)) {
-        setState(() => _matchLastReadAt = ts);
-      }
-    }
-  }
-
-  void _onTypingChange(PostgresChangePayload payload) {
-    final row = payload.newRecord;
-    if ((row['user_id'] as String?) != widget.matchId) return;
-    final updatedAt = DateTime.tryParse(row['updated_at'] as String? ?? '');
-    final isTyping = updatedAt != null && DateTime.now().difference(updatedAt).inSeconds < 6;
-    if (mounted && isTyping != _isMatchTyping) {
-      setState(() => _isMatchTyping = isTyping);
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
   // Message parsing
   // ─────────────────────────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>?> _parseRow(Map<String, dynamic> row) async {
-    final sender = row['sender'] as String? ?? '';
+  Future<Map<String, dynamic>?> _parseStreamMessage(Message message) async {
+    final sender = message.user?.id ?? '';
     final isMe = sender == widget.myId;
-    final isDeleted = row['deleted_at'] != null;
-    final encPayload = row['encrypted_content'] as String? ?? '';
+    final isDeleted = message.type == 'deleted';
 
-    String type = 'text';
+    // message.extraData['mt'] carries the type: 'text' | 'image' | 'audio'
+    String type = (message.extraData['mt'] as String?) ?? 'text';
     String data = '';
 
     if (isDeleted) {
       type = 'deleted';
-    } else if (encPayload.isNotEmpty) {
-      String? plain;
-      if (_conversationKey != null) {
-        plain = await CryptoService.decryptMessage(encPayload, _conversationKey!);
-      }
-      // If decryption failed or no key, try reading as plain JSON (fallback mode)
-      if (plain == null) {
-        try {
-          final map = jsonDecode(encPayload) as Map<String, dynamic>;
-          if (map.containsKey('data') && !map.containsKey('ct')) {
-            plain = encPayload; // it's plain JSON, parse below
-          }
-        } catch (_) {}
-      }
-      if (plain != null) {
-        if (plain.startsWith('{')) {
-          try {
-            final map = jsonDecode(plain) as Map<String, dynamic>;
-            type = (map['type'] as String?) ?? 'text';
-            data = (map['data'] as String?) ?? plain;
-          } catch (_) {
-            data = plain;
-          }
+    } else {
+      final encPayload = message.text ?? '';
+      if (encPayload.isNotEmpty) {
+        if (_conversationKey != null) {
+          final plain = await CryptoService.decryptMessage(encPayload, _conversationKey!);
+          data = plain ?? '🔒 Encrypted message';
         } else {
-          data = plain;
+          data = encPayload;
         }
-      } else {
-        data = '🔒 Encrypted message';
       }
     }
 
     return {
-      'id': row['id'],
+      'id': message.id,
       'sender': sender,
       'type': type,
       'data': data,
-      'timestamp': row['created_at'] as String? ?? DateTime.now().toIso8601String(),
+      'timestamp': message.createdAt.toIso8601String(),
       'isMe': isMe,
       'isDeleted': isDeleted,
-      'reply_to': row['reply_to'],
+      'reply_to': message.quotedMessageId,
     };
   }
 
@@ -441,46 +359,35 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _sendText() async {
     final text = _textController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _streamChannel == null) return;
 
-    final replyId = _replyTo?['id'];
+    final replyId = _replyTo?['id'] as String?;
     _textController.clear();
     setState(() {
       _hasText = false;
       _replyTo = null;
       _wasTyping = false;
     });
-    _clearTypingStatus();
-
-    // Optimistic
-    final optimistic = _buildOptimistic(type: 'text', data: text, replyTo: replyId);
-    setState(() => _messages.add(optimistic));
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    _streamChannel!.stopTyping().catchError((_) {});
 
     try {
-      final payload = jsonEncode({'type': 'text', 'data': text});
       final envelope = _conversationKey != null
-          ? await CryptoService.encryptMessage(payload, _conversationKey!)
-          : payload; // plaintext fallback when E2EE not ready
-      await _supabase.from('messages').insert({
-        'room_id': _roomId,
-        'sender': widget.myId,
-        'encrypted_content': envelope,
-        'type': 'text',
-        if (replyId != null) 'reply_to': replyId,
-      });
+          ? await CryptoService.encryptMessage(text, _conversationKey!)
+          : text;
+      await _streamChannel!.sendMessage(Message(
+        text: envelope,
+        extraData: const {'mt': 'text'},
+        quotedMessageId: replyId,
+      ));
     } catch (e) {
-      if (mounted) {
-        setState(() => _messages.remove(optimistic));
-        _showToast('Failed to send. Try again.', isError: true);
-      }
+      if (mounted) _showToast('Failed to send. Try again.', isError: true);
     }
   }
 
   Future<void> _sendImage(ImageSource source) async {
     final picker = ImagePicker();
     final file = await picker.pickImage(source: source, imageQuality: 75);
-    if (file == null) return;
+    if (file == null || _streamChannel == null) return;
     setState(() => _isUploadingMedia = true);
     try {
       final bytes = await file.readAsBytes();
@@ -495,25 +402,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             uploadBytes,
             fileOptions: FileOptions(contentType: contentType),
           );
-      final payload = jsonEncode({'type': 'image', 'data': path});
+      // path → encrypt → send via Stream (E2EE: receiver decrypts path, then downloads+decrypts image)
       final envelope = _conversationKey != null
-          ? await CryptoService.encryptMessage(payload, _conversationKey!)
-          : payload;
-      await _supabase.from('messages').insert({
-        'room_id': _roomId,
-        'sender': widget.myId,
-        'encrypted_content': envelope,
-        'type': 'image',
-      });
-      // Cache the bytes locally so the preview is instant
+          ? await CryptoService.encryptMessage(path, _conversationKey!)
+          : path;
+      await _streamChannel!.sendMessage(Message(
+        text: envelope,
+        extraData: const {'mt': 'image'},
+      ));
+      // Cache bytes locally for instant preview
       _imageFutures[path] = Future.value(bytes);
-      if (mounted) {
-        setState(() {
-          _isUploadingMedia = false;
-          _messages.add(_buildOptimistic(type: 'image', data: path));
-        });
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-      }
+      if (mounted) setState(() => _isUploadingMedia = false);
     } catch (_) {
       if (mounted) {
         setState(() => _isUploadingMedia = false);
@@ -537,6 +436,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _sendAudio(String localPath) async {
+    if (_streamChannel == null) return;
     setState(() => _isUploadingMedia = true);
     try {
       final bytes = await File(localPath).readAsBytes();
@@ -547,27 +447,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await _supabase.storage.from('chat-media').uploadBinary(
             storagePath,
             uploadBytes,
-            fileOptions: FileOptions(contentType: _conversationKey != null ? 'application/octet-stream' : 'audio/m4a'),
+            fileOptions: FileOptions(
+                contentType: _conversationKey != null ? 'application/octet-stream' : 'audio/m4a'),
           );
-      final payload = jsonEncode({'type': 'audio', 'data': storagePath});
       final envelope = _conversationKey != null
-          ? await CryptoService.encryptMessage(payload, _conversationKey!)
-          : payload;
-      await _supabase.from('messages').insert({
-        'room_id': _roomId,
-        'sender': widget.myId,
-        'encrypted_content': envelope,
-        'type': 'audio',
-      });
-      // Cache local path so playback is instant
+          ? await CryptoService.encryptMessage(storagePath, _conversationKey!)
+          : storagePath;
+      await _streamChannel!.sendMessage(Message(
+        text: envelope,
+        extraData: const {'mt': 'audio'},
+      ));
+      // Cache local path for instant playback
       _audioPathFutures[storagePath] = Future.value(localPath);
-      if (mounted) {
-        setState(() {
-          _isUploadingMedia = false;
-          _messages.add(_buildOptimistic(type: 'audio', data: storagePath));
-        });
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-      }
+      if (mounted) setState(() => _isUploadingMedia = false);
     } catch (_) {
       if (mounted) {
         setState(() => _isUploadingMedia = false);
@@ -576,29 +468,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Map<String, dynamic> _buildOptimistic({
-    required String type,
-    required String data,
-    String? replyTo,
-  }) =>
-      {
-        'id': null,
-        'sender': widget.myId,
-        'type': type,
-        'data': data,
-        'timestamp': DateTime.now().toIso8601String(),
-        'isMe': true,
-        'isDeleted': false,
-        'reply_to': replyTo,
-      };
-
   Future<void> _deleteMessage(Map<String, dynamic> msg) async {
-    final id = msg['id'];
-    if (id == null) return;
+    final id = msg['id'] as String?;
+    if (id == null || _streamChannel == null) return;
     try {
-      await _supabase
-          .from('messages')
-          .update({'deleted_at': DateTime.now().toIso8601String()}).eq('id', id);
+      // Find the Stream Message object by ID
+      final streamMsg = _streamChannel!.state!.messages.firstWhere(
+        (m) => m.id == id,
+        orElse: () => Message(id: id),
+      );
+      await _streamChannel!.deleteMessage(streamMsg);
       final idx = _messages.indexWhere((m) => m['id'] == id);
       if (idx >= 0 && mounted) {
         setState(() => _messages[idx] = {
@@ -618,9 +497,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<String?> _getAudioPath(String storagePath) async {
-    // Check if it's a local file path (just recorded)
     if (storagePath.startsWith('/')) return storagePath;
-    // Download + decrypt from storage
     try {
       final url = await _supabase.storage.from('chat-media').createSignedUrl(storagePath, 300);
       final req = await HttpClient().getUrl(Uri.parse(url));
@@ -633,7 +510,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (_conversationKey != null) {
         plain = await CryptoService.decryptBytes(utf8.decode(raw), _conversationKey!);
       }
-      // Fallback: raw bytes are the audio directly
       final audioBytes = plain ?? Uint8List.fromList(raw);
       final dir = await getTemporaryDirectory();
       final tmp = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
@@ -678,11 +554,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         raw.addAll(chunk);
       }
       if (_conversationKey != null) {
-        // Try decrypting — if it's an encrypted envelope
         final decrypted = await CryptoService.decryptBytes(utf8.decode(raw), _conversationKey!);
         if (decrypted != null) return decrypted;
       }
-      // Fallback: raw bytes are the image directly
       return Uint8List.fromList(raw);
     } catch (_) {
       return null;
@@ -700,42 +574,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (has) {
       if (!_wasTyping) {
         _wasTyping = true;
-        _updateTypingStatus(true);
+        _streamChannel?.keyStroke().catchError((_) {});
       }
-      // Reset expiry — if user stops typing for 4s, clear
       _typingDebounce?.cancel();
       _typingDebounce = Timer(const Duration(seconds: 4), () {
         _wasTyping = false;
-        _updateTypingStatus(false);
+        _streamChannel?.stopTyping().catchError((_) {});
       });
     } else {
       if (_wasTyping) {
         _wasTyping = false;
         _typingDebounce?.cancel();
-        _updateTypingStatus(false);
+        _streamChannel?.stopTyping().catchError((_) {});
       }
     }
-  }
-
-  void _updateTypingStatus(bool isTyping) {
-    if (isTyping) {
-      _supabase.from('typing_status').upsert({
-        'user_id': widget.myId,
-        'room_id': _roomId,
-        'updated_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'user_id, room_id').catchError((_) {});
-    } else {
-      _clearTypingStatus();
-    }
-  }
-
-  void _clearTypingStatus() {
-    _supabase
-        .from('typing_status')
-        .delete()
-        .eq('user_id', widget.myId)
-        .eq('room_id', _roomId)
-        .catchError((_) {});
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -743,7 +595,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _markAsRead() async {
-    await _matchingService.updateLastRead(_roomId);
+    try {
+      await _streamChannel?.markRead();
+    } catch (_) {}
+  }
+
+  void _refreshMatchReadAt() {
+    final readList = _streamChannel?.state?.read ?? [];
+    for (final r in readList) {
+      if (r.user.id == widget.matchId) {
+        if (mounted) setState(() => _matchLastReadAt = r.lastRead);
+        return;
+      }
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -772,8 +636,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _scrollToBottom({bool animate = true}) {
     if (!_scrollController.hasClients) return;
-    // Use double.maxFinite — Flutter clamps to maxScrollExtent automatically,
-    // so this works even before the list finishes layout.
     if (animate) {
       _scrollController.animateTo(
         double.maxFinite,
@@ -800,7 +662,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _shouldShowDateHeader(int index) {
     if (_messages[index]['type'] == '_divider') return false;
     int prev = index - 1;
-    while (prev >= 0 && _messages[prev]['type'] == '_divider') prev--;
+    while (prev >= 0 && _messages[prev]['type'] == '_divider') { prev--; }
     if (prev < 0) return true;
     final a = DateTime.tryParse(_messages[index]['timestamp'] as String? ?? '');
     final b = DateTime.tryParse(_messages[prev]['timestamp'] as String? ?? '');
@@ -837,7 +699,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       return days[t.weekday - 1];
     }
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return '${t.day} ${months[t.month - 1]}';
   }
 
@@ -1079,7 +941,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ],
     );
 
-    // Only animate freshly received messages, not on every rebuild
     if (isFresh) {
       _freshIds.remove(id);
       row = row.animate().fade(duration: 200.ms).slideY(begin: 0.06, end: 0);
@@ -1161,7 +1022,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildImageBubble(String storagePath) {
-    // Use cached future — only created once per path
     _imageFutures[storagePath] ??= _downloadAndDecryptImage(storagePath);
     return FutureBuilder<Uint8List?>(
       future: _imageFutures[storagePath],

@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/widgets/match_animation_dialog.dart';
+import 'package:clush/widgets/activity_badge.dart';
 
 import 'package:clush/theme/colors.dart';
 
@@ -41,6 +42,16 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   String? _filterReligion;
   RangeValues _filterHeight = const RangeValues(100, 250);
   String? _filterEthnicity;
+  // Premium filters
+  String? _filterPolitics;
+  String? _filterStarSign;
+  String? _filterEducation;
+  String? _filterKids;
+  String? _filterPets;
+  String? _filterExercise;
+  String? _filterDrinks;
+  String? _filterSmoke;
+  String? _filterWeed;
 
   @override
   void initState() {
@@ -175,10 +186,9 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       final uniqueIgnoreIds = ignoreIds.toSet().toList();
 
       var query = Supabase.instance.client
-          .from('profiles')
+          .from('profile_discovery')
           .select()
-          .not('id', 'in', uniqueIgnoreIds)
-          .or('is_paused.eq.false,is_paused.is.null');
+          .not('id', 'in', uniqueIgnoreIds);
 
       if (_filterIntent != 'Everyone') {
         query = query.eq('gender', _filterIntent == 'Men' ? 'Man' : 'Woman');
@@ -574,34 +584,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
               ],
             ),
             const SizedBox(height: 12),
-            // Moved Active indicator pill here
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: kRose,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    "Active Today",
-                    style: GoogleFonts.figtree(
-                      fontSize: 11,
-                      color: kRose,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ActivityBadge(lastSeenAt: profile['last_seen_at'] as String?),
             // Thin decorative rule under the name
             const SizedBox(height: 12),
             Row(
@@ -805,8 +788,10 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                   physics: const BouncingScrollPhysics(),
                   children: [
                     _buildFilterChip('Age', () => _showFiltersModal()),
-                    _buildFilterChip('Intentions', () => _showFiltersModal()),
-                    _buildFilterChip('Height', () => _showFiltersModal()),
+                    _buildFilterChip('Intention', () => _showFiltersModal()),
+                    _buildFilterChip('Religion', () => _showFiltersModal()),
+                    _buildFilterChip('Interested In', () => _showFiltersModal()),
+                    _buildFilterChip('Ethnicity', () => _showFiltersModal()),
                   ],
                 ),
               ),
@@ -1346,15 +1331,33 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         initialReligion: _filterReligion,
         initialHeight: _filterHeight,
         initialEthnicity: _filterEthnicity,
+        initialPolitics: _filterPolitics,
+        initialStarSign: _filterStarSign,
+        initialEducation: _filterEducation,
+        initialKids: _filterKids,
+        initialPets: _filterPets,
+        initialExercise: _filterExercise,
+        initialDrinks: _filterDrinks,
+        initialSmoke: _filterSmoke,
+        initialWeed: _filterWeed,
         isPremium: _isPremium,
-        onApply: (age, dist, intent, rel, ht, eth) {
+        onApply: (age, dist, intent, rel, eth, ht, politics, starSign, education, kids, pets, exercise, drinks, smoke, weed) {
           setState(() {
             _filterAge = age;
             _filterDistance = dist;
             _filterIntent = intent;
             _filterReligion = rel;
-            _filterHeight = ht;
             _filterEthnicity = eth;
+            _filterHeight = ht;
+            _filterPolitics = politics;
+            _filterStarSign = starSign;
+            _filterEducation = education;
+            _filterKids = kids;
+            _filterPets = pets;
+            _filterExercise = exercise;
+            _filterDrinks = drinks;
+            _filterSmoke = smoke;
+            _filterWeed = weed;
             _isLoading = true;
           });
           _fetchProfiles();
@@ -1422,8 +1425,17 @@ class _FilterBottomSheet extends StatefulWidget {
   final String? initialReligion;
   final RangeValues initialHeight;
   final String? initialEthnicity;
+  final String? initialPolitics;
+  final String? initialStarSign;
+  final String? initialEducation;
+  final String? initialKids;
+  final String? initialPets;
+  final String? initialExercise;
+  final String? initialDrinks;
+  final String? initialSmoke;
+  final String? initialWeed;
   final bool isPremium;
-  final Function(RangeValues, double, String, String?, RangeValues, String?) onApply;
+  final Function(RangeValues, double, String, String?, String?, RangeValues, String?, String?, String?, String?, String?, String?, String?, String?, String?) onApply;
 
   const _FilterBottomSheet({
     required this.initialAge,
@@ -1432,6 +1444,15 @@ class _FilterBottomSheet extends StatefulWidget {
     required this.initialReligion,
     required this.initialHeight,
     required this.initialEthnicity,
+    required this.initialPolitics,
+    required this.initialStarSign,
+    required this.initialEducation,
+    required this.initialKids,
+    required this.initialPets,
+    required this.initialExercise,
+    required this.initialDrinks,
+    required this.initialSmoke,
+    required this.initialWeed,
     required this.isPremium,
     required this.onApply,
   });
@@ -1447,10 +1468,28 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   String? _rel;
   late RangeValues _ht;
   String? _eth;
+  String? _politics;
+  String? _starSign;
+  String? _education;
+  String? _kids;
+  String? _pets;
+  String? _exercise;
+  String? _drinks;
+  String? _smoke;
+  String? _weed;
 
-  final List<String> _intents = ['Men', 'Women', 'Everyone'];
-  final List<String> _religions = ['Any', 'Christian', 'Muslim', 'Hindu', 'Buddhist', 'Jewish', 'Spiritual', 'Atheist', 'Other'];
-  final List<String> _ethnicities = ['Any', 'Asian', 'Black', 'Hispanic/Latino', 'Middle Eastern', 'White', 'Mixed', 'Other'];
+  static const _intents = ['Men', 'Women', 'Everyone'];
+  static const _religions = ['Any', 'Christian', 'Muslim', 'Hindu', 'Buddhist', 'Jewish', 'Spiritual', 'Atheist', 'Other'];
+  static const _ethnicities = ['Any', 'Asian', 'Black', 'Hispanic/Latino', 'Middle Eastern', 'White', 'Mixed', 'Other'];
+  static const _politicsList = ['Any', 'Liberal', 'Moderate', 'Conservative', 'Non-political', 'Other'];
+  static const _starSignList = ['Any', 'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'];
+  static const _educationList = ['Any', 'High School', 'Some College', 'Bachelor\'s', 'Master\'s', 'PhD', 'Trade School'];
+  static const _kidsList = ['Any', 'Have kids', 'Don\'t have kids', 'Want kids', 'Don\'t want kids', 'Open to it'];
+  static const _petsList = ['Any', 'Dogs', 'Cats', 'Birds', 'Reptiles', 'None', 'Other'];
+  static const _exerciseList = ['Any', 'Daily', 'Often', 'Sometimes', 'Rarely', 'Never'];
+  static const _drinksList = ['Any', 'Never', 'Rarely', 'Socially', 'Often'];
+  static const _smokeList = ['Any', 'Never', 'Sometimes', 'Often'];
+  static const _weedList = ['Any', 'Never', 'Sometimes', 'Often'];
 
   @override
   void initState() {
@@ -1461,6 +1500,15 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
     _rel = widget.initialReligion;
     _ht = widget.initialHeight;
     _eth = widget.initialEthnicity;
+    _politics = widget.initialPolitics;
+    _starSign = widget.initialStarSign;
+    _education = widget.initialEducation;
+    _kids = widget.initialKids;
+    _pets = widget.initialPets;
+    _exercise = widget.initialExercise;
+    _drinks = widget.initialDrinks;
+    _smoke = widget.initialSmoke;
+    _weed = widget.initialWeed;
   }
 
   void _showPremiumLockDialog() {
@@ -1585,18 +1633,11 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
               physics: const BouncingScrollPhysics(),
               children: [
-                _buildSectionLabel("DISCOVER"),
+                _buildSectionLabel("FREE FILTERS"),
                 const SizedBox(height: 16),
 
                 // Intent
-                Text(
-                  "Interested In",
-                  style: GoogleFonts.figtree(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                    color: kInk,
-                  ),
-                ),
+                Text("Interested In", style: GoogleFonts.figtree(fontWeight: FontWeight.w600, fontSize: 15, color: kInk)),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 10,
@@ -1611,19 +1652,9 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                         decoration: BoxDecoration(
                           color: selected ? kRose : kParchment,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: selected ? kRose : kBone,
-                            width: 1,
-                          ),
+                          border: Border.all(color: selected ? kRose : kBone, width: 1),
                         ),
-                        child: Text(
-                          i,
-                          style: GoogleFonts.figtree(
-                            color: selected ? Colors.white : kInk,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
+                        child: Text(i, style: GoogleFonts.figtree(color: selected ? Colors.white : kInk, fontWeight: FontWeight.w600, fontSize: 13)),
                       ),
                     );
                   }).toList(),
@@ -1634,12 +1665,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                 _buildSliderLabel("Age Range", "${_age.start.round()} – ${_age.end.round()}"),
                 SliderTheme(
                   data: _sliderTheme(context),
-                  child: RangeSlider(
-                    values: _age,
-                    min: 18,
-                    max: 100,
-                    onChanged: (val) => setState(() => _age = val),
-                  ),
+                  child: RangeSlider(values: _age, min: 18, max: 100, onChanged: (val) => setState(() => _age = val)),
                 ),
                 const SizedBox(height: 16),
 
@@ -1647,19 +1673,22 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                 _buildSliderLabel("Max Distance", "${_dist.round()} km"),
                 SliderTheme(
                   data: _sliderTheme(context),
-                  child: Slider(
-                    value: _dist,
-                    min: 5,
-                    max: 100,
-                    onChanged: (val) => setState(() => _dist = val),
-                  ),
+                  child: Slider(value: _dist, min: 5, max: 100, onChanged: (val) => setState(() => _dist = val)),
                 ),
+                const SizedBox(height: 24),
+
+                // Religion (free)
+                _buildFreeDropdown("Religion", _religions, _rel, (v) => setState(() => _rel = v)),
+                const SizedBox(height: 20),
+
+                // Ethnicity (free)
+                _buildFreeDropdown("Ethnicity", _ethnicities, _eth, (v) => setState(() => _eth = v)),
                 const SizedBox(height: 32),
 
-                // Premium
+                // ── PREMIUM SECTION ──
                 Row(
                   children: [
-                    _buildSectionLabel("PREMIUM"),
+                    _buildSectionLabel("CLUSH+ FILTERS"),
                     const SizedBox(width: 8),
                     if (!widget.isPremium)
                       Container(
@@ -1674,15 +1703,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                           children: [
                             const Icon(Icons.star_rounded, size: 11, color: kGold),
                             const SizedBox(width: 3),
-                            Text(
-                              "Unlock",
-                              style: GoogleFonts.figtree(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: kGold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
+                            Text("Unlock", style: GoogleFonts.figtree(fontSize: 10, fontWeight: FontWeight.w700, color: kGold, letterSpacing: 0.5)),
                           ],
                         ),
                       ),
@@ -1690,32 +1711,37 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                 ),
                 const SizedBox(height: 16),
 
-                _buildPremiumDropdown("Religion", _religions, _rel, (v) => setState(() => _rel = v)),
-                const SizedBox(height: 20),
-
-                _buildPremiumDropdown("Ethnicity", _ethnicities, _eth, (v) => setState(() => _eth = v)),
-                const SizedBox(height: 20),
-
-                _buildSliderLabel(
-                  "Height Range (cm)",
-                  "${_ht.start.round()} – ${_ht.end.round()}",
-                  locked: !widget.isPremium,
-                ),
+                // Height (premium)
+                _buildSliderLabel("Height Range (cm)", "${_ht.start.round()} – ${_ht.end.round()}", locked: !widget.isPremium),
                 AbsorbPointer(
                   absorbing: !widget.isPremium,
                   child: GestureDetector(
                     onTap: widget.isPremium ? null : _showPremiumLockDialog,
                     child: SliderTheme(
                       data: _sliderTheme(context, locked: !widget.isPremium),
-                      child: RangeSlider(
-                        values: _ht,
-                        min: 100,
-                        max: 250,
-                        onChanged: (val) => setState(() => _ht = val),
-                      ),
+                      child: RangeSlider(values: _ht, min: 100, max: 250, onChanged: (val) => setState(() => _ht = val)),
                     ),
                   ),
                 ),
+                const SizedBox(height: 20),
+
+                _buildPremiumDropdown("Politics", _politicsList, _politics, (v) => setState(() => _politics = v)),
+                const SizedBox(height: 20),
+                _buildPremiumDropdown("Star Sign", _starSignList, _starSign, (v) => setState(() => _starSign = v)),
+                const SizedBox(height: 20),
+                _buildPremiumDropdown("Education Level", _educationList, _education, (v) => setState(() => _education = v)),
+                const SizedBox(height: 20),
+                _buildPremiumDropdown("Kids", _kidsList, _kids, (v) => setState(() => _kids = v)),
+                const SizedBox(height: 20),
+                _buildPremiumDropdown("Pets", _petsList, _pets, (v) => setState(() => _pets = v)),
+                const SizedBox(height: 20),
+                _buildPremiumDropdown("Exercise", _exerciseList, _exercise, (v) => setState(() => _exercise = v)),
+                const SizedBox(height: 20),
+                _buildPremiumDropdown("Drinks", _drinksList, _drinks, (v) => setState(() => _drinks = v)),
+                const SizedBox(height: 20),
+                _buildPremiumDropdown("Smoke", _smokeList, _smoke, (v) => setState(() => _smoke = v)),
+                const SizedBox(height: 20),
+                _buildPremiumDropdown("Weed", _weedList, _weed, (v) => setState(() => _weed = v)),
                 const SizedBox(height: 48),
               ],
             ),
@@ -1734,24 +1760,14 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: kRose,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   elevation: 0,
                 ),
                 onPressed: () {
                   Navigator.pop(context);
-                  widget.onApply(_age, _dist, _intent, _rel, _ht, _eth);
+                  widget.onApply(_age, _dist, _intent, _rel, _eth, _ht, _politics, _starSign, _education, _kids, _pets, _exercise, _drinks, _smoke, _weed);
                 },
-                child: Text(
-                  "Apply Filters",
-                  style: GoogleFonts.figtree(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: 0.3,
-                  ),
-                ),
+                child: Text("Apply Filters", style: GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 0.3)),
               ),
             ),
           ),
@@ -1807,6 +1823,35 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFreeDropdown(String label, List<String> options, String? value, Function(String?) onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: GoogleFonts.figtree(fontWeight: FontWeight.w600, fontSize: 15, color: kInk)),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: kParchment,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: kBone, width: 1),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: value ?? 'Any',
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: kInkMuted, size: 18),
+              dropdownColor: kCream,
+              style: GoogleFonts.figtree(color: kInk, fontSize: 14, fontWeight: FontWeight.w500),
+              items: options.map((String val) => DropdownMenuItem<String>(value: val, child: Text(val))).toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

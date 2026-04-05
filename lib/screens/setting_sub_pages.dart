@@ -14,6 +14,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_contacts/flutter_contacts.dart' as fc;
 import 'package:camera/camera.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 
 import 'package:clush/theme/colors.dart';
 import 'package:clush/widgets/heart_loader.dart';
@@ -577,6 +578,7 @@ class VerificationPage extends StatefulWidget {
 class _VerificationPageState extends State<VerificationPage> {
   String? _profileImageUrl;
   File? _videoFile;
+  File? _videoFrame;
   bool _isLoading = false, _isFetchingProfile = true, _isVerified = false;
   final ImagePicker _picker = ImagePicker();
 
@@ -602,70 +604,147 @@ class _VerificationPageState extends State<VerificationPage> {
     final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.camera);
     if (gateGranted != true) return;
 
-    final XFile? result = await Navigator.push(
+    final List? result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const VerificationCameraPage()),
     );
     if (result != null) {
-      setState(() => _videoFile = File(result.path));
+      setState(() {
+        _videoFile = File((result[0] as XFile).path);
+        _videoFrame = result[1] != null ? File((result[1] as XFile).path) : null;
+      });
     }
   }
 
   void _showInstructionDialog() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _kCream,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28), side: BorderSide(color: _kBone)),
-        title: Text("Face Verification", style: GoogleFonts.montserrat(fontSize: 22, color: _kInk, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
-              child: const Icon(Icons.face_retouching_natural_rounded, color: _kRose, size: 48),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              "Please record a short 5-second video clearly showing your face. Ensure you are in a well-lit area.",
-              textAlign: TextAlign.center,
-              style: GoogleFonts.montserrat(color: _kInkMuted, height: 1.5, fontSize: 14),
-            ),
-          ],
-        ),
-        actions: [
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text("Cancel", style: GoogleFonts.montserrat(color: _kInkMuted, fontWeight: FontWeight.w600)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _recordVideo();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _kRose,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          bool agreed = false;
+
+          return StatefulBuilder(
+            builder: (ctx, setDialogState) {
+              return AlertDialog(
+                backgroundColor: _kCream,
+                surfaceTintColor: Colors.transparent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28), side: BorderSide(color: _kBone)),
+                titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                title: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
+                    child: const Icon(Icons.face_retouching_natural_rounded, color: _kRose, size: 28),
                   ),
-                  child: Text("Start Recording", style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 14),
+                  Expanded(child: Text("Face Verification", style: GoogleFonts.montserrat(fontSize: 20, color: _kInk, fontWeight: FontWeight.bold))),
+                ]),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 8),
+                      Text("How it works", style: GoogleFonts.montserrat(fontSize: 13, fontWeight: FontWeight.w700, color: _kInk, letterSpacing: 0.3)),
+                      const SizedBox(height: 12),
+                      ...[
+                        (Icons.wb_sunny_outlined,            "Find good lighting",      "Face a window or bright light so your face is clearly visible."),
+                        (Icons.do_not_disturb_on_outlined,   "No accessories",          "Remove sunglasses, hats, or anything covering your face."),
+                        (Icons.screen_rotation_outlined,     "Turn your head slowly",   "Start facing forward, then slowly turn your head left, then right, then back to centre."),
+                        (Icons.timer_outlined,               "Takes about 5 seconds",   "Keep moving smoothly — a frame is captured automatically during the recording."),
+                      ].map((step) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Container(
+                            width: 34, height: 34,
+                            decoration: BoxDecoration(color: _kRosePale, borderRadius: BorderRadius.circular(10)),
+                            child: Icon(step.$1, color: _kRose, size: 18),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(step.$2, style: GoogleFonts.montserrat(fontSize: 13, fontWeight: FontWeight.w600, color: _kInk)),
+                            Text(step.$3, style: GoogleFonts.montserrat(fontSize: 12, color: _kInkMuted, height: 1.4)),
+                          ])),
+                        ]),
+                      )),
+                      const SizedBox(height: 8),
+                      Divider(color: _kBone, thickness: 1),
+                      const SizedBox(height: 10),
+                      // Legal disclaimer + checkbox
+                      GestureDetector(
+                        onTap: () => setDialogState(() => agreed = !agreed),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          SizedBox(
+                            width: 20, height: 20,
+                            child: Checkbox(
+                              value: agreed,
+                              onChanged: (v) => setDialogState(() => agreed = v ?? false),
+                              activeColor: _kRose,
+                              side: BorderSide(color: _kInkMuted),
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: GoogleFonts.montserrat(fontSize: 12, color: _kInkMuted, height: 1.5),
+                                children: [
+                                  const TextSpan(text: "I consent to Clush processing my facial data solely for identity verification. This data is not stored or shared. By proceeding I agree to the "),
+                                  WidgetSpan(
+                                    alignment: PlaceholderAlignment.baseline,
+                                    baseline: TextBaseline.alphabetic,
+                                    child: GestureDetector(
+                                      onTap: () => launchUrl(Uri.parse('https://clush.app/privacy'), mode: LaunchMode.externalApplication),
+                                      child: Text("Privacy Policy", style: GoogleFonts.montserrat(fontSize: 12, color: _kRose, fontWeight: FontWeight.w600, decoration: TextDecoration.underline)),
+                                    ),
+                                  ),
+                                  const TextSpan(text: "."),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ]),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                actions: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                    child: Row(children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: Text("Cancel", style: GoogleFonts.montserrat(color: _kInkMuted, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: agreed ? () { Navigator.pop(ctx); _recordVideo(); } : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _kRose,
+                            disabledBackgroundColor: _kRose.withValues(alpha: 0.35),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: Text("Start Recording", style: GoogleFonts.montserrat(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ],
+                actionsPadding: EdgeInsets.zero,
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -678,14 +757,21 @@ class _VerificationPageState extends State<VerificationPage> {
       final imageResponse = await http.get(Uri.parse(_profileImageUrl!));
       if (imageResponse.statusCode != 200) throw Exception("Failed to download profile photo");
       var request = http.MultipartRequest('POST',
-          Uri.parse('https://nina-unpumped-linus.ngrok-free.dev/verify'));
+          Uri.parse('https://nonterminable-ideologically-meagan.ngrok-free.dev/verify'));
       request.fields['user_id'] = userId;
-      request.files.add(http.MultipartFile.fromBytes('profile', imageResponse.bodyBytes, filename: 'profile.jpg'));
+      request.files.add(http.MultipartFile.fromBytes('profile_image', imageResponse.bodyBytes, filename: 'profile.jpg'));
       request.files.add(await http.MultipartFile.fromPath('video', _videoFile!.path));
+      if (_videoFrame != null) {
+        request.files.add(await http.MultipartFile.fromPath('video_frame', _videoFrame!.path, filename: 'frame.jpg'));
+        debugPrint('📤 Sending video_frame: ${_videoFrame!.path}');
+      }
       var res = await request.send();
-      final data = jsonDecode(await res.stream.bytesToString());
+      final body = await res.stream.bytesToString();
+      debugPrint("📥 Verification response: $body");
+      final data = jsonDecode(body);
       bool isMatch = data['match'] == true;
       double score = (data['score'] is num) ? (data['score'] as num).toDouble() : 0.0;
+      debugPrint("🔍 Verification — match: $isMatch  |  confidence: ${score.toStringAsFixed(4)}");
       if (isMatch) {
         await Supabase.instance.client.from('profiles').update({'is_verified': true}).eq('id', userId);
         setState(() => _isVerified = true);
@@ -843,6 +929,7 @@ class _VerificationCameraPageState extends State<VerificationCameraPage> {
   CameraController? _controller;
   bool _isRecording = false;
   int _secondsLeft = 5;
+  XFile? _capturedFrame;
 
   @override
   void initState() {
@@ -865,8 +952,19 @@ class _VerificationCameraPageState extends State<VerificationCameraPage> {
     if (_controller == null || !_controller!.value.isInitialized) return;
     await _controller!.startVideoRecording();
     setState(() => _isRecording = true);
-    
-    // Timer for visual feedback
+
+    // Capture a still frame 2s in (camera is fully warmed up by then)
+    Future.delayed(const Duration(seconds: 2), () async {
+      if (!mounted || !_isRecording || _controller == null) return;
+      try {
+        _capturedFrame = await _controller!.takePicture();
+        debugPrint('📸 Captured verification frame: ${_capturedFrame!.path}');
+      } catch (e) {
+        debugPrint('⚠️ Frame capture failed: $e');
+      }
+    });
+
+    // Timer for visual feedback + auto-stop
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 1));
       if (!mounted || !_isRecording) return false;
@@ -881,10 +979,11 @@ class _VerificationCameraPageState extends State<VerificationCameraPage> {
 
   Future<void> _stopRecording() async {
     if (_controller == null || !_isRecording) return;
-    final file = await _controller!.stopVideoRecording();
+    final videoFile = await _controller!.stopVideoRecording();
     if (mounted) {
       setState(() => _isRecording = false);
-      Navigator.pop(context, file);
+      // Return [video, frame] — frame may be null if capture failed
+      Navigator.pop(context, [videoFile, _capturedFrame]);
     }
   }
 
@@ -1077,47 +1176,118 @@ class _BlockListPageState extends State<BlockListPage> {
   Future<void> _blockByPhone() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty) return;
-    _phoneController.clear();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Contact blocked', style: GoogleFonts.montserrat(color: Colors.white)), backgroundColor: _kRose)
-    );
+
+    final myId = FirebaseAuth.instance.currentUser?.uid;
+    if (myId == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      // Look up the profile with this phone number
+      final result = await Supabase.instance.client
+          .from('profiles')
+          .select('id, full_name')
+          .eq('phone', phone)
+          .maybeSingle();
+
+      if (result == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('No user found with that number', style: GoogleFonts.montserrat(color: Colors.white)),
+            backgroundColor: Colors.orange, behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            margin: const EdgeInsets.all(16),
+          ));
+        }
+        return;
+      }
+
+      final blockedId = result['id'] as String;
+      if (blockedId == myId) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text("You can't block yourself", style: GoogleFonts.montserrat(color: Colors.white)),
+            backgroundColor: Colors.red,
+          ));
+        }
+        return;
+      }
+
+      await Supabase.instance.client.from('blocks').upsert({
+        'blocker_id': myId,
+        'blocked_id': blockedId,
+      }, onConflict: 'blocker_id,blocked_id');
+
+      _phoneController.clear();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${result['full_name']} blocked', style: GoogleFonts.montserrat(color: Colors.white)),
+          backgroundColor: _kRose, behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          margin: const EdgeInsets.all(16),
+        ));
+      }
+    } catch (e) {
+      debugPrint('Block by phone error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e', style: GoogleFonts.montserrat(color: Colors.white)),
+          backgroundColor: Colors.red,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _importContacts() async {
     final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.contacts);
     if (gateGranted != true) return;
-    
-    final fc.PermissionStatus status = await fc.FlutterContacts.permissions.request(fc.PermissionType.read);
-    if (status == fc.PermissionStatus.granted || status == fc.PermissionStatus.limited) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: HeartLoader()),
-      );
-      List<fc.Contact> contacts = await fc.FlutterContacts.getAll(properties: {fc.ContactProperty.phone});
-      if (mounted) Navigator.pop(context);
-      
-      if (!mounted) return;
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: _kCream,
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-        builder: (ctx) => DraggableScrollableSheet(
-          initialChildSize: 0.8,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          expand: false,
-          builder: (_, controller) => _buildContactsList(contacts, controller),
-        ),
-      );
-    } else {
+
+    final ph.PermissionStatus beforeStatus = await ph.Permission.contacts.status;
+    debugPrint('📋 Contacts permission before request: $beforeStatus');
+    ph.PermissionStatus status = await ph.Permission.contacts.request();
+    debugPrint('📋 Contacts permission after request: $status');
+    if (status.isPermanentlyDenied) {
+      debugPrint('📋 Permanently denied — opening app settings');
+      await ph.openAppSettings();
+      status = await ph.Permission.contacts.status;
+      debugPrint('📋 Contacts permission after settings: $status');
+    }
+    if (!status.isGranted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Permission denied to access contacts', style: GoogleFonts.montserrat(color: Colors.white)), backgroundColor: Colors.red)
+          SnackBar(content: Text('Contacts permission denied ($status)', style: GoogleFonts.montserrat(color: Colors.white)), backgroundColor: Colors.red),
         );
       }
+      return;
     }
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: HeartLoader()),
+    );
+
+    final List<fc.Contact> contacts = await fc.FlutterContacts.getAll(
+      properties: {fc.ContactProperty.phone, fc.ContactProperty.name},
+    );
+    if (mounted) Navigator.pop(context);
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _kCream,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.8,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, controller) => _buildContactsList(contacts, controller),
+      ),
+    );
   }
 
   Widget _buildContactsList(List<fc.Contact> contacts, ScrollController controller) {
@@ -1432,6 +1602,348 @@ class LanguagePage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─── SUBSCRIPTIONS ────────────────────────────────────────────────────────────
+class SubscriptionsPage extends StatefulWidget {
+  const SubscriptionsPage({super.key});
+  @override
+  State<SubscriptionsPage> createState() => _SubscriptionsPageState();
+}
+
+class _SubscriptionsPageState extends State<SubscriptionsPage> {
+  int _selectedPeriod = 1; // index into _periods
+
+  static const _periods = [
+    _Period('1 month',  '₹165',  null,   null),
+    _Period('3 months', '₹449',  '₹495', '~9% off'),
+    _Period('6 months', '₹699',  '₹990', '~30% off'),
+    _Period('12 months','₹1,199','₹1,980','~40% off'),
+  ];
+
+  static const _features = [
+    (Icons.all_inclusive_rounded,  "Unlimited Likes",         "Never run out of swipes"),
+    (Icons.back_hand_rounded,      "5 High Fives / week",     "Stand out and get noticed"),
+    (Icons.replay_rounded,         "Rewind Last Swipe",        "Change your mind? No problem"),
+    (Icons.tune_rounded,           "Advanced Filters",         "Find exactly who you're looking for"),
+    (Icons.message_outlined,       "Message Before Matching",  "Start the conversation first"),
+  ];
+
+  void _showComingSoon() {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text("Subscriptions coming soon!", style: GoogleFonts.montserrat(color: Colors.white)),
+      backgroundColor: _kRose, behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      margin: const EdgeInsets.all(16),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final period = _periods[_selectedPeriod];
+    return BaseSettingsPage(
+      title: "Clush+",
+      body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+        // ── Hero header ────────────────────────────────────────────────────
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1A0010), Color(0xFF5C0030), _kRose],
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [BoxShadow(color: _kRose.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 8))],
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Text("Clush", style: GoogleFonts.gabarito(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+              Text("+", style: GoogleFonts.gabarito(color: _kGold, fontSize: 24, fontWeight: FontWeight.bold)),
+            ]),
+            const SizedBox(height: 4),
+            Text("Match faster. Connect deeper.", style: GoogleFonts.figtree(color: Colors.white.withValues(alpha: 0.8), fontSize: 14)),
+          ]),
+        ),
+
+        const SizedBox(height: 24),
+
+        // ── Period selector ────────────────────────────────────────────────
+        Text("Choose your plan", style: GoogleFonts.montserrat(fontSize: 13, fontWeight: FontWeight.w700, color: _kInkMuted, letterSpacing: 0.5)),
+        const SizedBox(height: 12),
+        Row(
+          children: List.generate(_periods.length, (i) {
+            final p = _periods[i];
+            final selected = _selectedPeriod == i;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedPeriod = i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  margin: EdgeInsets.only(right: i < _periods.length - 1 ? 8 : 0),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: selected ? _kRose : _kParchment,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: selected ? _kRose : _kBone, width: 1.5),
+                    boxShadow: selected ? [BoxShadow(color: _kRose.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))] : [],
+                  ),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    if (p.discount != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: selected ? Colors.white.withValues(alpha: 0.25) : _kGold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
+                        child: Text(p.discount!, style: GoogleFonts.montserrat(fontSize: 9, fontWeight: FontWeight.w700, color: selected ? Colors.white : _kGold, letterSpacing: 0.3)),
+                      )
+                    else
+                      const SizedBox(height: 18),
+                    Text(p.duration.split(' ')[0], style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.bold, color: selected ? Colors.white : _kInk)),
+                    Text(p.duration.split(' ')[1], style: GoogleFonts.montserrat(fontSize: 10, color: selected ? Colors.white.withValues(alpha: 0.8) : _kInkMuted)),
+                  ]),
+                ),
+              ),
+            );
+          }),
+        ),
+
+        const SizedBox(height: 16),
+
+        // ── Price summary ──────────────────────────────────────────────────
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          decoration: BoxDecoration(
+            color: _kParchment,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _kBone),
+          ),
+          child: Row(children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(period.price, style: GoogleFonts.montserrat(fontSize: 28, fontWeight: FontWeight.bold, color: _kInk)),
+              Text("for ${period.duration} · incl. taxes", style: GoogleFonts.montserrat(fontSize: 12, color: _kInkMuted)),
+            ]),
+            const Spacer(),
+            if (period.strikePrice != null)
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text(period.strikePrice!, style: GoogleFonts.montserrat(fontSize: 14, color: _kInkMuted, decoration: TextDecoration.lineThrough, decorationColor: _kInkMuted)),
+                Text("You save ${period.discount!}", style: GoogleFonts.montserrat(fontSize: 12, color: _kGold, fontWeight: FontWeight.w600)),
+              ]),
+          ]),
+        ),
+
+        const SizedBox(height: 20),
+
+        // ── Features ──────────────────────────────────────────────────────
+        Text("Everything included", style: GoogleFonts.montserrat(fontSize: 13, fontWeight: FontWeight.w700, color: _kInkMuted, letterSpacing: 0.5)),
+        const SizedBox(height: 12),
+        Container(
+          decoration: _cardDecor(),
+          child: Column(
+            children: _features.asMap().entries.map((entry) {
+              final i = entry.key;
+              final f = entry.value;
+              return Column(children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                  child: Row(children: [
+                    Container(width: 36, height: 36, decoration: BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
+                      child: Icon(f.$1, color: _kRose, size: 18)),
+                    const SizedBox(width: 14),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(f.$2, style: GoogleFonts.montserrat(fontSize: 13, fontWeight: FontWeight.w600, color: _kInk)),
+                      Text(f.$3, style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted)),
+                    ])),
+                    Icon(Icons.check_circle_rounded, color: _kRose, size: 18),
+                  ]),
+                ),
+                if (i < _features.length - 1) Divider(height: 1, color: _kBone, indent: 66),
+              ]);
+            }).toList(),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // ── Subscribe button ──────────────────────────────────────────────
+        _saveButton("Subscribe · ${period.price}", false, _showComingSoon),
+
+        const SizedBox(height: 12),
+        Center(child: Text("Renews automatically · Cancel anytime", style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted))),
+
+        // ── High Fives section ────────────────────────────────────────────
+        const SizedBox(height: 36),
+        Row(children: [
+          Container(width: 3, height: 14, color: _kGold, margin: const EdgeInsets.only(right: 9)),
+          Text("HIGH FIVES", style: GoogleFonts.montserrat(fontSize: 11, fontWeight: FontWeight.w700, color: _kInkMuted, letterSpacing: 1.8)),
+        ]),
+        const SizedBox(height: 8),
+        Text("Send a High Five to someone you really like — they'll get notified and you'll stand out.", style: GoogleFonts.montserrat(fontSize: 13, color: _kInkMuted, height: 1.4)),
+        const SizedBox(height: 16),
+        ...[
+          _HighFivePack(count: 5,  price: '₹99',  tag: null),
+          _HighFivePack(count: 10, price: '₹179', tag: 'Popular'),
+          _HighFivePack(count: 20, price: '₹299', tag: 'Best Value'),
+        ].map((pack) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _buildHighFiveTile(pack),
+        )),
+
+        const SizedBox(height: 8),
+        Center(child: Text("High Fives never expire.", style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted))),
+      ]),
+    );
+  }
+
+  Widget _buildHighFiveTile(_HighFivePack pack) {
+    return Stack(clipBehavior: Clip.none, children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: _kParchment,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: pack.tag == 'Best Value' ? _kRose : _kBone, width: pack.tag == 'Best Value' ? 1.5 : 1),
+        ),
+        child: Row(children: [
+          Stack(children: [
+            Container(width: 48, height: 48, decoration: BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
+              child: const Icon(Icons.back_hand_rounded, color: _kRose, size: 24)),
+            Positioned(top: -2, right: -2,
+              child: Container(
+                width: 20, height: 20,
+                decoration: const BoxDecoration(color: _kRose, shape: BoxShape.circle),
+                child: Center(child: Text('${pack.count}', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
+              )),
+          ]),
+          const SizedBox(width: 16),
+          Expanded(child: Text("${pack.count} High Fives", style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w600, color: _kInk))),
+          Text(pack.price, style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.bold, color: _kRose)),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: _showComingSoon,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(color: _kRose, borderRadius: BorderRadius.circular(20)),
+              child: Text("Buy", style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+            ),
+          ),
+        ]),
+      ),
+      if (pack.tag != null)
+        Positioned(top: -10, left: 16,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(color: pack.tag == 'Best Value' ? _kRose : _kGold, borderRadius: BorderRadius.circular(20)),
+            child: Text(pack.tag!.toUpperCase(), style: GoogleFonts.montserrat(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+          )),
+    ]);
+  }
+}
+
+class _Period {
+  final String duration;
+  final String price;
+  final String? strikePrice;
+  final String? discount;
+  const _Period(this.duration, this.price, this.strikePrice, this.discount);
+}
+
+class _HighFivePack {
+  final int count;
+  final String price;
+  final String? tag;
+  const _HighFivePack({required this.count, required this.price, required this.tag});
+}
+
+// ─── DOWNLOAD MY DATA ─────────────────────────────────────────────────────────
+class DownloadMyDataPage extends StatefulWidget {
+  const DownloadMyDataPage({super.key});
+  @override
+  State<DownloadMyDataPage> createState() => _DownloadMyDataPageState();
+}
+
+class _DownloadMyDataPageState extends State<DownloadMyDataPage> {
+  bool _requested = false;
+
+  static const _dataItems = [
+    (Icons.person_outline_rounded,       "Profile Information",  "Name, age, bio, photos, and profile details"),
+    (Icons.favorite_border_rounded,      "Likes & Matches",      "Your likes, dislikes, and all matches"),
+    (Icons.chat_bubble_outline_rounded,  "Messages",             "Full history of your conversations"),
+    (Icons.location_on_outlined,         "Location History",     "Locations used for discovery"),
+    (Icons.settings_outlined,            "App Settings",         "Preferences, notifications, and filters"),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return BaseSettingsPage(
+      title: "Download My Data",
+      body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text("Your data, your right", style: GoogleFonts.montserrat(fontSize: 20, fontWeight: FontWeight.w600, color: _kInk)),
+        const SizedBox(height: 6),
+        Text("Request a copy of all data Clush holds about you. We'll send it to your registered email within 48 hours.",
+            style: GoogleFonts.montserrat(fontSize: 13, color: _kInkMuted, height: 1.5)),
+        const SizedBox(height: 24),
+
+        Text("What's included", style: GoogleFonts.montserrat(fontSize: 13, fontWeight: FontWeight.w700, color: _kInkMuted, letterSpacing: 0.5)),
+        const SizedBox(height: 12),
+        Container(
+          decoration: _cardDecor(),
+          child: Column(
+            children: _dataItems.asMap().entries.map((entry) {
+              final i = entry.key;
+              final item = entry.value;
+              return Column(children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(children: [
+                    Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
+                      child: Icon(item.$1, color: _kRose, size: 18),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(item.$2, style: GoogleFonts.montserrat(fontSize: 14, fontWeight: FontWeight.w600, color: _kInk)),
+                      Text(item.$3, style: GoogleFonts.montserrat(fontSize: 12, color: _kInkMuted)),
+                    ])),
+                  ]),
+                ),
+                if (i < _dataItems.length - 1)
+                  Divider(height: 1, thickness: 1, color: _kBone, indent: 66),
+              ]);
+            }).toList(),
+          ),
+        ),
+
+        const SizedBox(height: 28),
+        if (_requested)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.green.shade200),
+            ),
+            child: Row(children: [
+              Icon(Icons.check_circle_rounded, color: Colors.green.shade600, size: 24),
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text("Request submitted", style: GoogleFonts.montserrat(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.green.shade700)),
+                Text("You'll receive your data export by email within 48 hours.", style: GoogleFonts.montserrat(fontSize: 12, color: Colors.green.shade600, height: 1.4)),
+              ])),
+            ]),
+          )
+        else
+          _saveButton("Request Data Export", false, () => setState(() => _requested = true)),
+
+        const SizedBox(height: 16),
+        Center(child: Text("Data exports are available once every 30 days.",
+            style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted))),
+      ]),
     );
   }
 }

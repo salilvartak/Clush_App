@@ -7,12 +7,96 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:903021608749:android:afa4d81b543c67e6a45da4",
+        "android_client_info": {
+          "package_name": "com.clush.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "903021608749-3vlitnjls3u048qm4vuc6ltki201s25v.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.clush.app",
+            "certificate_hash": "4a8fb9caf55356f3452a22ad1279a9c2cb796f1b"
+          }
+        },
+        {
+          "client_id": "903021608749-mvq4l0bn8nj3igg4tlebf63jo2teqhcu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.clush.app",
+            "certificate_hash": "4f64f3ef76bdb1da12dec203e77daff785f585df"
+          }
+        },
+        {
+          "client_id": "903021608749-op56afh6e82ngjsaeaqp3hv0990akr72.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.clush.app",
+            "certificate_hash": "e62d0f04431e0681f491b19a4cb0e5ac44a41ec7"
+          }
+        },
+        {
+          "client_id": "903021608749-p6l4osarrvbtvg4ub16t150dqn9m0ugr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBl8De8qr_5HVXrcDg6OkzST46iGsyNF4I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "903021608749-p6l4osarrvbtvg4ub16t150dqn9m0ugr.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "903021608749-u5l4abamv7d6rm4di3ubrjr8himhg2af.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.clush"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:903021608749:android:c0f5ff0cd8b2ad20a45da4",
         "android_client_info": {
           "package_name": "com.example.clush"
         }
       },
       "oauth_client": [
+        {
+          "client_id": "903021608749-0cvn1lbskg38v2tpljniifn1rb4gq9j2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.clush",
+            "certificate_hash": "e62d0f04431e0681f491b19a4cb0e5ac44a41ec7"
+          }
+        },
+        {
+          "client_id": "903021608749-347vamb4dn6d44ee0kgn3evmjqq04bmf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.clush",
+            "certificate_hash": "4f64f3ef76bdb1da12dec203e77daff785f585df"
+          }
+        },
+        {
+          "client_id": "903021608749-hh67tplu46lpc4lg4bb88g3r9rv3run0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.clush",
+            "certificate_hash": "4a8fb9caf55356f3452a22ad1279a9c2cb796f1b"
+          }
+        },
         {
           "client_id": "903021608749-p6l4osarrvbtvg4ub16t150dqn9m0ugr.apps.googleusercontent.com",
           "client_type": 3

@@ -259,6 +259,18 @@ class _SettingsPageState extends State<SettingsPage> {
                       onTap: _showLanguageSelector,
                     ),
                   ]),
+                  _sectionLabel("Subscriptions"),
+                  _card([
+                    _tile(icon: Icons.star_rounded, title: "Subscriptions",
+                        subtitle: "Upgrade to Gold or Platinum",
+                        onTap: () => _navTo(const SubscriptionsPage())),
+                  ]),
+                  _sectionLabel("Privacy & Data"),
+                  _card([
+                    _tile(icon: Icons.download_outlined, title: "Download My Data",
+                        subtitle: "Export a copy of your data",
+                        onTap: () => _navTo(const DownloadMyDataPage())),
+                  ]),
                   _sectionLabel(AppLocalizations.of(context)?.legal ?? "Legal"),
                   _card([
                     _tile(icon: Icons.privacy_tip_outlined, title: AppLocalizations.of(context)?.privacyPolicy ?? "Privacy Policy",

@@ -387,6 +387,174 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'PREMIUM'**
   String get premium;
+
+  /// No description provided for @likesYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Likes You'**
+  String get likesYou;
+
+  /// No description provided for @heartsDrifting.
+  ///
+  /// In en, this message translates to:
+  /// **'Hearts are drifting just beyond your beam.'**
+  String get heartsDrifting;
+
+  /// No description provided for @helpNavigateConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'We can help you navigate to more connections, sooner.'**
+  String get helpNavigateConnection;
+
+  /// No description provided for @likedBack.
+  ///
+  /// In en, this message translates to:
+  /// **'You liked them back!'**
+  String get likedBack;
+
+  /// No description provided for @noJobTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No job title'**
+  String get noJobTitle;
+
+  /// No description provided for @matches.
+  ///
+  /// In en, this message translates to:
+  /// **'Matches'**
+  String get matches;
+
+  /// No description provided for @signalsReachingOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Your signals are reaching out wide, but a clear return frequency is still far off.'**
+  String get signalsReachingOut;
+
+  /// No description provided for @fineTuneTransmission.
+  ///
+  /// In en, this message translates to:
+  /// **'We can help you fine-tune your transmission and find your match soon.'**
+  String get fineTuneTransmission;
+
+  /// No description provided for @tapToChat.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to chat'**
+  String get tapToChat;
+
+  /// No description provided for @newMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'new message'**
+  String get newMessage;
+
+  /// No description provided for @newMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'new messages'**
+  String get newMessages;
+
+  /// No description provided for @allow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get allow;
+
+  /// No description provided for @maybeLater.
+  ///
+  /// In en, this message translates to:
+  /// **'Maybe Later'**
+  String get maybeLater;
+
+  /// No description provided for @accessCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Access Your Camera'**
+  String get accessCamera;
+
+  /// No description provided for @cameraDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'To verify your identity and show you\'re real, we need access to your camera for a 5-second video.'**
+  String get cameraDescription;
+
+  /// No description provided for @findPeopleNearby.
+  ///
+  /// In en, this message translates to:
+  /// **'Find People Nearby'**
+  String get findPeopleNearby;
+
+  /// No description provided for @locationDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'We use your location to show you amazing people in your city. Your exact coordinates are never shared.'**
+  String get locationDescription;
+
+  /// No description provided for @stayConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay Connected'**
+  String get stayConnected;
+
+  /// No description provided for @notificationsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Get notified instantly when someone likes you back or sends you a message. Don\'t miss a beat.'**
+  String get notificationsDescription;
+
+  /// No description provided for @syncContacts.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync Contacts'**
+  String get syncContacts;
+
+  /// No description provided for @contactsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Find friends already on Clush or ensure you don\'t run into people you already know.'**
+  String get contactsDescription;
+
+  /// No description provided for @save.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get save;
+
+  /// No description provided for @submit.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit'**
+  String get submit;
+
+  /// No description provided for @verify.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get verify;
+
+  /// No description provided for @update.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get update;
+
+  /// No description provided for @loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading...'**
+  String get loading;
+
+  /// No description provided for @success.
+  ///
+  /// In en, this message translates to:
+  /// **'Success'**
+  String get success;
+
+  /// No description provided for @error.
+  ///
+  /// In en, this message translates to:
+  /// **'Error'**
+  String get error;
 }
 
 class _AppLocalizationsDelegate

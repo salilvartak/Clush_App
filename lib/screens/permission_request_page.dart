@@ -1,9 +1,6 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:clush/theme/colors.dart';
-import 'package:clush/widgets/heart_loader.dart';
-import 'package:clush/l10n/app_localizations.dart';
 
 enum PermissionType { camera, location, notifications, contacts }
 
@@ -44,28 +41,28 @@ class PermissionRequestPage extends StatelessWidget {
     String title = "";
     String description = "";
     IconData icon = Icons.lock_outline;
-    allowLabel = AppLocalizations.of(context)?.allow ?? "Allow";
-    declineLabel = AppLocalizations.of(context)?.maybeLater ?? "Maybe Later";
+    String allowLabel = "Allow";
+    String declineLabel = "Maybe Later";
 
     switch (type) {
       case PermissionType.camera:
-        title = AppLocalizations.of(context)?.accessCamera ?? "Access Your Camera";
-        description = AppLocalizations.of(context)?.cameraDescription ?? "To verify your identity and show you're real, we need access to your camera for a 5-second video.";
+        title = "Access Your Camera";
+        description = "To verify your identity and show you're real, we need access to your camera for a 5-second video.";
         icon = Icons.camera_alt_outlined;
         break;
       case PermissionType.location:
-        title = AppLocalizations.of(context)?.findPeopleNearby ?? "Find People Nearby";
-        description = AppLocalizations.of(context)?.locationDescription ?? "We use your location to show you amazing people in your city. Your exact coordinates are never shared.";
+        title = "Find People Nearby";
+        description = "We use your location to show you amazing people in your city. Your exact coordinates are never shared.";
         icon = Icons.location_on_outlined;
         break;
       case PermissionType.notifications:
-        title = AppLocalizations.of(context)?.stayConnected ?? "Stay Connected";
-        description = AppLocalizations.of(context)?.notificationsDescription ?? "Get notified instantly when someone likes you back or sends you a message. Don't miss a beat.";
+        title = "Stay Connected";
+        description = "Get notified instantly when someone likes you back or sends you a message. Don't miss a beat.";
         icon = Icons.notifications_none_outlined;
         break;
       case PermissionType.contacts:
-        title = AppLocalizations.of(context)?.syncContacts ?? "Sync Contacts";
-        description = AppLocalizations.of(context)?.contactsDescription ?? "Find friends already on Clush or ensure you don't run into people you already know.";
+        title = "Sync Contacts";
+        description = "Find friends already on Clush or ensure you don't run into people you already know.";
         icon = Icons.contacts_outlined;
         break;
     }

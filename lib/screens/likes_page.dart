@@ -7,8 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/widgets/match_animation_dialog.dart';
 import 'package:clush/widgets/heart_loader.dart';
-
-import 'package:clush/l10n/app_localizations.dart';
+import 'package:clush/widgets/activity_badge.dart';
+import 'package:clush/screens/setting_sub_pages.dart';
 
 import 'package:clush/theme/colors.dart';
 
@@ -95,7 +95,7 @@ class _LikesPageState extends State<LikesPage> {
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(AppLocalizations.of(context)?.likedBack ?? 'You liked them back!',
+        content: Text('You liked them back!',
             style: GoogleFonts.figtree(color: Colors.white)),
         backgroundColor: kRose,
         behavior: SnackBarBehavior.floating,
@@ -111,7 +111,7 @@ class _LikesPageState extends State<LikesPage> {
       backgroundColor: kTan, 
       appBar: AppBar(
         title: Text(
-          AppLocalizations.of(context)?.likesYou ?? "Likes You", 
+          "Likes You",
           style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5)
         ),
         backgroundColor: kTan,
@@ -146,15 +146,39 @@ class _LikesPageState extends State<LikesPage> {
             SvgPicture.asset('assets/images/1.svg', width: 180, height: 180),
             const SizedBox(height: 28),
             Text(
-              AppLocalizations.of(context)?.heartsDrifting ?? "Hearts are drifting just beyond your beam.",
+              "Hearts are drifting just beyond your beam.",
               textAlign: TextAlign.center,
               style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 20, color: kBlack),
             ),
             const SizedBox(height: 10),
             Text(
-              AppLocalizations.of(context)?.helpNavigateConnection ?? "We can help you navigate to more connections, sooner.",
+              "We can help you navigate to more connections, sooner.",
               textAlign: TextAlign.center,
               style: GoogleFonts.figtree(fontSize: 15, color: kInkMuted, height: 1.5),
+            ),
+            const SizedBox(height: 28),
+            GestureDetector(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsPage())),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1A0010), Color(0xFF5C0030), kRose],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: kRose.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))],
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.auto_awesome_rounded, color: kGold, size: 18),
+                  const SizedBox(width: 8),
+                  Text("Get Clush+", style: GoogleFonts.figtree(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(width: 4),
+                  Text("and see who likes you", style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14)),
+                ]),
+              ),
             ),
           ],
         ),
@@ -200,11 +224,13 @@ class _LikesPageState extends State<LikesPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  user['job_title'] ?? AppLocalizations.of(context)?.noJobTitle ?? "No job title",
+                  user['job_title'] ?? "No job title",
                   style: GoogleFonts.figtree(fontSize: 14, color: kInkMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 4),
+                ActivityBadge(lastSeenAt: user['last_seen_at'] as String?),
               ],
             ),
           ),
