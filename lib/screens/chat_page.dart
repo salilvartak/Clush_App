@@ -61,8 +61,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _isLoading = true;
 
   // UI state
-  bool _isAtBottom = true;
-  int _unreadCount = 0;
   bool _hasText = false;
   bool _isRecording = false;
   bool _isUploadingMedia = false;
@@ -107,7 +105,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _roomId = _buildRoomId(widget.myId, widget.matchId);
-    _scrollController.addListener(_onScroll);
     _initChat();
   }
 
@@ -121,7 +118,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _streamChannel?.stopTyping().catchError((_) {});
     _typingDebounce?.cancel();
     _textController.dispose();
-    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _audioPlayer.dispose();
     _audioRecorder.dispose();
@@ -172,8 +168,36 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _setupChannel() async {
     try {
       _streamChannel = StreamService.instance.channel(widget.myId, widget.matchId);
-      await _streamChannel!.watch();
+    } catch (e, st) {
+      debugPrint('_setupChannel error: $e\n$st');
+      
+      // If error says users don't exist, try to sync the match and retry once
+      final errStr = e.toString();
+      if (errStr.contains('don\'t exist') || errStr.contains('code: 4')) {
+        print('ChatPage: Match seems missing from Stream. Syncing...');
+        await StreamService.instance.syncUser(
+          widget.matchId, 
+          name: widget.matchName, 
+          image: widget.matchPhotoUrl
+        );
+        
+        // After sync, try watch again. If it succeeds, we CONTINUE to the listener setup below.
+        try {
+          await _streamChannel!.watch();
+          // DO NOT return here - let it flow down to set up listeners!
+        } catch (e2) {
+          debugPrint('_setupChannel retry error: $e2');
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+    }
 
+    // --- SHARED SETUP (Runs on success OR after successful retry) ---
+    try {
       final streamMessages = _streamChannel!.state!.messages;
       final unreadCount = _streamChannel!.state!.unreadCount;
 
@@ -187,7 +211,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       // Insert unread divider before first unread message from the other user
       int firstUnreadIdx = -1;
       if (unreadCount > 0) {
-        // Unread messages are at the end of the list
         final candidateStart = parsed.length - unreadCount;
         for (int i = max(0, candidateStart); i < parsed.length; i++) {
           if (parsed[i]['isMe'] != true) {
@@ -229,25 +252,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       if (!mounted) return;
       setState(() {
-        _messages
-          ..clear()
-          ..addAll(parsed);
+        _messages.clear();
+        _messages.addAll(parsed.reversed); // Newest at index 0 for reverse:true
         _isLoading = false;
         _hasUnreadDivider = firstUnreadIdx >= 0;
       });
 
       if (_hasUnreadDivider) {
         Future.delayed(const Duration(milliseconds: 80), () {
-          if (mounted) _scrollToIndex(firstUnreadIdx);
+          if (mounted) _scrollToIndex(parsed.length - 1 - firstUnreadIdx);
         });
-      } else {
-        Future.delayed(const Duration(milliseconds: 80), () {
-          if (mounted) _scrollToBottom(animate: false);
-        });
-        Future.delayed(const Duration(milliseconds: 300), () => _markAsRead());
       }
-    } catch (e, st) {
-      debugPrint('_setupChannel error: $e\n$st');
+      Future.delayed(const Duration(milliseconds: 300), () => _markAsRead());
+    } catch (e) {
+      debugPrint('_setupChannel listener setup error: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -260,47 +278,49 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!_initialLoadDone || !mounted) return;
 
     final newCount = streamMessages.length;
+    bool changed = false;
 
     // Check for deletions/updates in already-processed messages
     for (int i = 0; i < min(_prevMsgCount, newCount); i++) {
-      final sm = streamMessages[i];
-      if (sm.type == 'deleted') {
+        final sm = streamMessages[i];
         final localIdx = _messages.indexWhere((m) => m['id'] == sm.id);
-        if (localIdx >= 0 && _messages[localIdx]['isDeleted'] != true) {
-          if (mounted) {
-            setState(() => _messages[localIdx] = {
-                  ..._messages[localIdx],
-                  'type': 'deleted',
-                  'isDeleted': true,
-                  'data': '',
-                });
-          }
+        if (localIdx >= 0) {
+           if (sm.type == 'deleted' && _messages[localIdx]['isDeleted'] != true) {
+              _messages[localIdx] = {
+                ..._messages[localIdx],
+                'type': 'deleted',
+                'isDeleted': true,
+                'data': '',
+              };
+              changed = true;
+           }
         }
-      }
     }
 
     // Process new messages
     if (newCount > _prevMsgCount) {
+      final List<Map<String, dynamic>> newMessages = [];
       for (int i = _prevMsgCount; i < newCount; i++) {
         final sm = streamMessages[i];
         final msg = await _parseStreamMessage(sm);
-        if (msg == null || !mounted) return;
-        final isMe = msg['isMe'] as bool;
-        final id = msg['id']?.toString();
-
-        if (!isMe && id != null) _freshIds.add(id);
-
-        setState(() {
-          _messages.add(msg);
-          if (!isMe && !_isAtBottom) _unreadCount++;
-        });
-
-        if (!isMe && _isAtBottom) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-          _markAsRead();
+        if (msg != null) {
+          newMessages.add(msg);
+          final isMe = msg['isMe'] as bool;
+          final id = msg['id']?.toString();
+          if (!isMe && id != null) _freshIds.add(id);
         }
       }
+      
+      if (newMessages.isNotEmpty) {
+        _messages.insertAll(0, newMessages.reversed);
+        changed = true;
+      }
       _prevMsgCount = newCount;
+    }
+
+    if (changed && mounted) {
+      setState(() {});
+      _markAsRead();
     }
   }
 
@@ -614,42 +634,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // Scroll
   // ─────────────────────────────────────────────────────────────────────────
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final atBottom =
-        _scrollController.offset >= _scrollController.position.maxScrollExtent - 80;
-
-    if (atBottom && !_isAtBottom) {
-      setState(() {
-        _isAtBottom = true;
-        _unreadCount = 0;
-        if (_hasUnreadDivider) {
-          _messages.removeWhere((m) => m['type'] == '_divider');
-          _hasUnreadDivider = false;
-        }
-      });
-      _markAsRead();
-    } else if (!atBottom && _isAtBottom) {
-      setState(() => _isAtBottom = false);
-    }
-  }
-
-  void _scrollToBottom({bool animate = true}) {
-    if (!_scrollController.hasClients) return;
-    if (animate) {
-      _scrollController.animateTo(
-        double.maxFinite,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    } else {
-      _scrollController.jumpTo(double.maxFinite);
-    }
-  }
-
   void _scrollToIndex(int index) {
     if (!_scrollController.hasClients) return;
-    const approxItemH = 72.0;
+    const approxItemH = 80.0;
     final offset =
         (index * approxItemH).clamp(0.0, _scrollController.position.maxScrollExtent);
     _scrollController.jumpTo(offset);
@@ -661,11 +648,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   bool _shouldShowDateHeader(int index) {
     if (_messages[index]['type'] == '_divider') return false;
-    int prev = index - 1;
-    while (prev >= 0 && _messages[prev]['type'] == '_divider') { prev--; }
-    if (prev < 0) return true;
+    // For reverse:true, index + 1 is the OLDER message
+    int older = index + 1;
+    while (older < _messages.length && _messages[older]['type'] == '_divider') { older++; }
+    if (older >= _messages.length) return true; // First (oldest) message always shows date
+    
     final a = DateTime.tryParse(_messages[index]['timestamp'] as String? ?? '');
-    final b = DateTime.tryParse(_messages[prev]['timestamp'] as String? ?? '');
+    final b = DateTime.tryParse(_messages[older]['timestamp'] as String? ?? '');
     if (a == null || b == null) return true;
     return a.day != b.day || a.month != b.month || a.year != b.year;
   }
@@ -722,6 +711,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kCream,
+      resizeToAvoidBottomInset: true, // Crucial for chat
       appBar: _buildAppBar(),
       body: Column(
         children: [
@@ -860,10 +850,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // ── Body ─────────────────────────────────────────────────────────────────
 
   Widget _buildBody() {
-    if (_isLoading) return const Center(child: HeartLoader());
+    if (_isLoading) {
+      return const Center(key: ValueKey('loading'), child: HeartLoader());
+    }
 
     if (_messages.isEmpty || (_messages.length == 1 && _messages[0]['type'] == '_divider')) {
       return Center(
+        key: const ValueKey('empty'),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -876,26 +869,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             Text('Messages are end-to-end encrypted',
                 style: GoogleFonts.figtree(color: kInkMuted, fontSize: 13)),
           ],
-        ).animate().fade(duration: 500.ms),
+        ).animate().fade(duration: 500.ms).scale(begin: const Offset(0.9, 0.9)),
       );
     }
 
-    return Stack(
-      children: [
-        ListView.builder(
-          controller: _scrollController,
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
-          itemCount: _messages.length,
-          itemBuilder: (context, index) {
-            final msg = _messages[index];
-            if (msg['type'] == '_divider') {
-              return _buildUnreadDivider(msg['count'] as int);
-            }
-            return _buildMessageRow(msg, index);
-          },
-        ),
-        if (!_isAtBottom) _buildScrollFab(),
-      ],
+    return Scrollbar(
+      controller: _scrollController,
+      child: ListView.builder(
+        key: const ValueKey('list'),
+        controller: _scrollController,
+        reverse: true, // Standard for premium chat
+        physics: const AlwaysScrollableScrollPhysics(), // Robust scrolling
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        cacheExtent: 1500, // Pre-cache items
+        padding: const EdgeInsets.fromLTRB(14, 16, 14, 40), // More bottom padding
+        itemCount: _messages.length,
+        itemBuilder: (context, index) {
+          final msg = _messages[index];
+          if (msg['type'] == '_divider') {
+            return _buildUnreadDivider(msg['count'] as int);
+          }
+          return _buildMessageRow(msg, index);
+        },
+      ),
     );
   }
 
@@ -910,7 +906,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     Widget row = Column(
       crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        if (showDate) _buildDateHeader(msg['timestamp'] as String?),
         GestureDetector(
           onLongPress: () => _showMessageMenu(msg),
           onHorizontalDragEnd: (d) {
@@ -943,10 +938,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     if (isFresh) {
       _freshIds.remove(id);
-      row = row.animate().fade(duration: 200.ms).slideY(begin: 0.06, end: 0);
+      row = row.animate().fade(duration: 200.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic);
     }
 
-    return row;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showDate) _buildDateHeader(msg['timestamp'] as String?),
+        row,
+      ],
+    );
   }
 
   Widget _buildDateHeader(String? ts) {
@@ -1004,16 +1005,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             : null,
         color: (isMe && !isDeleted) ? null : Colors.white,
         borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(18),
-          topRight: const Radius.circular(18),
-          bottomLeft: Radius.circular(isMe ? 18 : 4),
-          bottomRight: Radius.circular(isMe ? 4 : 18),
+          topLeft: const Radius.circular(20),
+          topRight: const Radius.circular(20),
+          bottomLeft: Radius.circular(isMe ? 20 : 6),
+          bottomRight: Radius.circular(isMe ? 6 : 20),
         ),
         boxShadow: [
           BoxShadow(
-            color: (isMe ? kRose : kInk).withOpacity(isMe ? 0.15 : 0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+            color: (isMe ? kRose : kInk).withOpacity(isMe ? 0.2 : 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -1156,52 +1157,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Scroll FAB ───────────────────────────────────────────────────────────
 
-  Widget _buildScrollFab() {
-    return Positioned(
-      bottom: 12,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: GestureDetector(
-          onTap: () {
-            _scrollToBottom();
-            _markAsRead();
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: kParchment,
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: kBone),
-              boxShadow: [
-                BoxShadow(
-                    color: kInk.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 3))
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_unreadCount > 0) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration:
-                        BoxDecoration(color: kRose, borderRadius: BorderRadius.circular(30)),
-                    child: Text('$_unreadCount new',
-                        style: GoogleFonts.figtree(
-                            color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                const Icon(Icons.keyboard_arrow_down_rounded, color: kInkMuted, size: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   // ── Reply bar ────────────────────────────────────────────────────────────
 
@@ -1267,8 +1223,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 margin: const EdgeInsets.symmetric(vertical: 6),
                 decoration: BoxDecoration(
                   color: kCream,
-                  border: Border.all(color: kBone, width: 1.5),
-                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: kBone.withOpacity(0.8), width: 1.5),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(color: kInk.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))
+                  ],
                 ),
                 child: TextField(
                   controller: _textController,

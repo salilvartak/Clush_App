@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart' hide User;
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 
@@ -61,6 +62,19 @@ class StreamService {
         token,
       );
       _connected = true;
+
+      // --- NEW: Register device for push notifications ---
+      try {
+        final fcmToken = await FirebaseMessaging.instance.getToken();
+        if (fcmToken != null) {
+          await client.addDevice(fcmToken, PushProvider.firebase);
+          print('StreamService: Device registered for push notifications.');
+        }
+      } catch (e) {
+        print('StreamService: Failed to register device for push: $e');
+      }
+      // --------------------------------------------------
+
       print('StreamService: SUCCESS! Connected as ${fbUser.uid}');
     } catch (e, st) {
       print('StreamService: ERROR connecting: $e');
@@ -88,6 +102,24 @@ class StreamService {
     } catch (e) {
       print('StreamService: Failed to fetch token: $e');
       rethrow;
+    }
+  }
+
+  /// Ensures a user exists in Stream by calling the sync Edge Function.
+  /// Useful for matches who haven't logged in yet.
+  Future<void> syncUser(String userId, {String? name, String? image}) async {
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'stream-sync-user',
+        body: {
+          'user_id': userId,
+          'name': name,
+          'image': image,
+        },
+      );
+      print('StreamService: Sync successful for $userId');
+    } catch (e) {
+      print('StreamService: Sync failed for $userId: $e');
     }
   }
 

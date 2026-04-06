@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:clush/main.dart'; 
 import 'package:clush/theme/colors.dart';
+import 'package:clush/services/stream_service.dart';
+import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 
 // TOP-LEVEL FUNCTION FOR BACKGROUND MESSAGES
 @pragma('vm:entry-point')
@@ -103,14 +105,23 @@ class NotificationService {
         return;
       }
 
+      // Save to Supabase
       await Supabase.instance.client
           .from('profiles')
           .update({'fcm_token': token})
           .eq('id', userId);
           
       print("✅ FCM Token saved to Supabase successfully!");
+
+      // Also register with Stream Chat if connected
+      final streamService = StreamService.instance;
+      if (streamService.client.state.currentUser != null) {
+        await streamService.client.addDevice(token, PushProvider.firebase);
+        print("✅ FCM Token registered with Stream Chat successfully!");
+      }
+
     } catch (e) {
-      print("❌ Error saving FCM token to Supabase: $e");
+      print("❌ Error saving FCM token: $e");
     }
   }
 

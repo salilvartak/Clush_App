@@ -482,7 +482,7 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
                     children: [
                       TileLayer(
                         urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.clush',
+                        userAgentPackageName: 'com.clush.app',
                       ),
                       RichAttributionWidget(
                         attributions: [
