@@ -14,7 +14,7 @@ workflows:
     scripts:
       - name: Get Flutter packages
         script: |
-          flutter packages pub get
+          flutter pub get
       - name: Set up keystore for Android code signing
         script: |
           echo $CM_KEYSTORE | base64 --decode > /tmp/keystore.keystore
