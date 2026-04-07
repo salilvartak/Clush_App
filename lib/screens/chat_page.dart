@@ -16,8 +16,6 @@ import 'package:screen_protector/screen_protector.dart';
 import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:clush/widgets/heart_loader.dart';
-import 'package:clush/services/crypto_service.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart';
@@ -76,13 +74,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _isEphemeralMode = false;
 
   String? _currentlyPlayingId;
-  String? _cryptoError;
   bool _isMatchTyping = false;
   Map<String, dynamic>? _replyTo;
-
-  // Crypto
-  SecretKey? _conversationKey;
-  bool _cryptoReady = false;
 
   // Stream Chat
   Channel? _streamChannel;
@@ -162,29 +155,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _initChat() async {
-    await _setupCrypto();
     await _setupChannel();
   }
 
-  Future<void> _setupCrypto() async {
-    try {
-      await CryptoService.ensurePublicKeyUploaded();
-      final row = await _supabase
-          .from('profiles')
-          .select('public_key')
-          .eq('id', widget.matchId)
-          .maybeSingle();
-      final theirKey = row?['public_key'] as String?;
-      if (theirKey == null || theirKey.isEmpty) {
-        if (mounted) setState(() => _cryptoError = 'Partner has not set up encryption yet.');
-        return;
-      }
-      _conversationKey = await CryptoService.deriveConversationKey(_roomId, theirKey);
-      if (mounted) setState(() => _cryptoReady = true);
-    } catch (_) {
-      if (mounted) setState(() => _cryptoError = 'Encryption setup failed.');
-    }
-  }
+
 
   Future<void> _setupChannel() async {
     try {
@@ -353,14 +327,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (isDeleted) {
       type = 'deleted';
     } else {
-      final encPayload = message.text ?? '';
-      if (encPayload.isNotEmpty) {
-        if (_conversationKey != null) {
-          final plain = await CryptoService.decryptMessage(encPayload, _conversationKey!);
-          data = plain ?? '🔒 Encrypted message';
-        } else {
-          data = encPayload;
-        }
+      final text = message.text ?? '';
+      if (text.isNotEmpty) {
+        data = text;
       }
     }
 
@@ -396,9 +365,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _streamChannel!.stopTyping().catchError((_) {});
 
     try {
-      final envelope = _conversationKey != null
-          ? await CryptoService.encryptMessage(text, _conversationKey!)
-          : text;
+      final envelope = text;
       await _streamChannel!.sendMessage(Message(
         text: envelope,
         extraData: const {'mt': 'text'},
@@ -418,19 +385,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final bytes = await file.readAsBytes();
       final ext = file.path.split('.').last.toLowerCase();
       final path = 'chat/$_roomId/${DateTime.now().millisecondsSinceEpoch}.$ext';
-      final uploadBytes = _conversationKey != null
-          ? Uint8List.fromList(utf8.encode(await CryptoService.encryptBytes(bytes, _conversationKey!)))
-          : bytes;
-      final contentType = _conversationKey != null ? 'application/octet-stream' : 'image/$ext';
+      final uploadBytes = bytes;
+      final contentType = 'image/$ext';
       await _supabase.storage.from('chat-media').uploadBinary(
             path,
             uploadBytes,
             fileOptions: FileOptions(contentType: contentType),
           );
-      // path → encrypt → send via Stream (E2EE: receiver decrypts path, then downloads+decrypts image)
-      final envelope = _conversationKey != null
-          ? await CryptoService.encryptMessage(path, _conversationKey!)
-          : path;
+      final envelope = path;
       await _streamChannel!.sendMessage(Message(
         text: envelope,
         extraData: {
@@ -469,18 +431,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       final bytes = await File(localPath).readAsBytes();
       final storagePath = 'chat/$_roomId/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      final uploadBytes = _conversationKey != null
-          ? Uint8List.fromList(utf8.encode(await CryptoService.encryptBytes(bytes, _conversationKey!)))
-          : bytes;
+      final uploadBytes = bytes;
       await _supabase.storage.from('chat-media').uploadBinary(
             storagePath,
             uploadBytes,
             fileOptions: FileOptions(
-                contentType: _conversationKey != null ? 'application/octet-stream' : 'audio/m4a'),
+                contentType: 'audio/m4a'),
           );
-      final envelope = _conversationKey != null
-          ? await CryptoService.encryptMessage(storagePath, _conversationKey!)
-          : storagePath;
+      final envelope = storagePath;
       await _streamChannel!.sendMessage(Message(
         text: envelope,
         extraData: const {'mt': 'audio'},
@@ -534,11 +492,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await for (final chunk in res) {
         raw.addAll(chunk);
       }
-      Uint8List? plain;
-      if (_conversationKey != null) {
-        plain = await CryptoService.decryptBytes(utf8.decode(raw), _conversationKey!);
-      }
-      final audioBytes = plain ?? Uint8List.fromList(raw);
+      final audioBytes = Uint8List.fromList(raw);
       final dir = await getTemporaryDirectory();
       final tmp = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await File(tmp).writeAsBytes(audioBytes);
@@ -580,10 +534,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final raw = <int>[];
       await for (final chunk in res) {
         raw.addAll(chunk);
-      }
-      if (_conversationKey != null) {
-        final decrypted = await CryptoService.decryptBytes(utf8.decode(raw), _conversationKey!);
-        if (decrypted != null) return decrypted;
       }
       return Uint8List.fromList(raw);
     } catch (_) {
@@ -725,7 +675,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         children: [
           if (_connectionStatus == ConnectionStatus.connecting || _connectionStatus == ConnectionStatus.disconnected)
             _buildConnectionBanner(),
-          if (_cryptoError != null) _buildCryptoBanner(),
           Expanded(child: _buildBody()),
           if (_replyTo != null) _buildReplyBar(),
           _buildInputBar(),
@@ -779,23 +728,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           key: const ValueKey('typing'),
                           style: GoogleFonts.figtree(
                               fontSize: 11, color: kRose, fontStyle: FontStyle.italic))
-                      : Row(
-                          key: const ValueKey('e2ee'),
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                    color: Color(0xFF4CAF50), shape: BoxShape.circle)),
-                            const SizedBox(width: 4),
-                            Text('End-to-End Encrypted',
-                                style: GoogleFonts.figtree(
-                                    fontSize: 10,
-                                    color: Color(0xFF388E3C),
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
+                      : const SizedBox.shrink(),
                 ),
               ],
             ),
@@ -897,7 +830,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 style: GoogleFonts.gabarito(
                     fontSize: 22, fontWeight: FontWeight.bold, color: kInk)),
             const SizedBox(height: 6),
-            Text('Messages are end-to-end encrypted',
+            Text('Send a heart to start the spark!',
                 style: GoogleFonts.figtree(color: kInkMuted, fontSize: 13)),
           ],
         ).animate().fade(duration: 500.ms).scale(begin: const Offset(0.9, 0.9)),
@@ -1314,14 +1247,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   controller: _textController,
                   textCapitalization: TextCapitalization.sentences,
                   maxLines: null,
-                  enabled: _cryptoReady && !_isRecording,
+                  enabled: !_isRecording,
                   style: GoogleFonts.figtree(fontSize: 15, color: kInk),
                   decoration: InputDecoration(
-                    hintText: _isRecording
+                        hintText: _isRecording
                         ? 'Recording…'
-                        : _cryptoReady
-                            ? 'Write a message…'
-                            : 'Encryption not ready…',
+                        : 'Write a message…',
                     hintStyle: GoogleFonts.figtree(
                         color: _isRecording ? Colors.redAccent : kInkMuted, fontSize: 15),
                     border: InputBorder.none,
