@@ -19,16 +19,9 @@ workflows:
         script: |
           # Use Codemagic's $BUILD_NUMBER to automatically increment version codes
           flutter build appbundle --release --build-number=$BUILD_NUMBER
-      - name: Install iOS Pods
-        script: |
-          find . -name "Podfile" -execdir pod install \;
-      - name: Build iOS app (without code signing)
-        script: |
-          flutter build ios --release --no-codesign
     artifacts:
       - build/**/outputs/**/*.apk
       - build/**/outputs/**/*.aab
-      - build/ios/iphoneos/*.app
     publishing:
       google_play:
         # Provide your base64-encoded Service Account JSON as an environment variable in Codemagic
