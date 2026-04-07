@@ -17,7 +17,8 @@ workflows:
           flutter pub get
       - name: Set up keystore for Android code signing
         script: |
-          echo "$CM_KEYSTORE" | tr -d '\n\r ' | base64 --decode > /tmp/keystore.keystore
+          # Use python to natively decode Base64 and write the binary, bypassing macOS base64 quirks
+          python3 -c "import os, base64; open('/tmp/keystore.keystore', 'wb').write(base64.b64decode(os.environ['CM_KEYSTORE'].strip()))"
           # Create key.properties to inject into the Android build
           cat > "$CM_BUILD_DIR/android/key.properties" <<EOF
           storePassword=$CM_KEYSTORE_PASSWORD
