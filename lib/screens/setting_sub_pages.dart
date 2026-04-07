@@ -360,8 +360,10 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
       if (!serviceEnabled) return;
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.location);
-        if (gateGranted != true) return;
+        if (permission == LocationPermission.denied) {
+          final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.location);
+          if (gateGranted != true) return;
+        }
         
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) return;
@@ -601,8 +603,11 @@ class _VerificationPageState extends State<VerificationPage> {
   }
 
   Future<void> _recordVideo() async {
-    final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.camera);
-    if (gateGranted != true) return;
+    final ph.PermissionStatus currentStatus = await ph.Permission.camera.status;
+    if (!currentStatus.isGranted) {
+      final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.camera);
+      if (gateGranted != true) return;
+    }
 
     final List? result = await Navigator.push(
       context,
@@ -1106,6 +1111,7 @@ class BlockListPage extends StatefulWidget {
 class _BlockListPageState extends State<BlockListPage> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _blockedUsers = [];
+  List<String> _blockedPhones = [];
   int _selectedTab = 0;
   final TextEditingController _phoneController = TextEditingController();
 
@@ -1120,6 +1126,13 @@ class _BlockListPageState extends State<BlockListPage> {
           .from('blocks')
           .select('blocked_id, profiles!blocks_blocked_id_fkey(full_name, photo_urls)')
           .eq('blocker_id', myId);
+          
+      final profileResp = await Supabase.instance.client
+          .from('profiles')
+          .select('blocked_phones')
+          .eq('id', myId)
+          .maybeSingle();
+
       final List<Map<String, dynamic>> loaded = [];
       for (var row in (response as List)) {
         final profile = row['profiles'];
@@ -1132,7 +1145,13 @@ class _BlockListPageState extends State<BlockListPage> {
           });
         }
       }
-      if (mounted) setState(() { _blockedUsers = loaded; _isLoading = false; });
+      
+      final List<String> loadedPhones = [];
+      if (profileResp != null && profileResp['blocked_phones'] != null) {
+        loadedPhones.addAll(List<String>.from(profileResp['blocked_phones']));
+      }
+
+      if (mounted) setState(() { _blockedUsers = loaded; _blockedPhones = loadedPhones; _isLoading = false; });
     } catch (_) { if (mounted) setState(() => _isLoading = false); }
   }
 
@@ -1173,6 +1192,88 @@ class _BlockListPageState extends State<BlockListPage> {
     }
   }
 
+  Future<void> _unblockPhone(String phone) async {
+    bool? confirm = await showDialog<bool>(context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _kCream,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: _kBone)),
+        title: Text('Unblock $phone?', style: GoogleFonts.montserrat(fontSize: 22, color: _kInk)),
+        content: Text('This number will no longer be pre-blocked.',
+            style: GoogleFonts.montserrat(color: _kInkMuted, height: 1.4)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: GoogleFonts.montserrat(color: _kInkMuted))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Unblock', style: GoogleFonts.montserrat(color: _kRose, fontWeight: FontWeight.w600))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      final myId = FirebaseAuth.instance.currentUser?.uid;
+      if (myId == null) return;
+      _blockedPhones.remove(phone);
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'blocked_phones': _blockedPhones})
+          .eq('id', myId);
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$phone unblocked', style: GoogleFonts.montserrat(color: Colors.white)),
+          backgroundColor: _kRose, behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          margin: const EdgeInsets.all(16),
+        ));
+      }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to unblock phone'), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _blockMultiplePhones(List<String> phonesInput) async {
+    final myId = FirebaseAuth.instance.currentUser?.uid;
+    if (myId == null) return;
+    
+    setState(() => _isLoading = true);
+    try {
+      bool addedAny = false;
+      for (final p in phonesInput) {
+        final phone = p.trim();
+        final formattedPhone = phone.replaceAll(RegExp(r'\s+'), '');
+        final finalPhone = formattedPhone.startsWith('+') ? formattedPhone : '+91$formattedPhone';
+        
+        if (!_blockedPhones.contains(finalPhone)) {
+           _blockedPhones.add(finalPhone);
+           addedAny = true;
+        }
+      }
+      
+      if (addedAny) {
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'blocked_phones': _blockedPhones})
+            .eq('id', myId);
+        
+        _phoneController.clear();
+        await _fetchBlockedUsers();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${phonesInput.length} contacts blocked', style: GoogleFonts.montserrat(color: Colors.white)),
+            backgroundColor: _kRose, behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            margin: const EdgeInsets.all(16),
+          ));
+        }
+      }
+    } catch (e) {
+      debugPrint('Block multiple phones error: $e');
+    }
+    if (mounted) setState(() => _isLoading = false);
+  }
+
   Future<void> _blockByPhone() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty) return;
@@ -1190,15 +1291,28 @@ class _BlockListPageState extends State<BlockListPage> {
           .maybeSingle();
 
       if (result == null) {
+        final fallbackPhone = phone.startsWith('+') ? phone : '+91$phone';
+        if (!_blockedPhones.contains(fallbackPhone)) {
+          _blockedPhones.add(fallbackPhone);
+          await Supabase.instance.client.from('profiles').update({'blocked_phones': _blockedPhones}).eq('id', myId);
+        }
+        
+        _phoneController.clear();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('No user found with that number', style: GoogleFonts.montserrat(color: Colors.white)),
-            backgroundColor: Colors.orange, behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            margin: const EdgeInsets.all(16),
+             content: Text('Number $fallbackPhone pre-blocked', style: GoogleFonts.montserrat(color: Colors.white)),
+             backgroundColor: _kRose, behavior: SnackBarBehavior.floating,
+             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+             margin: const EdgeInsets.all(16),
           ));
         }
         return;
+      }
+
+      final fallbackPhone = phone.startsWith('+') ? phone : '+91$phone';
+      if (!_blockedPhones.contains(fallbackPhone)) {
+        _blockedPhones.add(fallbackPhone);
+        await Supabase.instance.client.from('profiles').update({'blocked_phones': _blockedPhones}).eq('id', myId);
       }
 
       final blockedId = result['id'] as String;
@@ -1240,8 +1354,11 @@ class _BlockListPageState extends State<BlockListPage> {
   }
 
   Future<void> _importContacts() async {
-    final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.contacts);
-    if (gateGranted != true) return;
+    final ph.PermissionStatus currentStatus = await ph.Permission.contacts.status;
+    if (!currentStatus.isGranted) {
+      final bool? gateGranted = await PermissionRequestPage.show(context, PermissionType.contacts);
+      if (gateGranted != true) return;
+    }
 
     final ph.PermissionStatus beforeStatus = await ph.Permission.contacts.status;
     debugPrint('📋 Contacts permission before request: $beforeStatus');
@@ -1275,7 +1392,7 @@ class _BlockListPageState extends State<BlockListPage> {
     if (mounted) Navigator.pop(context);
 
     if (!mounted) return;
-    showModalBottomSheet(
+    final selectedPhones = await showModalBottomSheet<List<String>>(
       context: context,
       backgroundColor: _kCream,
       isScrollControlled: true,
@@ -1288,45 +1405,70 @@ class _BlockListPageState extends State<BlockListPage> {
         builder: (_, controller) => _buildContactsList(contacts, controller),
       ),
     );
+
+    if (selectedPhones != null && selectedPhones.isNotEmpty) {
+      await _blockMultiplePhones(selectedPhones);
+    }
   }
 
   Widget _buildContactsList(List<fc.Contact> contacts, ScrollController controller) {
     if (contacts.isEmpty) {
       return Center(child: Text("No contacts found", style: GoogleFonts.montserrat(color: _kInkMuted)));
     }
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text("Select Contact to Block", style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: _kInk)),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.builder(
-            controller: controller,
-            itemCount: contacts.length,
-            itemBuilder: (context, index) {
-              final c = contacts[index];
-              final phone = c.phones.isNotEmpty ? c.phones.first.number : null;
-              final displayName = c.displayName ?? 'Unknown';
-              
-              if (phone == null) return const SizedBox.shrink();
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: _kBone,
-                  child: Text(displayName.isNotEmpty ? displayName[0].toUpperCase() : '?', style: GoogleFonts.montserrat(color: _kInk)),
-                ),
-                title: Text(displayName, style: GoogleFonts.montserrat(color: _kInk, fontWeight: FontWeight.w500)),
-                subtitle: Text(phone, style: GoogleFonts.montserrat(color: _kInkMuted)),
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() => _phoneController.text = phone);
+    final Set<String> localSelected = {};
+    return StatefulBuilder(
+      builder: (context, setModalState) {
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("Mass Select Contacts", style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: _kInk)),
+                  if (localSelected.isNotEmpty)
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context, localSelected.toList()),
+                      child: Text("Block (${localSelected.length})", 
+                        style: GoogleFonts.montserrat(color: _kRose, fontWeight: FontWeight.bold, fontSize: 16)),
+                    )
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                controller: controller,
+                itemCount: contacts.length,
+                itemBuilder: (context, index) {
+                  final c = contacts[index];
+                  final phone = c.phones.isNotEmpty ? c.phones.first.number : null;
+                  final displayName = c.displayName ?? 'Unknown';
+                  
+                  if (phone == null) return const SizedBox.shrink();
+                  final isSelected = localSelected.contains(phone);
+                  return CheckboxListTile(
+                    activeColor: _kRose,
+                    value: isSelected,
+                    onChanged: (val) {
+                      setModalState(() {
+                        if (val == true) localSelected.add(phone);
+                        else localSelected.remove(phone);
+                      });
+                    },
+                    secondary: CircleAvatar(
+                      backgroundColor: _kBone,
+                      child: Text(displayName.isNotEmpty ? displayName[0].toUpperCase() : '?', style: GoogleFonts.montserrat(color: _kInk)),
+                    ),
+                    title: Text(displayName, style: GoogleFonts.montserrat(color: _kInk, fontWeight: FontWeight.w500)),
+                    subtitle: Text(phone, style: GoogleFonts.montserrat(color: _kInkMuted)),
+                  );
                 },
-              );
-            },
-          ),
-        ),
-      ],
+              ),
+            ),
+          ],
+        );
+      }
     );
   }
 
@@ -1424,12 +1566,49 @@ class _BlockListPageState extends State<BlockListPage> {
               children: [
                 const Icon(Icons.contacts_outlined, color: _kRose),
                 const SizedBox(width: 8),
-                Text("Import Contacts", style: GoogleFonts.montserrat(
+                Text("Mass Import Contacts", style: GoogleFonts.montserrat(
                   color: _kRose, fontWeight: FontWeight.w600, fontSize: 15)),
               ],
             ),
           ),
         ),
+        if (_blockedPhones.isNotEmpty) ...[
+         const SizedBox(height: 32),
+         const Divider(height: 1),
+         const SizedBox(height: 16),
+         Text("Pre-blocked Numbers", style: GoogleFonts.montserrat(fontSize: 18, color: _kInk)),
+         const SizedBox(height: 12),
+         Container(
+           decoration: _cardDecor(),
+           child: ListView.separated(
+             shrinkWrap: true,
+             physics: const NeverScrollableScrollPhysics(),
+             itemCount: _blockedPhones.length,
+             separatorBuilder: (_, __) => const Divider(height: 1, color: _kBone, indent: 16),
+             itemBuilder: (ctx, i) {
+                final phone = _blockedPhones[i];
+                return Padding(
+                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                   child: Row(
+                      children: [
+                         const Icon(Icons.phone_locked_rounded, color: _kInkMuted),
+                         const SizedBox(width: 14),
+                         Expanded(child: Text(phone, style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w500, color: _kInk))),
+                         GestureDetector(
+                            onTap: () => _unblockPhone(phone),
+                            child: Container(
+                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                               decoration: BoxDecoration(border: Border.all(color: _kRose, width: 1.5), borderRadius: BorderRadius.circular(10)),
+                               child: Text("Unblock", style: GoogleFonts.montserrat(color: _kRose, fontWeight: FontWeight.w600, fontSize: 13)),
+                            )
+                         )
+                      ]
+                   )
+                );
+             }
+           )
+         )
+        ]
       ],
     );
   }

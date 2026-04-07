@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:screen_protector/screen_protector.dart';
 import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -64,6 +65,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _hasText = false;
   bool _isRecording = false;
   bool _isUploadingMedia = false;
+  // Media caches — keyed by storage path so futures are created only once
+  final Map<String, Future<Uint8List?>> _imageFutures = {};
+  final Map<String, Future<String?>> _audioPathFutures = {};
+
+  // Track which message IDs are freshly received (so we only animate new ones)
+  final Set<String> _freshIds = {};
+
+  // Twice-view feature
+  bool _isEphemeralMode = false;
+
   String? _currentlyPlayingId;
   String? _cryptoError;
   bool _isMatchTyping = false;
@@ -79,8 +90,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   StreamSubscription<Event>? _typingStartSub;
   StreamSubscription<Event>? _typingStopSub;
   StreamSubscription<Event>? _readSub;
+  StreamSubscription<ConnectionStatus>? _connSub;
   bool _initialLoadDone = false;
   int _prevMsgCount = 0;
+  ConnectionStatus _connectionStatus = ConnectionStatus.connected;
   late String _roomId;
 
   // Read receipts — when the match last read this channel
@@ -93,28 +106,36 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // Unread divider
   bool _hasUnreadDivider = false;
 
-  // Media caches — keyed by storage path so futures are created only once
-  final Map<String, Future<Uint8List?>> _imageFutures = {};
-  final Map<String, Future<String?>> _audioPathFutures = {};
-
-  // Track which message IDs are freshly received (so we only animate new ones)
-  final Set<String> _freshIds = {};
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _roomId = _buildRoomId(widget.myId, widget.matchId);
     _initChat();
+    _enableScreenProtection();
+  }
+
+  Future<void> _enableScreenProtection() async {
+    try {
+      await ScreenProtector.preventScreenshotOn();
+    } catch (_) {}
+  }
+
+  Future<void> _disableScreenProtection() async {
+    try {
+      await ScreenProtector.preventScreenshotOff();
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _disableScreenProtection();
     WidgetsBinding.instance.removeObserver(this);
     _msgSub?.cancel();
     _typingStartSub?.cancel();
     _typingStopSub?.cancel();
     _readSub?.cancel();
+    _connSub?.cancel();
     _streamChannel?.stopTyping().catchError((_) {});
     _typingDebounce?.cancel();
     _textController.dispose();
@@ -168,23 +189,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _setupChannel() async {
     try {
       _streamChannel = StreamService.instance.channel(widget.myId, widget.matchId);
+      await _streamChannel!.watch();
     } catch (e, st) {
       debugPrint('_setupChannel error: $e\n$st');
       
-      // If error says users don't exist, try to sync the match and retry once
       final errStr = e.toString();
       if (errStr.contains('don\'t exist') || errStr.contains('code: 4')) {
         print('ChatPage: Match seems missing from Stream. Syncing...');
-        await StreamService.instance.syncUser(
-          widget.matchId, 
-          name: widget.matchName, 
-          image: widget.matchPhotoUrl
-        );
-        
-        // After sync, try watch again. If it succeeds, we CONTINUE to the listener setup below.
         try {
+          await StreamService.instance.syncUser(
+            widget.matchId, 
+            name: widget.matchName, 
+            image: widget.matchPhotoUrl
+          );
+          
+          _streamChannel = StreamService.instance.channel(widget.myId, widget.matchId);
           await _streamChannel!.watch();
-          // DO NOT return here - let it flow down to set up listeners!
         } catch (e2) {
           debugPrint('_setupChannel retry error: $e2');
           if (mounted) setState(() => _isLoading = false);
@@ -243,9 +263,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
       });
 
-      // Read receipts
       _readSub = _streamChannel!.on(EventType.messageRead).listen((event) {
         if (event.user?.id == widget.matchId) _refreshMatchReadAt();
+      });
+
+      _connSub = StreamService.instance.client.wsConnectionStatusStream.listen((status) {
+        if (mounted) setState(() => _connectionStatus = status);
       });
 
       _refreshMatchReadAt();
@@ -277,49 +300,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _onMessagesChanged(List<Message> streamMessages) async {
     if (!_initialLoadDone || !mounted) return;
 
-    final newCount = streamMessages.length;
-    bool changed = false;
-
-    // Check for deletions/updates in already-processed messages
-    for (int i = 0; i < min(_prevMsgCount, newCount); i++) {
-        final sm = streamMessages[i];
-        final localIdx = _messages.indexWhere((m) => m['id'] == sm.id);
-        if (localIdx >= 0) {
-           if (sm.type == 'deleted' && _messages[localIdx]['isDeleted'] != true) {
-              _messages[localIdx] = {
-                ..._messages[localIdx],
-                'type': 'deleted',
-                'isDeleted': true,
-                'data': '',
-              };
-              changed = true;
-           }
-        }
+    // Stream returns messages oldest-to-newest. We UI-sort newest-at-index-0 if reverse:true.
+    final parsed = <Map<String, dynamic>>[];
+    for (final sm in streamMessages) {
+       final m = await _parseStreamMessage(sm);
+       if (m != null) parsed.insert(0, m);
     }
 
-    // Process new messages
-    if (newCount > _prevMsgCount) {
-      final List<Map<String, dynamic>> newMessages = [];
-      for (int i = _prevMsgCount; i < newCount; i++) {
-        final sm = streamMessages[i];
-        final msg = await _parseStreamMessage(sm);
-        if (msg != null) {
-          newMessages.add(msg);
-          final isMe = msg['isMe'] as bool;
-          final id = msg['id']?.toString();
-          if (!isMe && id != null) _freshIds.add(id);
-        }
-      }
-      
-      if (newMessages.isNotEmpty) {
-        _messages.insertAll(0, newMessages.reversed);
-        changed = true;
-      }
-      _prevMsgCount = newCount;
+    // Preserve the unread divider if it exists
+    if (_hasUnreadDivider) {
+       final dividerIdx = _messages.indexWhere((m) => m['id'] == '__divider__');
+       if (dividerIdx >= 0) {
+          final divider = _messages[dividerIdx];
+          // Find original timestamp position
+          int insertAt = parsed.indexWhere((m) => m['timestamp'] == divider['timestamp']);
+          if (insertAt >= 0) parsed.insert(insertAt, divider);
+       }
     }
 
-    if (changed && mounted) {
-      setState(() {});
+    if (mounted) {
+      setState(() {
+        _messages.clear();
+        _messages.addAll(parsed);
+      });
       _markAsRead();
     }
   }
@@ -370,6 +373,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'isMe': isMe,
       'isDeleted': isDeleted,
       'reply_to': message.quotedMessageId,
+      'vt': message.extraData['vt'] as int? ?? 0,
+      'view_count': message.ownReactions?.where((r) => r.type == 'viewed').length ?? 0,
     };
   }
 
@@ -428,7 +433,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           : path;
       await _streamChannel!.sendMessage(Message(
         text: envelope,
-        extraData: const {'mt': 'image'},
+        extraData: {
+          'mt': 'image',
+          if (_isEphemeralMode) 'vt': 2,
+        },
       ));
       // Cache bytes locally for instant preview
       _imageFutures[path] = Future.value(bytes);
@@ -715,6 +723,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       appBar: _buildAppBar(),
       body: Column(
         children: [
+          if (_connectionStatus == ConnectionStatus.connecting || _connectionStatus == ConnectionStatus.disconnected)
+            _buildConnectionBanner(),
           if (_cryptoError != null) _buildCryptoBanner(),
           Expanded(child: _buildBody()),
           if (_replyTo != null) _buildReplyBar(),
@@ -843,6 +853,27 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 style: GoogleFonts.figtree(fontSize: 12, color: Colors.orange.shade800)),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildConnectionBanner() {
+    return Container(
+      width: double.infinity,
+      color: kRose.withOpacity(0.1),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: kRose)),
+            const SizedBox(width: 10),
+            Text(
+              _connectionStatus == ConnectionStatus.disconnected ? 'Disconnected. Retrying…' : 'Connecting…',
+              style: GoogleFonts.figtree(fontSize: 10, color: kRose, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1039,11 +1070,61 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               height: 80,
               child: Center(child: Icon(Icons.broken_image_rounded, color: kInkMuted)));
         }
+
+        final msgId = _messages.firstWhere((m) => m['data'] == storagePath, orElse: () => {})['id'] as String?;
+        final vt = _messages.firstWhere((m) => m['id'] == msgId, orElse: () => {})['vt'] as int? ?? 0;
+        final views = _messages.firstWhere((m) => m['id'] == msgId, orElse: () => {})['view_count'] as int? ?? 0;
+        final isExpired = vt > 0 && views >= vt;
+
+        if (isExpired) {
+          return Container(
+            width: 220,
+            height: 160,
+            decoration: BoxDecoration(
+              color: kBone,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.visibility_off_rounded, color: kInkMuted, size: 32),
+                const SizedBox(height: 8),
+                Text('Image expired', style: GoogleFonts.figtree(color: kInkMuted, fontSize: 13)),
+              ],
+            ),
+          );
+        }
+
         return GestureDetector(
-          onTap: () => _openFullImage(snap.data!),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.memory(snap.data!, width: 220, height: 220, fit: BoxFit.cover),
+          onTap: () => _openFullImage(snap.data!, msgId as String?, vt),
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.memory(snap.data!, width: 220, height: 220, fit: BoxFit.cover),
+              ),
+              if (vt > 0)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.timer_outlined, color: Colors.white, size: 12),
+                        const SizedBox(width: 4),
+                        Text('${vt - views} left',
+                            style: GoogleFonts.figtree(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       },
@@ -1335,6 +1416,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 _sendImage(ImageSource.camera);
               },
             ),
+            const Divider(height: 1),
+            SwitchListTile(
+              secondary: Icon(Icons.timer_outlined, color: _isEphemeralMode ? kRose : kInkMuted),
+              title: Text('View Twice Mode', style: GoogleFonts.figtree(color: kInk, fontSize: 15)),
+              subtitle: Text('Images disappear after 2 views', style: GoogleFonts.figtree(fontSize: 12)),
+              value: _isEphemeralMode,
+              activeColor: kRose,
+              onChanged: (v) {
+                setState(() => _isEphemeralMode = v);
+                Navigator.pop(context);
+                _showImageSourceSheet(); // Reopen to show updated state
+              },
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -1397,7 +1491,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _openFullImage(Uint8List bytes) {
+  void _openFullImage(Uint8List bytes, String? msgId, int vt) async {
+    if (msgId != null && vt > 0 && _streamChannel != null) {
+      try {
+        final messages = _streamChannel!.state?.messages ?? [];
+        final mObj = messages.cast<Message?>().firstWhere((m) => m?.id == msgId, orElse: () => null);
+        if (mObj != null) {
+           await _streamChannel!.sendReaction(mObj, 'viewed');
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(

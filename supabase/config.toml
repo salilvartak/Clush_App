@@ -400,11 +400,10 @@ entrypoint = "./functions/match_notification/index.ts"
 
 [functions.like_notification]
 enabled = true
-verify_jwt = true
-import_map = "./functions/like_notification/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+verify_jwt = false
 entrypoint = "./functions/like_notification/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/like_notification/*.html" ]
+
+[functions.push-engine]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/push-engine/index.ts"

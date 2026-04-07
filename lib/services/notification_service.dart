@@ -5,42 +5,36 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:clush/main.dart'; 
-import 'package:clush/theme/colors.dart';
 import 'package:clush/services/stream_service.dart';
+import 'package:clush/widgets/notification_overlay.dart';
 import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 
 // TOP-LEVEL FUNCTION FOR BACKGROUND MESSAGES
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print("🔔 Background message received: ${message.notification?.title}");
+  // Logic for background messages if needed
+  print("🔔 Background push received: ${message.notification?.title}");
 }
 
+/**
+ * 🚀 CLUSH UNIFIED NOTIFICATION SERVICE
+ * Rebuilt for simplicity and performance.
+ * Handles Likes, Matches, Messages, and Promos via a unified 'push-engine'.
+ */
 class NotificationService {
+  static final NotificationService instance = NotificationService._();
+  NotificationService._();
+  factory NotificationService() => instance;
+
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
 
   Future<void> initNotifications({BuildContext? context, bool force = false}) async {
-    // 1. Check if the user has disabled notifications locally
+    // 1. Check user preference
     final prefs = await SharedPreferences.getInstance();
     final isEnabled = prefs.getBool('notifications_enabled') ?? true;
+    if (!isEnabled) return;
 
-    if (!isEnabled && !force) {
-      print('Notifications are turned OFF in settings. Skipping init.');
-      return; 
-    }
-
-    // 2. Request permissions (shows the OS popup)
-    // If context is provided, we can show a custom gateway first
-    if (context != null) {
-      // Check current status first
-      NotificationSettings currentSettings = await _fcm.getNotificationSettings();
-      if (currentSettings.authorizationStatus == AuthorizationStatus.notDetermined || force) {
-        // Show our premium custom gate!
-        // Note: we don't necessarily call PermissionRequestPage.show here 
-        // if it's already handled by the caller (like BasicsPage).
-        // But for safety, we keep it logic-only here or call it if not yet shown.
-      }
-    }
-
+    // 2. Request Permissions
     NotificationSettings settings = await _fcm.requestPermission(
       alert: true,
       badge: true,
@@ -48,139 +42,107 @@ class NotificationService {
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      print('User granted permission');
-      
-      // 3. Get the token
-      String? token = await _fcm.getToken();
-      print('FCM Device Token: $token');
+      // 3. Register Token
+      await updateToken();
 
-      // 4. Save the token to Supabase
-      if (token != null) {
-        await _saveTokenToDatabase(token);
-      }
-
-      // 5. Listen for token refreshes in the background
-      _fcm.onTokenRefresh.listen((newToken) {
-        _saveTokenToDatabase(newToken);
-      });
-
-      // 6. Initialize listeners for incoming messages and taps
-      _setupMessageHandlers();
-      
-    } else {
-      print('User declined or has not accepted permission');
+      // 4. Setup Handlers
+      _setupHandlers();
     }
   }
 
-  // --- METHOD TO HANDLE THE ON/OFF TOGGLE ---
-  Future<void> toggleNotifications(bool turnOn) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('notifications_enabled', turnOn);
+  Future<void> updateToken() async {
+    final token = await _fcm.getToken();
+    if (token == null) return;
 
-    if (turnOn) {
-      // User turned them ON: re-initialize and fetch a new token
-      print('✅ Notifications turned ON. Initializing...');
-      await initNotifications();
-    } else {
-      // User turned them OFF: Delete the token from Firebase and Supabase
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId != null) {
-        await _fcm.deleteToken(); 
-        await Supabase.instance.client
-            .from('profiles')
-            .update({'fcm_token': null}) 
-            .eq('id', userId);
-        print('❌ Notifications turned OFF and token deleted.');
-      }
-    }
-  }
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
 
-  // --- LOGIC TO SAVE TOKEN ---
-  Future<void> _saveTokenToDatabase(String token) async {
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      
-      if (userId == null) {
-        print("User not logged in, cannot save FCM token yet.");
-        return;
-      }
-
-      // Save to Supabase
+      // Save to Supabase (for system-wide push engine)
       await Supabase.instance.client
           .from('profiles')
           .update({'fcm_token': token})
           .eq('id', userId);
-          
-      print("✅ FCM Token saved to Supabase successfully!");
 
-      // Also register with Stream Chat if connected
-      final streamService = StreamService.instance;
-      if (streamService.client.state.currentUser != null) {
-        await streamService.client.addDevice(token, PushProvider.firebase);
-        print("✅ FCM Token registered with Stream Chat successfully!");
+      // Register with Stream Chat (for real-time message push)
+      final streamClient = StreamService.instance.client;
+      if (streamClient.state.currentUser != null) {
+        await streamClient.addDevice(token, PushProvider.firebase);
       }
-
+      
+      print("✅ FCM Token synchronized across all services.");
     } catch (e) {
-      print("❌ Error saving FCM token: $e");
+      print("⚠️ Error syncing FCM token: $e");
     }
   }
 
-  // --- HANDLING MESSAGES & TAPS ---
-  void _setupMessageHandlers() {
+  void _setupHandlers() {
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
+    // Foreground Listeners
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print("🔔 FOREGROUND Message Received!");
-      if (message.notification != null) {
-        
-        // Show an in-app Snackbar!
-        scaffoldMessengerKey.currentState?.showSnackBar(
-          SnackBar(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  message.notification?.title ?? "New Notification", 
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
-                ),
-                Text(message.notification?.body ?? ""),
-              ],
-            ),
-            backgroundColor: kRose, 
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            margin: const EdgeInsets.all(20),
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'View',
-              textColor: Colors.white,
-              onPressed: () {
-                // Navigation logic will go here
-              },
-            ),
-          )
-        );
-      }
+       _showInAppNotification(message);
     });
 
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      _handleNotificationTap(message);
-    });
-
-    FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
-      if (message != null) {
-        _handleNotificationTap(message);
-      }
-    });
+    // Interaction Listeners
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleTap);
+    _fcm.getInitialMessage().then((msg) { if (msg != null) _handleTap(msg); });
   }
 
-  void _handleNotificationTap(RemoteMessage message) {
-    final data = message.data;
-    if (data['type'] == 'new_match') {
-      print("Navigate to Match Screen or Chat for user: ${data['matchId']}");
-    } else if (data['type'] == 'new_like') {
-      print("Navigate to Likes Screen to see user: ${data['likerId']}");
+  void _showInAppNotification(RemoteMessage message) {
+    if (message.notification == null) return;
+
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    NotificationOverlay.show(
+      context,
+      title: message.notification!.title ?? "New Notification",
+      body: message.notification!.body ?? "",
+      type: message.data['type'] as String?,
+      onTap: () => _handleTap(message),
+    );
+  }
+
+  void _handleTap(RemoteMessage message) {
+    final type = message.data['type'];
+    final payload = message.data;
+
+    print("👆 Notification tapped: $type");
+
+    switch (type) {
+      case 'new_match':
+        // Navigate to match/chat
+        break;
+      case 'new_like':
+        // Navigate to likes
+        break;
+      case 'promo':
+        // Navigate to specific URL or page
+        break;
+      default:
+        // Default behavior (open app)
+    }
+  }
+
+  Future<void> clearAll() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId != null) {
+      await _fcm.deleteToken();
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'fcm_token': null})
+          .eq('id', userId);
+    }
+  }
+
+  Future<void> toggleNotifications(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notifications_enabled', value);
+    if (value) {
+      await initNotifications(force: true);
+    } else {
+      await clearAll();
     }
   }
 }
