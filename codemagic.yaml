@@ -17,9 +17,9 @@ workflows:
           flutter pub get
       - name: Set up keystore for Android code signing
         script: |
-          echo "$CM_KEYSTORE" | base64 --decode > /tmp/keystore.keystore
-          # Generate key.properties to inject into the Android build
-          cat >> "$CM_BUILD_DIR/android/key.properties" <<EOF
+          echo "$CM_KEYSTORE" | tr -d '\n\r ' | base64 --decode > /tmp/keystore.keystore
+          # Create key.properties to inject into the Android build
+          cat > "$CM_BUILD_DIR/android/key.properties" <<EOF
           storePassword=$CM_KEYSTORE_PASSWORD
           keyPassword=$CM_KEY_PASSWORD
           keyAlias=$CM_KEY_ALIAS
