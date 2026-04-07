@@ -27,6 +27,7 @@ workflows:
         # Provide your base64-encoded Service Account JSON as an environment variable in Codemagic
         credentials: $GCP_SERVICE_ACCOUNT
         track: internal # Can be changed to: alpha, beta, production
+        submit_as_draft: true
       # email:
       #   recipients:
       #     - your_email@example.com
