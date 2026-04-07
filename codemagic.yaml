@@ -8,7 +8,7 @@ workflows:
         # Create these groups in the Codemagic UI under Environment variables -> Variable groups.
         - google_play_credentials # Defines $GCP_SERVICE_ACCOUNT
         - android_signing         # Defines $CM_KEYSTORE, $CM_KEYSTORE_PASSWORD, $CM_KEY_PASSWORD, $CM_KEY_ALIAS
-      flutter: default
+      flutter: stable
       xcode: latest
       cocoapods: default
     scripts:
