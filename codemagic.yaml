@@ -1,0 +1,52 @@
+workflows:
+  flutter-android-ios-build:
+    name: Flutter Android & iOS Build
+    instance_type: mac_mini_m1
+    max_build_duration: 120
+    environment:
+      groups:
+        # Create these groups in the Codemagic UI under Environment variables -> Variable groups.
+        - google_play_credentials # Defines $GCP_SERVICE_ACCOUNT
+        - android_signing         # Defines $CM_KEYSTORE, $CM_KEYSTORE_PASSWORD, $CM_KEY_PASSWORD, $CM_KEY_ALIAS
+      flutter: default
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter packages pub get
+      - name: Set up keystore for Android code signing
+        script: |
+          echo $CM_KEYSTORE | base64 --decode > /tmp/keystore.keystore
+          # Generate key.properties to inject into the Android build
+          cat >> "$CM_BUILD_DIR/android/key.properties" <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=/tmp/keystore.keystore
+          EOF
+      - name: Build Android App Bundle
+        script: |
+          # Use Codemagic's $BUILD_NUMBER to automatically increment version codes
+          flutter build appbundle --release --build-number=$BUILD_NUMBER
+      - name: Install iOS Pods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+      - name: Build iOS app (without code signing)
+        script: |
+          flutter build ios --release --no-codesign
+    artifacts:
+      - build/**/outputs/**/*.apk
+      - build/**/outputs/**/*.aab
+      - build/ios/iphoneos/*.app
+    publishing:
+      google_play:
+        # Provide your base64-encoded Service Account JSON as an environment variable in Codemagic
+        credentials: $GCP_SERVICE_ACCOUNT
+        track: internal # Can be changed to: alpha, beta, production
+      # email:
+      #   recipients:
+      #     - your_email@example.com
+      #   notify:
+      #     success: true
+      #     failure: true
