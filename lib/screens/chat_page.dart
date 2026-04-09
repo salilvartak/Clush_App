@@ -16,6 +16,7 @@ import 'package:screen_protector/screen_protector.dart';
 import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart';
@@ -770,25 +771,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Crypto banner ────────────────────────────────────────────────────────
 
-  Widget _buildCryptoBanner() {
-    return Container(
-      width: double.infinity,
-      color: Colors.orange.shade50,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.lock_open_rounded, size: 15, color: Colors.orange),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(_cryptoError!,
-                style: GoogleFonts.figtree(fontSize: 12, color: Colors.orange.shade800)),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildConnectionBanner() {
     return Container(
@@ -815,7 +798,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(key: ValueKey('loading'), child: HeartLoader());
+      return Center(key: const ValueKey('loading'), child: HeartLoader());
     }
 
     if (_messages.isEmpty || (_messages.length == 1 && _messages[0]['type'] == '_divider')) {
@@ -992,7 +975,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       future: _imageFutures[storagePath],
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const SizedBox(
+          return SizedBox(
               width: 220,
               height: 160,
               child: Center(child: HeartLoader(size: 28)));
@@ -1227,7 +1210,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             IconButton(
               icon: _isUploadingMedia
-                  ? const SizedBox(width: 22, height: 22, child: HeartLoader(size: 22))
+                  ? SizedBox(width: 22, height: 22, child: HeartLoader(size: 22))
                   : const Icon(Icons.add_photo_alternate_outlined, color: kInkMuted),
               onPressed: _isUploadingMedia ? null : _showImageSourceSheet,
             ),

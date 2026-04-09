@@ -63,6 +63,32 @@ class MatchingService {
           .map((e) => e['target_user_id'].toString())
           .toSet();
 
+      // Fetch my profile to get blocked_phones, and lookup IDs corresponding to these phones
+      final myProfileResponse = await _client
+          .from('profiles')
+          .select('blocked_phones')
+          .eq('id', myId)
+          .maybeSingle();
+
+      if (myProfileResponse != null) {
+        final blockedPhones = myProfileResponse['blocked_phones'] as List<dynamic>? ?? [];
+        if (blockedPhones.isNotEmpty) {
+           try {
+             final blockedIdsResponse = await _client
+                .rpc('get_blocked_ids_by_phone', params: {
+                  'phones': blockedPhones.cast<String>()
+                });
+             if (blockedIdsResponse != null) {
+               for (var e in blockedIdsResponse as List) {
+                 interactedIds.add(e['id'].toString());
+               }
+             }
+           } catch (e) {
+             print('Error fetching blocked phone ids: $e');
+           }
+        }
+      }
+
       // 3. Filter the list: Only show people who liked me AND whom I haven't swiped on yet
       final List<String> userIds = likesData
           .map((e) => e['user_id'].toString())
@@ -201,5 +227,108 @@ class MatchingService {
     List<String> ids = [id1, id2];
     ids.sort();
     return "${ids[0]}_${ids[1]}";
+  }
+
+  // --- DAILY LIKE LIMIT & SAVED PROFILES ---
+
+  Future<int> getLikesRemaining(bool isPremium) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return 0;
+
+    final limit = isPremium ? 20 : 6;
+    const hours = 24;
+    final timeLimit = DateTime.now().toUtc().subtract(const Duration(hours: hours)).toIso8601String();
+
+    try {
+      final response = await _client
+          .from('likes')
+          .select('id')
+          .eq('user_id', myId)
+          .gte('created_at', timeLimit)
+          .or('type.eq.like,type.eq.super_like')
+          .count(CountOption.exact);
+          
+      final likesUsed = response.count;
+      return (limit - likesUsed).clamp(0, limit);
+    } catch (e) {
+      print('Error getting likes remaining: $e');
+      return isPremium ? 20 : 6; // fallback
+    }
+  }
+
+  Future<bool> saveProfileForLater(String targetUserId) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return false;
+
+    try {
+      await _client.from('saved_profiles').insert({
+        'user_id': myId,
+        'saved_user_id': targetUserId,
+      });
+      return true;
+    } catch (e) {
+      print('Error saving profile: $e');
+      return false;
+    }
+  }
+
+  Future<bool> unsaveProfile(String targetUserId) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return false;
+
+    try {
+      await _client
+          .from('saved_profiles')
+          .delete()
+          .eq('user_id', myId)
+          .eq('saved_user_id', targetUserId);
+      return true;
+    } catch (e) {
+      print('Error unsaving profile: $e');
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchSavedProfiles() async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return [];
+
+    try {
+      final data = await _client
+          .from('saved_profiles')
+          .select('saved_user_id')
+          .eq('user_id', myId)
+          .order('created_at', ascending: false);
+
+      final savedUserIds = (data as List).map((e) => e['saved_user_id'].toString()).toList();
+      if (savedUserIds.isEmpty) return [];
+
+      final profilesData = await _client
+          .from('profile_discovery')
+          .select()
+          .filter('id', 'in', savedUserIds);
+
+      // filter out ones we matched/liked since saving
+      final interactedData = await _client
+          .from('likes')
+          .select('target_user_id')
+          .eq('user_id', myId);
+      final interactedIds = (interactedData as List).map((e) => e['target_user_id'].toString()).toSet();
+
+      final Map<String, dynamic> profilesMap = {
+        for (var p in profilesData) p['id'] as String: p
+      };
+      
+      final List<Map<String, dynamic>> orderedResult = [];
+      for (var id in savedUserIds) {
+        if (profilesMap.containsKey(id) && !interactedIds.contains(id)) {
+           orderedResult.add(profilesMap[id]);
+        }
+      }
+      return orderedResult;
+    } catch (e) {
+      print('Error fetching saved profiles: $e');
+      return [];
+    }
   }
 }

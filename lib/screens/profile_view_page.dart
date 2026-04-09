@@ -137,8 +137,9 @@ class ProfileViewPage extends StatelessWidget {
     }
 
     // Essentials card
+    final customMessage = profile['custom_message'] as String?;
     if (allEssentials.values.any((v) => v != null && v.isNotEmpty)) {
-      contentList.add(_buildUnifiedEssentialsCard(allEssentials));
+      contentList.add(_buildUnifiedEssentialsCard(allEssentials, customMessage));
     }
 
     // Interests/Hobbies
@@ -278,8 +279,8 @@ class ProfileViewPage extends StatelessWidget {
     );
   }
 
-  Widget _buildUnifiedEssentialsCard(Map<String, String?> allData) {
-    final verticalKeys = ['Religion', 'Location', 'Ethnicity', 'Star Sign'];
+  Widget _buildUnifiedEssentialsCard(Map<String, String?> allData, String? customMessage) {
+    final verticalKeys = ['Religion', 'Looking For', 'Ethnicity', 'Star Sign'];
     final Map<String, String> verticalData = {};
     final Map<String, String> horizontalData = {};
 
@@ -386,23 +387,33 @@ class ProfileViewPage extends StatelessWidget {
                               letterSpacing: 0.5,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              entry.value,
-                              textAlign: TextAlign.end,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.figtree(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: kInk,
-                              ),
+                          Text(
+                            entry.value,
+                            style: GoogleFonts.figtree(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: kInk,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    if (entry.key == 'Looking For' && customMessage != null && customMessage.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(52, 0, 20, 14),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            customMessage,
+                            style: GoogleFonts.figtree(
+                              fontSize: 14,
+                              height: 1.4,
+                              color: kInk.withOpacity(0.8),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ),
                     if (entry.key != verticalData.keys.last)
                       Divider(height: 1, thickness: 1, color: kBone),
                   ],
@@ -413,6 +424,8 @@ class ProfileViewPage extends StatelessWidget {
       ),
     );
   }
+
+
 
   Widget _buildPhotoCard(String url, {bool isFirst = false}) {
     return Container(

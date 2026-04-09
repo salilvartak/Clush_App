@@ -32,6 +32,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late TextEditingController _nameController;
   late TextEditingController _jobController;
   late TextEditingController _schoolController;
+  late TextEditingController _customMessageController;
 
   List<dynamic> _photos = List.filled(6, null);
 
@@ -80,6 +81,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _nameController.dispose();
     _jobController.dispose();
     _schoolController.dispose();
+    _customMessageController.dispose();
     super.dispose();
   }
 
@@ -87,6 +89,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final data = widget.currentData;
     _nameController = TextEditingController(text: data['full_name']);
     _jobController  = TextEditingController(text: data['job_title']);
+    _customMessageController = TextEditingController(text: data['custom_message'] ?? '');
 
     String fullEdu = data['education'] ?? '';
     if (fullEdu.contains(' - ')) {
@@ -195,6 +198,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'kids': _kids,
         'pets': _pets,
         'intent': _intent,
+        'custom_message': _customMessageController.text.trim().isEmpty ? null : _customMessageController.text.trim(),
         'languages': _languages.join(', '),
         'interests': _interests,
         'foods': _foods,
@@ -317,6 +321,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 const SizedBox(height: 10),
                 _buildCard([
                   _buildSelectorRow("Looking For", _intent,   Icons.search_rounded,          () => _showChipModal("Intent", intentOptionsStrings, _intent, (v) => setState(() => _intent = v))),
+                  _buildBoneDivider(),
+                  _buildCustomMessageRow(),
                   _buildBoneDivider(),
                   _buildSelectorRow("Kids",        _kids,     Icons.child_care_outlined,     () => _showChipModal("Kids", kidsOptions, _kids, (v) => setState(() => _kids = v))),
                   _buildBoneDivider(),
@@ -724,6 +730,54 @@ class _EditProfilePageState extends State<EditProfilePage> {
             Icon(Icons.chevron_right_rounded, size: 18, color: kBone),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCustomMessageRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.chat_bubble_outline_rounded, size: 18, color: kRose),
+              const SizedBox(width: 12),
+              Text(
+                "Personal Message",
+                style: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: kInkMuted, fontSize: 14),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _customMessageController,
+            maxLines: 3,
+            maxLength: 200,
+            style: GoogleFonts.figtree(fontSize: 14, color: kInk),
+            decoration: InputDecoration(
+              hintText: "Write a short intro about yourself...",
+              hintStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 13),
+              counterStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 11),
+              filled: true,
+              fillColor: kCream,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: kBone, width: 1),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: kBone, width: 1),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: kRose, width: 1.5),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+          ),
+        ],
       ),
     );
   }

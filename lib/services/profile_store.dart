@@ -35,6 +35,7 @@ class ProfileStore {
 
   // Interaction Data
   String? intent;
+  String? customMessage;
   List<String> interests = [];
   List<String> foods = [];
   List<String> places = [];
@@ -61,6 +62,7 @@ class ProfileStore {
     weed = null;
     location = null;
     intent = null;
+    customMessage = null;
     interests = [];
     foods = [];
     places = [];

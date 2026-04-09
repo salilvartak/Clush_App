@@ -53,6 +53,9 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   String? _filterSmoke;
   String? _filterWeed;
 
+  int _likesRemaining = 6;
+  bool _isActionLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -99,6 +102,17 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       }
 
       try {
+        final savedResponse = await Supabase.instance.client
+            .from('saved_profiles')
+            .select('saved_user_id')
+            .eq('user_id', myId);
+        final List<String> savedIds = (savedResponse as List).map((e) => e['saved_user_id'].toString()).toList();
+        ignoreIds.addAll(savedIds);
+      } catch (e) {
+        print("Saved profiles check failed: $e");
+      }
+
+      try {
         final blocksResponse = await Supabase.instance.client
             .from('blocks')
             .select('blocker_id, blocked_id')
@@ -117,7 +131,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
-          .select('gender, is_premium, location, intent, photo_urls')
+          .select('gender, is_premium, location, intent, photo_urls, blocked_phones')
           .eq('id', myId)
           .maybeSingle();
 
@@ -133,22 +147,46 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         return;
       }
 
+      // Fetch IDs for pre-blocked phone numbers
+      final blockedPhones = myProfileResponse['blocked_phones'] as List<dynamic>? ?? [];
+      if (blockedPhones.isNotEmpty) {
+        try {
+          final blockedIdsResponse = await Supabase.instance.client
+              .rpc('get_blocked_ids_by_phone', params: {
+                'phones': blockedPhones.cast<String>()
+              });
+              
+          if (blockedIdsResponse != null) {
+            final List<String> fetchedIds = (blockedIdsResponse as List)
+                .map((e) => e['id'].toString())
+                .toList();
+            ignoreIds.addAll(fetchedIds);
+          }
+        } catch (e) {
+          debugPrint("Blocked phone IDs check failed: $e");
+        }
+      }
+
       final myLocationStr = myProfileResponse['location'] as String?;
       final Map<String, double>? myCoords = _parseCoordinates(myLocationStr);
 
       final myGender = myProfileResponse['gender'] as String?;
       final myIntent = myProfileResponse['intent'] as String?;
 
+      final premiumVal = myProfileResponse['is_premium'];
+      bool parsedPremium = false;
+      if (premiumVal is bool) {
+        parsedPremium = premiumVal;
+      } else if (premiumVal is String) {
+        parsedPremium = premiumVal.toLowerCase() == 'true';
+      }
+      
+      final currentLikes = await _matchingService.getLikesRemaining(parsedPremium);
+
       if (mounted) {
         setState(() {
-          final premiumVal = myProfileResponse['is_premium'];
-          if (premiumVal is bool) {
-            _isPremium = premiumVal;
-          } else if (premiumVal is String) {
-            _isPremium = premiumVal.toLowerCase() == 'true';
-          } else {
-            _isPremium = false;
-          }
+          _isPremium = parsedPremium;
+          _likesRemaining = currentLikes;
           final photos = myProfileResponse['photo_urls'];
           if (photos is List && photos.isNotEmpty) {
             _myPhotoUrl = photos[0] as String?;
@@ -294,10 +332,16 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   void _onSwipe(String targetUserId, String swipeType) async {
     if (_profiles.isEmpty) return;
 
+    if (swipeType == 'like' && _likesRemaining <= 0) {
+      _showThemedToast('Out of likes! Save them for later or wait until they replenish.', isError: true);
+      return;
+    }
+
     final droppedProfile = _profiles.first;
 
     setState(() {
       _lastSwipeDirection = swipeType;
+      if (swipeType == 'like') _likesRemaining--;
       if (_profiles.isNotEmpty) {
         _profiles.removeAt(0);
       }
@@ -508,12 +552,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         final loc = profile['location'] as String?; 
         if (loc == null) return null; 
         final idx = loc.indexOf('('); 
-        final cityPart = idx != -1 ? loc.substring(0, idx).trim().split(',').take(2).join(',').trim() : loc;
-        final distance = profile['calculated_distance'] as double?;
-        if (distance != null) {
-          return "$cityPart (${distance.toStringAsFixed(1)} km away)";
-        }
-        return cityPart;
+        return idx != -1 ? loc.substring(0, idx).trim().split(',').take(2).join(',').trim() : loc;
       })(),
       'Gender': profile['gender'],
       'Orientation': profile['sexual_orientation'],
@@ -578,6 +617,43 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                           child: const Icon(Icons.verified_rounded, color: kRose, size: 22), // Increased icon size
                         ),
                       ],
+                      if (_likesRemaining <= 0) ...[
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () async {
+                             if (_isActionLoading) return;
+                             setState(() => _isActionLoading = true);
+                             try {
+                               final succ = await _matchingService.saveProfileForLater(profile['id'].toString());
+                               setState(() => _isActionLoading = false);
+                               if (succ && mounted) {
+                                 _showThemedToast('Profile saved for later!', isError: false);
+                                 setState(() { 
+                                    if (_profiles.isNotEmpty) _profiles.removeAt(0);
+                                 });
+                               } else if (mounted) {
+                                  _showThemedToast('Already saved or failed to save.', isError: true);
+                               }
+                             } catch (e) {
+                               setState(() => _isActionLoading = false);
+                               if (mounted) _showThemedToast('Error saving profile.', isError: true);
+                             }
+                          },
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: kGold.withOpacity(0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                               _isActionLoading ? Icons.hourglass_empty_rounded : Icons.bookmark_add_rounded, 
+                               color: kGold, 
+                               size: 20
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -607,8 +683,9 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     }
 
     // Essentials card
+    final customMessage = profile['custom_message'] as String?;
     if (allEssentials.values.any((v) => v != null && v.isNotEmpty)) {
-      contentList.add(_buildUnifiedEssentialsCard(allEssentials));
+      contentList.add(_buildUnifiedEssentialsCard(allEssentials, customMessage));
     }
 
     // Interests/Hobbies
@@ -787,11 +864,11 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
                   children: [
-                    _buildFilterChip('Age', () => _showFiltersModal()),
-                    _buildFilterChip('Intention', () => _showFiltersModal()),
-                    _buildFilterChip('Religion', () => _showFiltersModal()),
-                    _buildFilterChip('Interested In', () => _showFiltersModal()),
-                    _buildFilterChip('Ethnicity', () => _showFiltersModal()),
+                    _buildFilterChip('Age', () => _showFiltersModal(focusedFilter: 'Age')),
+                    _buildFilterChip('Intention', () => _showFiltersModal(focusedFilter: 'Intention')),
+                    _buildFilterChip('Religion', () => _showFiltersModal(focusedFilter: 'Religion')),
+                    _buildFilterChip('Interested In', () => _showFiltersModal(focusedFilter: 'Interested In')),
+                    _buildFilterChip('Ethnicity', () => _showFiltersModal(focusedFilter: 'Ethnicity')),
                   ],
                 ),
               ),
@@ -1045,10 +1122,10 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
           // LIKE
           Material(
-            color: kRose,
+            color: _likesRemaining > 0 ? kRose : Colors.grey.shade300,
             shape: const CircleBorder(),
-            elevation: 8,
-            shadowColor: kRose.withOpacity(0.4),
+            elevation: _likesRemaining > 0 ? 8 : 2,
+            shadowColor: _likesRemaining > 0 ? kRose.withOpacity(0.4) : Colors.transparent,
             child: InkWell(
               onTap: () => _onSwipe(currentProfileId, 'like'),
               customBorder: const CircleBorder(),
@@ -1056,7 +1133,11 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                 width: 72,
                 height: 72,
                 alignment: Alignment.center,
-                child: const Icon(Icons.favorite_rounded, color: Colors.white, size: 36),
+                child: Icon(
+                  _likesRemaining > 0 ? Icons.favorite_rounded : Icons.lock_rounded, 
+                  color: _likesRemaining > 0 ? Colors.white : Colors.grey.shade500, 
+                  size: 36
+                ),
               ),
             ),
           ),
@@ -1100,8 +1181,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     );
   }
 
-  Widget _buildUnifiedEssentialsCard(Map<String, String?> allData) {
-    final verticalKeys = ['Religion', 'Location', 'Ethnicity', 'Star Sign'];
+  Widget _buildUnifiedEssentialsCard(Map<String, String?> allData, String? customMessage) {
+    final verticalKeys = ['Religion', 'Looking For', 'Ethnicity', 'Star Sign'];
     final Map<String, String> verticalData = {};
     final Map<String, String> horizontalData = {};
 
@@ -1217,6 +1298,22 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                         ],
                       ),
                     ),
+                    if (entry.key == 'Looking For' && customMessage != null && customMessage.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(52, 0, 20, 14),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            customMessage,
+                            style: GoogleFonts.figtree(
+                              fontSize: 14,
+                              height: 1.4,
+                              color: kInk.withOpacity(0.8),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ),
                     if (entry.key != verticalData.keys.last)
                       Divider(height: 1, thickness: 1, color: kBone),
                   ],
@@ -1227,6 +1324,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       ),
     );
   }
+
+
 
   Widget _buildPhotoCard(String url, {bool isFirst = false}) {
     return Container(
@@ -1319,12 +1418,13 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     );
   }
 
-  void _showFiltersModal() {
+  void _showFiltersModal({String? focusedFilter}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _FilterBottomSheet(
+        focusedFilter: focusedFilter,
         initialAge: _filterAge,
         initialDistance: _filterDistance,
         initialIntent: _filterIntent,
@@ -1419,6 +1519,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 // ─── FILTER BOTTOM SHEET ──────────────────────────────────────────────────────
 
 class _FilterBottomSheet extends StatefulWidget {
+  final String? focusedFilter;
   final RangeValues initialAge;
   final double initialDistance;
   final String initialIntent;
@@ -1438,6 +1539,7 @@ class _FilterBottomSheet extends StatefulWidget {
   final Function(RangeValues, double, String, String?, String?, RangeValues, String?, String?, String?, String?, String?, String?, String?, String?, String?) onApply;
 
   const _FilterBottomSheet({
+    this.focusedFilter,
     required this.initialAge,
     required this.initialDistance,
     required this.initialIntent,
@@ -1582,13 +1684,14 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.87,
+      height: widget.focusedFilter != null ? null : MediaQuery.of(context).size.height * 0.87,
       decoration: BoxDecoration(
         color: kCream,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         border: Border(top: BorderSide(color: kBone, width: 0.5)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Handle
           Center(
@@ -1609,96 +1712,113 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
             child: Row(
               children: [
                 Text(
-                  "Discover",
+                  widget.focusedFilter ?? "Discover",
                   style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 32,
                     color: kInk,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  "Filters",
-                  style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 32,
-                    color: kRose,
+                if (widget.focusedFilter == null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    "Filters",
+                    style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 32,
+                      color: kRose,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
 
           Divider(height: 1, color: kBone),
 
-          Expanded(
+          Flexible(
+            fit: widget.focusedFilter != null ? FlexFit.loose : FlexFit.tight,
             child: ListView(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-              physics: const BouncingScrollPhysics(),
+              physics: widget.focusedFilter != null ? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
+              shrinkWrap: widget.focusedFilter != null,
               children: [
-                _buildSectionLabel("FREE FILTERS"),
-                const SizedBox(height: 16),
+                if (widget.focusedFilter == null) ...[
+                  _buildSectionLabel("FREE FILTERS"),
+                  const SizedBox(height: 16),
+                ],
 
-                // Intent
-                Text("Interested In", style: GoogleFonts.figtree(fontWeight: FontWeight.w600, fontSize: 15, color: kInk)),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: _intents.map((i) {
-                    final selected = _intent == i;
-                    return GestureDetector(
-                      onTap: () => setState(() => _intent = i),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: selected ? kRose : kParchment,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: selected ? kRose : kBone, width: 1),
+                // Intent / Interested In
+                if (widget.focusedFilter == null || widget.focusedFilter == 'Interested In' || widget.focusedFilter == 'Intention') ...[
+                  Text("Interested In", style: GoogleFonts.figtree(fontWeight: FontWeight.w600, fontSize: 15, color: kInk)),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: _intents.map((i) {
+                      final selected = _intent == i;
+                      return GestureDetector(
+                        onTap: () => setState(() => _intent = i),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: selected ? kRose : kParchment,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: selected ? kRose : kBone, width: 1),
+                          ),
+                          child: Text(i, style: GoogleFonts.figtree(color: selected ? Colors.white : kInk, fontWeight: FontWeight.w600, fontSize: 13)),
                         ),
-                        child: Text(i, style: GoogleFonts.figtree(color: selected ? Colors.white : kInk, fontWeight: FontWeight.w600, fontSize: 13)),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 28),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 28),
+                ],
 
                 // Age slider
-                _buildSliderLabel("Age Range", "${_age.start.round()} – ${_age.end.round()}"),
-                SliderTheme(
-                  data: _sliderTheme(context),
-                  child: RangeSlider(values: _age, min: 18, max: 100, onChanged: (val) => setState(() => _age = val)),
-                ),
-                const SizedBox(height: 16),
+                if (widget.focusedFilter == null || widget.focusedFilter == 'Age') ...[
+                  _buildSliderLabel("Age Range", "${_age.start.round()} – ${_age.end.round()}"),
+                  SliderTheme(
+                    data: _sliderTheme(context),
+                    child: RangeSlider(values: _age, min: 18, max: 100, onChanged: (val) => setState(() => _age = val)),
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
                 // Distance slider
-                _buildSliderLabel("Max Distance", "${_dist.round()} km"),
-                SliderTheme(
-                  data: _sliderTheme(context),
-                  child: Slider(value: _dist, min: 5, max: 100, onChanged: (val) => setState(() => _dist = val)),
-                ),
-                const SizedBox(height: 24),
+                if (widget.focusedFilter == null) ...[
+                  _buildSliderLabel("Max Distance", "${_dist.round()} km"),
+                  SliderTheme(
+                    data: _sliderTheme(context),
+                    child: Slider(value: _dist, min: 5, max: 100, onChanged: (val) => setState(() => _dist = val)),
+                  ),
+                  const SizedBox(height: 24),
+                ],
 
                 // Religion (free)
-                _buildFreeDropdown("Religion", _religions, _rel, (v) => setState(() => _rel = v)),
-                const SizedBox(height: 20),
+                if (widget.focusedFilter == null || widget.focusedFilter == 'Religion') ...[
+                  _buildFreeDropdown("Religion", _religions, _rel, (v) => setState(() => _rel = v)),
+                  const SizedBox(height: 20),
+                ],
 
                 // Ethnicity (free)
-                _buildFreeDropdown("Ethnicity", _ethnicities, _eth, (v) => setState(() => _eth = v)),
-                const SizedBox(height: 32),
+                if (widget.focusedFilter == null || widget.focusedFilter == 'Ethnicity') ...[
+                  _buildFreeDropdown("Ethnicity", _ethnicities, _eth, (v) => setState(() => _eth = v)),
+                  const SizedBox(height: 32),
+                ],
 
                 // ── PREMIUM SECTION ──
-                Row(
-                  children: [
-                    _buildSectionLabel("CLUSH+ FILTERS"),
-                    const SizedBox(width: 8),
-                    if (!widget.isPremium)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: kGold.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: kGold.withOpacity(0.3)),
-                        ),
-                        child: Row(
+                if (widget.focusedFilter == null) ...[
+                  Row(
+                    children: [
+                      _buildSectionLabel("CLUSH+ FILTERS"),
+                      const SizedBox(width: 8),
+                      if (!widget.isPremium)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: kGold.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: kGold.withOpacity(0.3)),
+                          ),
+                          child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const Icon(Icons.star_rounded, size: 11, color: kGold),
@@ -1744,7 +1864,8 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                 _buildPremiumDropdown("Weed", _weedList, _weed, (v) => setState(() => _weed = v)),
                 const SizedBox(height: 48),
               ],
-            ),
+            ],
+          ),
           ),
 
           // Apply button

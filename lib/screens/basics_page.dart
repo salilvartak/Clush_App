@@ -15,6 +15,7 @@ import 'package:clush/services/content_moderator.dart';
 import 'package:clush/screens/success_screen.dart'; 
 import 'package:clush/screens/permission_request_page.dart';
 import 'package:clush/services/notification_service.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -56,6 +57,7 @@ class _BasicsPageState extends State<BasicsPage> {
   final TextEditingController jobController = TextEditingController();
   final TextEditingController schoolNameController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
+  final TextEditingController _customMessageController = TextEditingController();
 
   // Whether the user authenticated via phone (true) or email (false)
   bool _loggedInWithPhone = false;
@@ -93,6 +95,7 @@ class _BasicsPageState extends State<BasicsPage> {
 
   // --- State Variables (New Sections) ---
   String? selectedIntent;
+  String? customMessage;
   List<String> selectedInterests = [];
   List<String> selectedFoods = [];
   List<String> selectedPlaces = [];
@@ -224,6 +227,9 @@ class _BasicsPageState extends State<BasicsPage> {
     weedStatus = store.weed;
     location = store.location;
     selectedIntent = store.intent;
+    if (store.customMessage != null) {
+      _customMessageController.text = store.customMessage!;
+    }
     selectedInterests = List.from(store.interests);
     selectedFoods = List.from(store.foods);
     selectedPlaces = List.from(store.places);
@@ -313,7 +319,7 @@ class _BasicsPageState extends State<BasicsPage> {
       case 6: return location != null;
       case 7: return selectedEthnicity != null;
       case 8: return selectedHeight != null;
-      case 9: return selectedReligion != null;
+      case 9: return true; // Religion optional
       case 10:
         final eduError = ContentModerator.validatePromptText(schoolNameController.text);
         if (eduError != null) { _showNotification(eduError); return false; }
@@ -322,10 +328,10 @@ class _BasicsPageState extends State<BasicsPage> {
         final jobError = ContentModerator.validatePromptText(jobController.text);
         if (jobError != null) { _showNotification(jobError); return false; }
         return true;
-      case 12: return selectedLanguages.isNotEmpty;
+      case 12: return true; // Languages optional
       case 13: return true;
       case 14: return true;
-      case 15: return selectedStarSign != null;
+      case 15: return true; // Star sign optional
       case 16: return true;
       case 17: return true;
       case 18: return true;
@@ -411,6 +417,7 @@ class _BasicsPageState extends State<BasicsPage> {
     store.smoke = smokeStatus;
     store.weed = weedStatus;
     store.location = location;
+    store.customMessage = _customMessageController.text.trim().isEmpty ? null : _customMessageController.text.trim();
     
     // New Fields
     store.intent = selectedIntent;
@@ -459,6 +466,7 @@ class _BasicsPageState extends State<BasicsPage> {
         'weed': store.weed,
         'location': store.location,
         'intent': store.intent,
+        'custom_message': store.customMessage,
         'interests': store.interests,
         'foods': store.foods,
         'places': store.places,
@@ -714,7 +722,8 @@ class _BasicsPageState extends State<BasicsPage> {
 
   String _getDisplayLocation(String loc) {
     if (loc.contains("(")) {
-      return loc.split("(")[0].trim();
+      String address = loc.split("(")[0].trim();
+      return address.split(',').take(2).join(',').trim();
     }
     return loc;
   }
@@ -857,19 +866,21 @@ class _BasicsPageState extends State<BasicsPage> {
                     ),
                   ),
                   // Optional Skip Button for specific screens
-                  if ([9, 10, 12, 13, 15, 16, 17].contains(_currentQuestionIndex)) ...[
+                  if ([9, 10, 11, 12, 13, 14, 15, 16, 17, 18].contains(_currentQuestionIndex)) ...[
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: () {
-                        // Clear the selection for that specific optional step if they explicitly hit skip
                         setState(() {
-                             if (_currentQuestionIndex == 9) { selectedEducationLevel = null; schoolNameController.clear(); }
-                        else if (_currentQuestionIndex == 10) jobController.clear();
-                        else if (_currentQuestionIndex == 12) selectedPolitics = null;
-                        else if (_currentQuestionIndex == 13) selectedKids = null;
-                        else if (_currentQuestionIndex == 15) selectedPets = null;
-                        else if (_currentQuestionIndex == 16) selectedExercise = null;
-                        else if (_currentQuestionIndex == 17) { drinkStatus = null; smokeStatus = null; weedStatus = null; }
+                             if (_currentQuestionIndex == 9)  { selectedReligion = null; }
+                        else if (_currentQuestionIndex == 10) { selectedEducationLevel = null; schoolNameController.clear(); }
+                        else if (_currentQuestionIndex == 11) { jobController.clear(); }
+                        else if (_currentQuestionIndex == 12) { selectedLanguages.clear(); }
+                        else if (_currentQuestionIndex == 13) { selectedPolitics = null; }
+                        else if (_currentQuestionIndex == 14) { selectedKids = null; }
+                        else if (_currentQuestionIndex == 15) { selectedStarSign = null; }
+                        else if (_currentQuestionIndex == 16) { selectedPets = null; }
+                        else if (_currentQuestionIndex == 17) { selectedExercise = null; }
+                        else if (_currentQuestionIndex == 18) { drinkStatus = null; smokeStatus = null; weedStatus = null; }
                         });
                         // Skip validation and force next page
                         if (_currentQuestionIndex < _totalQuestionScreens - 1) {
@@ -1342,38 +1353,85 @@ class _BasicsPageState extends State<BasicsPage> {
   Widget _buildIntentStep() {
     return _buildStepContainer(
       title: "What are you looking for?",
-      child: ListView.separated(
-        itemCount: intentOptions.length,
-        separatorBuilder: (c, i) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final item = intentOptions[index];
-          final title = item['title']!;
-          final isSelected = selectedIntent == title;
-          return GestureDetector(
-            onTap: () => setState(() => selectedIntent = title),
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: isSelected ? kRose : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: isSelected ? kRose : Colors.transparent),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView.separated(
+              itemCount: intentOptions.length,
+              separatorBuilder: (c, i) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final item = intentOptions[index];
+                final title = item['title']!;
+                final isSelected = selectedIntent == title;
+                return GestureDetector(
+                  onTap: () => setState(() => selectedIntent = title),
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: isSelected ? kRose : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: isSelected ? kRose : Colors.transparent),
+                    ),
+                    child: Row(
                       children: [
-                        Text(title, style: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text(item['subtitle']!, style: GoogleFonts.figtree(color: isSelected ? Colors.white70 : kInkMuted)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title, style: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text(item['subtitle']!, style: GoogleFonts.figtree(color: isSelected ? Colors.white70 : kInkMuted)),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
-          );
-        },
+          ),
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Add a personal message",
+                  style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.bold, color: kBlack),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Write a short intro about yourself — optional.",
+                  style: GoogleFonts.figtree(fontSize: 14, color: kInkMuted),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _customMessageController,
+                  maxLines: 3,
+                  maxLength: 200,
+                  style: GoogleFonts.figtree(fontSize: 15, color: kBlack),
+                  decoration: InputDecoration(
+                    hintText: "e.g. I love hiking and deep conversations...",
+                    hintStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 14),
+                    filled: true,
+                    fillColor: Colors.white,
+                    counterStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 11),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(color: kBone),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(color: kBone),
+                    ),
+                  ),
+                  onChanged: (v) => setState(() => customMessage = v.trim().isEmpty ? null : v.trim()),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1719,6 +1777,11 @@ class _BasicsPageState extends State<BasicsPage> {
             "To find amazing people near you.",
             Icons.location_on_outlined,
             () async {
+              LocationPermission permission = await Geolocator.checkPermission();
+              if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+                await _fetchCurrentLocation();
+                return;
+              }
               final granted = await PermissionRequestPage.show(context, PermissionType.location);
               if (granted == true) {
                 await _fetchCurrentLocation();
@@ -1733,6 +1796,11 @@ class _BasicsPageState extends State<BasicsPage> {
             "To never miss a match or message.",
             Icons.notifications_none_outlined,
             () async {
+              final ph.PermissionStatus status = await ph.Permission.notification.status;
+              if (status.isGranted) {
+                await NotificationService().initNotifications(context: context, force: true);
+                return;
+              }
               final granted = await PermissionRequestPage.show(context, PermissionType.notifications);
               if (granted == true) {
                 await NotificationService().initNotifications(context: context, force: true);
