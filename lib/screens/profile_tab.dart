@@ -6,7 +6,6 @@ import 'package:flutter_animate/flutter_animate.dart'; // Animations
 import 'package:clush/screens/profile_view_page.dart'; 
 import 'package:clush/screens/settings_page.dart';
 import 'package:clush/screens/setting_sub_pages.dart';
-import 'dart:ui'; // For blur effects
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/l10n/app_localizations.dart';
 
@@ -128,7 +127,7 @@ class _ProfileTabState extends State<ProfileTab> {
                     ).animate().fade(duration: 600.ms, delay: 400.ms),
                   ),
                   const SizedBox(height: 32),
-                  _buildUpgradeSection(context),
+                  _buildUpgradeSection(context, profile),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -214,105 +213,285 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
 
-  Widget _buildUpgradeSection(BuildContext context) {
+  void _showPurchaseSheet(BuildContext context, _PurchaseItem item) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PurchaseSheet(item: item),
+    );
+  }
+
+  Widget _buildFeatureTilesRow(BuildContext context, Map<String, dynamic> profile) {
+    final superLikes = profile['super_likes_remaining'] as int? ?? 0;
+    final rewinds    = profile['rewinds_remaining']     as int? ?? 0;
+    final saves      = profile['profile_saves_remaining'] as int? ?? 0;
+
+    final items = [
+      _PurchaseItem(
+        label: 'Super Likes',
+        count: superLikes,
+        icon: Icons.star_rounded,
+        accentColor: const Color(0xFF5B8FF9),
+        packs: [
+          _Pack('1 Super Like',  '₹29'),
+          _Pack('3 Super Likes', '₹75'),
+          _Pack('10 Super Likes','₹149'),
+        ],
+      ),
+      _PurchaseItem(
+        label: 'Rewinds',
+        count: rewinds,
+        icon: Icons.replay_rounded,
+        accentColor: const Color(0xFFB97FD4),
+        packs: [
+          _Pack('Pack of 3',  '₹39'),
+          _Pack('Pack of 10', '₹89'),
+        ],
+      ),
+      _PurchaseItem(
+        label: 'Saves',
+        count: saves,
+        icon: Icons.bookmark_rounded,
+        accentColor: kRose,
+        packs: [
+          _Pack('Pack of 5',  '₹29'),
+          _Pack('Pack of 15', '₹59'),
+        ],
+      ),
+    ];
+
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final cardWidth = screenWidth - 40 - 30.0; // leaves ~30px peek of next card
+
+    return SizedBox(
+      height: 110,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        padding: EdgeInsets.zero,
+        physics: const BouncingScrollPhysics(),
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return Padding(
+            padding: EdgeInsets.only(right: i == items.length - 1 ? 0 : 12),
+            child: GestureDetector(
+              onTap: () => _showPurchaseSheet(context, item),
+              child: Container(
+                width: cardWidth,
+                decoration: BoxDecoration(
+                  color: kParchment,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: kBone, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(color: kInk.withValues(alpha: 0.07), blurRadius: 12, offset: const Offset(0, 4)),
+                  ],
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(
+                        color: item.accentColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(item.icon, color: item.accentColor, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '${item.count}',
+                          style: GoogleFonts.gabarito(
+                            color: kInk,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item.label,
+                          style: GoogleFonts.figtree(
+                            color: kInkMuted,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: item.accentColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'GET MORE',
+                        style: GoogleFonts.figtree(
+                          color: item.accentColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ).animate().fade(duration: 400.ms, delay: (300 + i * 80).ms).slideX(begin: 0.08, end: 0, curve: Curves.easeOutCubic),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildUpgradeSection(BuildContext context, Map<String, dynamic> profile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Hero banner ──────────────────────────────────────────────────────
-        GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsPage())),
-          child: Container(
-            width: double.infinity,
-            height: 200,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1A0010), Color(0xFF5C0030), kRose],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [BoxShadow(color: kRose.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 8))],
-            ),
-            child: Stack(
-              children: [
-                // Decorative circles
-                Positioned(top: -30, right: -30,
-                  child: Container(width: 140, height: 140,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.06)))),
-                Positioned(bottom: -40, left: -20,
-                  child: Container(width: 160, height: 160,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.04)))),
-                // Content
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Text("Clush", style: GoogleFonts.gabarito(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                            Text("+", style: GoogleFonts.gabarito(color: kGold, fontSize: 22, fontWeight: FontWeight.bold)),
-                          ]),
-                          const SizedBox(height: 6),
-                          Text("Get noticed sooner and\nmatch 3x faster",
-                              style: GoogleFonts.figtree(color: Colors.white.withValues(alpha: 0.9), fontSize: 15, height: 1.4, fontWeight: FontWeight.w500)),
-                        ],
-                      ),
-                      // Upgrade button
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
-                        child: Text("Upgrade", style: GoogleFonts.figtree(color: kRose, fontWeight: FontWeight.bold, fontSize: 15)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ).animate().fade(duration: 500.ms, delay: 500.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic),
-
+        // ── Feature tiles row ─────────────────────────────────────────────────
+        _buildFeatureTilesRow(context, profile),
         const SizedBox(height: 14),
 
-        // ── Feature tiles ─────────────────────────────────────────────────────
-        ...[
-          (Icons.back_hand_rounded, kRose, "High Five", "Stand out from the crowd"),
-        ].map((item) => Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsPage())),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: kParchment,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: kBone),
-                boxShadow: [BoxShadow(color: kInk.withValues(alpha: 0.05), blurRadius: 12, offset: const Offset(0, 4))],
-              ),
-              child: Row(children: [
-                Container(
-                  width: 46, height: 46,
-                  decoration: BoxDecoration(
-                    color: item.$2.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(item.$1, color: item.$2, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(item.$3, style: GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w700, color: kInk)),
-                  Text(item.$4, style: GoogleFonts.figtree(fontSize: 13, color: kInkMuted)),
-                ]),
-                const Spacer(),
-                Icon(Icons.chevron_right_rounded, color: kBone, size: 22),
-              ]),
-            ),
-          ).animate().fade(duration: 400.ms, delay: 600.ms).slideX(begin: 0.05, end: 0, curve: Curves.easeOutCubic),
-        )),
+        // ── Clush+ comparison card ────────────────────────────────────────────
+        _buildClushPlusCard(context),
       ],
+    );
+  }
+
+  Widget _buildClushPlusCard(BuildContext context) {
+    // (feature label, free value, clush+ value)
+    const rows = [
+      ('Right Swipes / 24 hrs', '6',       '20'),
+      ('"Likes You" Screen',    'Blurred', 'Fully Visible'),
+      ('Rewinds / week',        '2',       'Unlimited'),
+    ];
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SubscriptionsPage()),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: kParchment,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: kBone, width: 1.5),
+          boxShadow: [BoxShadow(color: kInk.withValues(alpha: 0.07), blurRadius: 16, offset: const Offset(0, 6))],
+        ),
+        child: Column(
+          children: [
+            // ── Header row ──────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 14, 12),
+              child: Row(
+                children: [
+                  Text('Clush', style: GoogleFonts.gabarito(color: kInk, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('+', style: GoogleFonts.gabarito(color: kGold, fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: kInk,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text('UPGRADE', style: GoogleFonts.figtree(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Divider ─────────────────────────────────────────────────────
+            Container(height: 1, color: kBone),
+
+            // ── Column headers ───────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('What\'s Included',
+                      style: GoogleFonts.figtree(color: kInk, fontSize: 13, fontWeight: FontWeight.w700)),
+                  ),
+                  SizedBox(
+                    width: 52,
+                    child: Center(child: Text('Free', style: GoogleFonts.figtree(color: kInkMuted, fontSize: 12, fontWeight: FontWeight.w600))),
+                  ),
+                  SizedBox(
+                    width: 64,
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Clush', style: GoogleFonts.gabarito(color: kInk, fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text('+', style: GoogleFonts.gabarito(color: kGold, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Feature rows ─────────────────────────────────────────────────
+            ...rows.asMap().entries.map((e) {
+              final isLast = e.key == rows.length - 1;
+              final label    = e.value.$1;
+              final freeVal  = e.value.$2;
+              final plusVal  = e.value.$3;
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(label,
+                            style: GoogleFonts.figtree(color: kInk, fontSize: 12, fontWeight: FontWeight.w500)),
+                        ),
+                        SizedBox(
+                          width: 52,
+                          child: Center(
+                            child: Text(freeVal,
+                              style: GoogleFonts.figtree(color: kInkMuted, fontSize: 11, fontWeight: FontWeight.w500),
+                              textAlign: TextAlign.center),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 64,
+                          child: Center(
+                            child: Text(plusVal,
+                              style: GoogleFonts.figtree(color: kRose, fontSize: 11, fontWeight: FontWeight.w700),
+                              textAlign: TextAlign.center),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!isLast) Container(height: 1, color: kBone, margin: const EdgeInsets.symmetric(horizontal: 16)),
+                ],
+              );
+            }),
+
+            // ── See all features ─────────────────────────────────────────────
+            Container(height: 1, color: kBone),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'See all Features',
+                style: GoogleFonts.figtree(color: kInkMuted, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ).animate().fade(duration: 500.ms, delay: 500.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic),
     );
   }
 
@@ -325,5 +504,223 @@ class _ProfileTabState extends State<ProfileTab> {
       age--;
     }
     return age;
+  }
+}
+
+// ── Data models ───────────────────────────────────────────────────────────────
+
+class _Pack {
+  final String label;
+  final String price;
+  const _Pack(this.label, this.price);
+}
+
+class _PurchaseItem {
+  final String label;
+  final int count;
+  final IconData icon;
+  final Color accentColor;
+  final List<_Pack> packs;
+
+  const _PurchaseItem({
+    required this.label,
+    required this.count,
+    required this.icon,
+    required this.accentColor,
+    required this.packs,
+  });
+}
+
+// ── Purchase bottom sheet ─────────────────────────────────────────────────────
+
+class _PurchaseSheet extends StatelessWidget {
+  final _PurchaseItem item;
+  const _PurchaseSheet({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+
+    return Container(
+      height: screenHeight * 0.82,
+      decoration: const BoxDecoration(
+        color: kTan,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          // Drag handle
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: kBone,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // Icon circle + title
+          Container(
+            width: 64, height: 64,
+            decoration: BoxDecoration(
+              color: item.accentColor.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(item.icon, color: item.accentColor, size: 30),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            item.label,
+            style: GoogleFonts.gabarito(
+              color: kInk,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Choose a pack to get started',
+            style: GoogleFonts.figtree(color: kInkMuted, fontSize: 14, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 24),
+
+          // Divider
+          Container(height: 1, color: kBone, margin: const EdgeInsets.symmetric(horizontal: 20)),
+          const SizedBox(height: 16),
+
+          // Pack list
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: item.packs.length,
+              separatorBuilder: (context, i) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final pack = item.packs[index];
+                final isPopular = item.packs.length > 2 && index == 1;
+                return _PackTile(
+                  pack: pack,
+                  accentColor: item.accentColor,
+                  isPopular: isPopular,
+                );
+              },
+            ),
+          ),
+
+          // Maybe later
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                decoration: BoxDecoration(
+                  color: kBone,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Center(
+                  child: Text(
+                    'Maybe Later',
+                    style: GoogleFonts.figtree(
+                      color: kInkMuted,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PackTile extends StatelessWidget {
+  final _Pack pack;
+  final Color accentColor;
+  final bool isPopular;
+
+  const _PackTile({
+    required this.pack,
+    required this.accentColor,
+    required this.isPopular,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {},
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: kParchment,
+          borderRadius: BorderRadius.circular(18),
+          border: isPopular
+              ? Border.all(color: accentColor.withValues(alpha: 0.5), width: 1.5)
+              : Border.all(color: kBone, width: 1.5),
+          boxShadow: [
+            BoxShadow(color: kInk.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, 3)),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isPopular) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: accentColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'MOST POPULAR',
+                        style: GoogleFonts.figtree(
+                          color: accentColor,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  Text(
+                    pack.label,
+                    style: GoogleFonts.figtree(
+                      color: kInk,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              decoration: BoxDecoration(
+                color: accentColor,
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Text(
+                pack.price,
+                style: GoogleFonts.figtree(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

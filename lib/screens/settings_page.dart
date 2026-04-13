@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:clush/services/notification_service.dart';
-import 'package:clush/main.dart';
 import 'package:clush/screens/setting_sub_pages.dart';
 import 'package:clush/screens/edit_profile_page.dart';
 
@@ -222,10 +221,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     _tile(icon: Icons.location_on_outlined, title: AppLocalizations.of(context)?.location ?? "Location",
                         subtitle: _userLocation != null ? _formatLocation(_userLocation) : (AppLocalizations.of(context)?.notSet ?? "Not set"),
                         onTap: () => _navTo(const CurrentLocationPage())),
-                    _divider(),
-                    _tile(icon: Icons.flight_takeoff_rounded, title: AppLocalizations.of(context)?.travelMode ?? "Travel Mode",
-                        trailing: _premiumBadge(),
-                        onTap: () => _navTo(const TravelModePage())),
                   ]),
                   _sectionLabel(AppLocalizations.of(context)?.privacyAndSafety ?? "Privacy & Safety"),
                   _card([

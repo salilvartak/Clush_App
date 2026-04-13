@@ -27,6 +27,7 @@ class NotificationService {
   factory NotificationService() => instance;
 
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  bool _handlersSet = false;
 
   Future<void> initNotifications({BuildContext? context, bool force = false}) async {
     // 1. Check user preference
@@ -67,7 +68,7 @@ class NotificationService {
       // Register with Stream Chat (for real-time message push)
       final streamClient = StreamService.instance.client;
       if (streamClient.state.currentUser != null) {
-        await streamClient.addDevice(token, PushProvider.firebase);
+        await streamClient.addDevice(token, PushProvider.firebase, pushProviderName: 'Clush');
       }
       
       print("✅ FCM Token synchronized across all services.");
@@ -77,6 +78,9 @@ class NotificationService {
   }
 
   void _setupHandlers() {
+    if (_handlersSet) return;
+    _handlersSet = true;
+
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     // Foreground Listeners

@@ -6,8 +6,15 @@ import 'package:clush/theme/colors.dart';
 
 class ProfileViewPage extends StatelessWidget {
   final Map<String, dynamic> profile;
+  final bool showBackButton;
+  final bool showScaffold;
 
-  const ProfileViewPage({super.key, required this.profile});
+  const ProfileViewPage({
+    super.key, 
+    required this.profile,
+    this.showBackButton = true,
+    this.showScaffold = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -31,25 +38,25 @@ class ProfileViewPage extends StatelessWidget {
     // Essentials Data
     final Map<String, String?> allEssentials = {
       'Age': age > 0 ? age.toString() : null,
-      'Looking For': intent.isNotEmpty ? intent : null,
-      'Height': profile['height'],
-      'Education': profile['education'],
+      'Location': (() { final loc = profile['location'] as String?; if (loc == null) return null; final idx = loc.indexOf('('); return idx != -1 ? loc.substring(0, idx).trim().split(',').take(2).join(',').trim() : loc; })(),
       'Job': profile['job_title'],
+      'Education': profile['education'],
+      'Height': profile['height'],
+      'Gender': profile['gender'],
+      'Pronouns': profile['pronouns'],
+      'Orientation': profile['sexual_orientation'],
+      'Looking For': intent.isNotEmpty ? intent : null,
       'Religion': profile['religion'],
-      'Politics': profile['political_views'],
+      'Ethnicity': profile['ethnicity'],
+      'Languages': profile['languages'],
       'Star Sign': profile['star_sign'],
-      'Kids': profile['kids'],
-      'Pets': profile['pets'],
+      'Exercise': profile['exercise'],
       'Drink': profile['drink'],
       'Smoke': profile['smoke'],
       'Weed': profile['weed'],
-      'Location': (() { final loc = profile['location'] as String?; if (loc == null) return null; final idx = loc.indexOf('('); return idx != -1 ? loc.substring(0, idx).trim().split(',').take(2).join(',').trim() : loc; })(),
-      'Gender': profile['gender'],
-      'Orientation': profile['sexual_orientation'],
-      'Pronouns': profile['pronouns'],
-      'Ethnicity': profile['ethnicity'],
-      'Languages': profile['languages'],
-      'Exercise': profile['exercise'],
+      'Kids': profile['kids'],
+      'Pets': profile['pets'],
+      'Politics': profile['political_views'],
     };
 
     // 2. Prepare Lists for the "Mix" section 
@@ -207,20 +214,19 @@ class ProfileViewPage extends StatelessWidget {
     // Bottom spacing
     contentList.add(const SizedBox(height: 80));
 
-    return Scaffold(
-      backgroundColor: kCream,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            SingleChildScrollView(
-              padding: const EdgeInsets.only(top: 64, bottom: 40), // Increased top padding from 16 to 64
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: contentList,
-              ),
+    final mainContent = SafeArea(
+      bottom: false,
+      child: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: EdgeInsets.only(top: showBackButton ? 64 : 20, bottom: 40),
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: contentList,
             ),
-            // Minimalist back button at top left
+          ),
+          if (showBackButton)
             Positioned(
               top: 16,
               left: 16,
@@ -238,10 +244,18 @@ class ProfileViewPage extends StatelessWidget {
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
+
+    if (showScaffold) {
+      return Scaffold(
+        backgroundColor: kCream,
+        body: mainContent,
+      );
+    } else {
+      return mainContent;
+    }
   }
 
   // ================= REUSED WIDGETS =================
@@ -280,7 +294,7 @@ class ProfileViewPage extends StatelessWidget {
   }
 
   Widget _buildUnifiedEssentialsCard(Map<String, String?> allData, String? customMessage) {
-    final verticalKeys = ['Religion', 'Looking For', 'Ethnicity', 'Star Sign'];
+    final verticalKeys = ['Looking For', 'Religion', 'Ethnicity', 'Star Sign'];
     final Map<String, String> verticalData = {};
     final Map<String, String> horizontalData = {};
 

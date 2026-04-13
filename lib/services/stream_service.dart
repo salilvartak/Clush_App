@@ -67,7 +67,7 @@ class StreamService {
       try {
         final fcmToken = await FirebaseMessaging.instance.getToken();
         if (fcmToken != null) {
-          await client.addDevice(fcmToken, PushProvider.firebase);
+          await client.addDevice(fcmToken, PushProvider.firebase, pushProviderName: 'Clush');
           print('StreamService: Device registered for push notifications.');
         }
       } catch (e) {
@@ -140,5 +140,16 @@ class StreamService {
     if (!_connected) return;
     await client.disconnectUser();
     _connected = false;
+  }
+
+  Future<void> deleteChannel(String myId, String matchId) async {
+    try {
+      final ids = [myId, matchId]..sort();
+      final channelId = '${ids[0]}_${ids[1]}';
+      final ch = client.channel('messaging', id: channelId);
+      await ch.delete();
+    } catch (e) {
+      print('StreamService: Error deleting channel: $e');
+    }
   }
 }

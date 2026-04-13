@@ -537,39 +537,6 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
 }
 
 // ─── TRAVEL MODE ──────────────────────────────────────────────────────────────
-class TravelModePage extends StatelessWidget {
-  const TravelModePage({super.key});
-  @override
-  Widget build(BuildContext context) => BaseSettingsPage(
-    title: "Travel Mode",
-    body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(
-        width: double.infinity, padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: _kParchment, borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _kBone),
-        ),
-        child: Column(children: [
-          Container(
-            width: 60, height: 60,
-            decoration: BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
-            child: const Icon(Icons.flight_takeoff_rounded, color: _kRose, size: 28),
-          ),
-          const SizedBox(height: 20),
-          Text("Going somewhere?", style: GoogleFonts.montserrat(
-              fontSize: 24, fontWeight: FontWeight.w400, color: _kInk)),
-          const SizedBox(height: 10),
-          Text("Change your location to swipe in other cities before you arrive.",
-              textAlign: TextAlign.center,
-              style: GoogleFonts.montserrat(fontSize: 14, color: _kInkMuted, height: 1.5)),
-        ]),
-      ),
-      const SizedBox(height: 24),
-      _saveButton("Add a New Spot", false, () {}),
-    ]),
-  );
-}
-
 // ─── VERIFICATION ─────────────────────────────────────────────────────────────
 class VerificationPage extends StatefulWidget {
   const VerificationPage({super.key});
@@ -1793,26 +1760,43 @@ class SubscriptionsPage extends StatefulWidget {
 }
 
 class _SubscriptionsPageState extends State<SubscriptionsPage> {
-  int _selectedPeriod = 1; // index into _periods
+  int _selectedPlan = 0;
+  late final PageController _pageController;
 
-  static const _periods = [
-    _Period('1 month',  '₹165',  null,   null),
-    _Period('3 months', '₹449',  '₹495', '~9% off'),
-    _Period('6 months', '₹699',  '₹990', '~30% off'),
-    _Period('12 months','₹1,199','₹1,980','~40% off'),
+  static const _plans = [
+    _Plan(label: '1 month',  price: '₹165',   perUnit: '₹165/mo · incl. taxes',  isPopular: true,  strikePrice: null,    discount: null),
+    _Plan(label: '3 months', price: '₹449',   perUnit: '₹149.67/mo · incl. taxes', isPopular: false, strikePrice: null,    discount: '~9% off'),
+    _Plan(label: '6 months', price: '₹699',   perUnit: '₹116.50/mo · incl. taxes', isPopular: false, strikePrice: null,    discount: '~30% off'),
+    _Plan(label: '12 months',price: '₹1,199', perUnit: '₹99.92/mo · incl. taxes',  isPopular: false, strikePrice: null,    discount: '~40% off'),
   ];
 
   static const _features = [
-    (Icons.all_inclusive_rounded,  "Unlimited Likes",         "Never run out of swipes"),
-    (Icons.back_hand_rounded,      "5 High Fives / week",     "Stand out and get noticed"),
-    (Icons.replay_rounded,         "Rewind Last Swipe",        "Change your mind? No problem"),
-    (Icons.tune_rounded,           "Advanced Filters",         "Find exactly who you're looking for"),
-    (Icons.message_outlined,       "Message Before Matching",  "Start the conversation first"),
+    (Icons.swipe_right_alt_rounded,  '20 Right Swipes / 24 hrs',          'Free users get 6 · Clush+ gets 20'),
+    (Icons.visibility_rounded,       'Fully Visible "Likes You" Grid',     'See everyone who liked you instantly'),
+    (Icons.star_rounded,             '3 Super Likes / week',               'Free users get 1 · stand out more'),
+    (Icons.replay_rounded,           'Unlimited Rewinds',                  'Free users get 2/week · undo anytime'),
+    (Icons.bookmark_rounded,         'Unlimited Profile Saves',            'Free users get 2 · save as many as you want'),
+    (Icons.block_rounded,            'Option to view Ads',                 'Free users see mandatory ads'),
+    (Icons.tune_rounded,             'Advanced Filters',                   'Height, politics, star sign, edu, kids, pets, drink, smoke & more'),
+    (Icons.done_all_rounded,         'Read Receipts On',                   'Know when your messages are seen'),
+    (Icons.manage_accounts_rounded,  'Control Your Visibility',            'Choose who sees you and who you see'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(viewportFraction: 0.72, initialPage: 0);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   void _showComingSoon() {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text("Subscriptions coming soon!", style: GoogleFonts.montserrat(color: Colors.white)),
+      content: Text('Subscriptions coming soon!', style: GoogleFonts.figtree(color: Colors.white)),
       backgroundColor: _kRose, behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.all(16),
@@ -1821,221 +1805,322 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final period = _periods[_selectedPeriod];
-    return BaseSettingsPage(
-      title: "Clush+",
-      body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-
-        // ── Hero header ────────────────────────────────────────────────────
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF1A0010), Color(0xFF5C0030), _kRose],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: [BoxShadow(color: _kRose.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 8))],
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Text("Clush", style: GoogleFonts.gabarito(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-              Text("+", style: GoogleFonts.gabarito(color: _kGold, fontSize: 24, fontWeight: FontWeight.bold)),
-            ]),
-            const SizedBox(height: 4),
-            Text("Match faster. Connect deeper.", style: GoogleFonts.figtree(color: Colors.white.withValues(alpha: 0.8), fontSize: 14)),
-          ]),
-        ),
-
-        const SizedBox(height: 24),
-
-        // ── Period selector ────────────────────────────────────────────────
-        Text("Choose your plan", style: GoogleFonts.montserrat(fontSize: 13, fontWeight: FontWeight.w700, color: _kInkMuted, letterSpacing: 0.5)),
-        const SizedBox(height: 12),
-        Row(
-          children: List.generate(_periods.length, (i) {
-            final p = _periods[i];
-            final selected = _selectedPeriod == i;
-            return Expanded(
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedPeriod = i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  margin: EdgeInsets.only(right: i < _periods.length - 1 ? 8 : 0),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: selected ? _kRose : _kParchment,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: selected ? _kRose : _kBone, width: 1.5),
-                    boxShadow: selected ? [BoxShadow(color: _kRose.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))] : [],
+    final plan = _plans[_selectedPlan];
+    return Scaffold(
+      backgroundColor: _kCream,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── Top bar ────────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(
+                        color: _kParchment,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _kBone, width: 1.5),
+                      ),
+                      child: const Icon(Icons.close_rounded, size: 18, color: _kInk),
+                    ),
                   ),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    if (p.discount != null)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: selected ? Colors.white.withValues(alpha: 0.25) : _kGold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-                        child: Text(p.discount!, style: GoogleFonts.montserrat(fontSize: 9, fontWeight: FontWeight.w700, color: selected ? Colors.white : _kGold, letterSpacing: 0.3)),
-                      )
-                    else
-                      const SizedBox(height: 18),
-                    Text(p.duration.split(' ')[0], style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.bold, color: selected ? Colors.white : _kInk)),
-                    Text(p.duration.split(' ')[1], style: GoogleFonts.montserrat(fontSize: 10, color: selected ? Colors.white.withValues(alpha: 0.8) : _kInkMuted)),
+                  const Spacer(),
+                  Row(children: [
+                    Text('Clush', style: GoogleFonts.gabarito(color: _kInk, fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text('+', style: GoogleFonts.gabarito(color: _kGold, fontSize: 18, fontWeight: FontWeight.bold)),
                   ]),
+                  const Spacer(),
+                  const SizedBox(width: 36), // balance
+                ],
+              ),
+            ),
+
+            // ── Scrollable body ────────────────────────────────────────────
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 24),
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                      child: Text(
+                        'Upgrade your Likes and\nSuper Likes with Clush+',
+                        style: GoogleFonts.gabarito(
+                          color: _kInk, fontSize: 26,
+                          fontWeight: FontWeight.bold, letterSpacing: -0.5, height: 1.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Plan label
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text('Select a plan',
+                        style: GoogleFonts.figtree(color: _kInkMuted, fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ── Plan cards (PageView) ──────────────────────────────
+                    SizedBox(
+                      height: 140,
+                      child: PageView.builder(
+                        controller: _pageController,
+                        itemCount: _plans.length,
+                        onPageChanged: (i) => setState(() => _selectedPlan = i),
+                        padEnds: false,
+                        itemBuilder: (context, i) {
+                          final p = _plans[i];
+                          final selected = _selectedPlan == i;
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() => _selectedPlan = i);
+                              _pageController.animateToPage(i,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOutCubic);
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              margin: EdgeInsets.only(
+                                left: i == 0 ? 20 : 8,
+                                right: i == _plans.length - 1 ? 20 : 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: selected ? _kRose : _kParchment,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: selected ? _kRose : _kBone, width: 1.5),
+                                boxShadow: selected
+                                    ? [BoxShadow(color: _kRose.withValues(alpha: 0.28), blurRadius: 16, offset: const Offset(0, 6))]
+                                    : [BoxShadow(color: _kInk.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
+                              ),
+                              padding: const EdgeInsets.all(18),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  // Top: popular badge + checkmark
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      if (p.isPopular)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: selected
+                                                ? Colors.white.withValues(alpha: 0.25)
+                                                : _kRose.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text('Popular',
+                                            style: GoogleFonts.figtree(
+                                              color: selected ? Colors.white : _kRose,
+                                              fontSize: 10, fontWeight: FontWeight.w700)),
+                                        )
+                                      else
+                                        const SizedBox(),
+                                      if (selected)
+                                        Container(
+                                          width: 22, height: 22,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(alpha: 0.25),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
+                                        ),
+                                    ],
+                                  ),
+                                  // Bottom: duration + price
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(p.label,
+                                        style: GoogleFonts.gabarito(
+                                          color: selected ? Colors.white : _kInk,
+                                          fontSize: 22, fontWeight: FontWeight.bold,
+                                          letterSpacing: -0.3)),
+                                      const SizedBox(height: 2),
+                                      Row(children: [
+                                        Text(p.price,
+                                          style: GoogleFonts.figtree(
+                                            color: selected ? Colors.white : _kInk,
+                                            fontSize: 14, fontWeight: FontWeight.w700)),
+                                        if (p.strikePrice != null) ...[
+                                          const SizedBox(width: 6),
+                                          Text(p.strikePrice!,
+                                            style: GoogleFonts.figtree(
+                                              color: selected ? Colors.white.withValues(alpha: 0.6) : _kInkMuted,
+                                              fontSize: 12,
+                                              decoration: TextDecoration.lineThrough,
+                                              decorationColor: selected ? Colors.white.withValues(alpha: 0.6) : _kInkMuted,
+                                            )),
+                                        ],
+                                      ]),
+                                      Text(p.perUnit,
+                                        style: GoogleFonts.figtree(
+                                          color: selected ? Colors.white.withValues(alpha: 0.75) : _kInkMuted,
+                                          fontSize: 11)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                    // Dots indicator
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(_plans.length, (i) => AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: _selectedPlan == i ? 18 : 6,
+                        height: 6,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        decoration: BoxDecoration(
+                          color: _selectedPlan == i ? _kRose : _kBone,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      )),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // ── Included with Clush+ ───────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text('Included with Clush+',
+                        style: GoogleFonts.figtree(color: _kInkMuted, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.4)),
+                    ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Container(
+                        decoration: _cardDecor(),
+                        child: Column(
+                          children: _features.asMap().entries.map((entry) {
+                            final i = entry.key;
+                            final f = entry.value;
+                            return Column(children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                                child: Row(children: [
+                                  Container(
+                                    width: 34, height: 34,
+                                    decoration: const BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
+                                    child: Icon(f.$1, color: _kRose, size: 17),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(f.$2, style: GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w600, color: _kInk)),
+                                      Text(f.$3, style: GoogleFonts.figtree(fontSize: 12, color: _kInkMuted)),
+                                    ],
+                                  )),
+                                  Icon(Icons.check_circle_rounded, color: _kRose, size: 18),
+                                ]),
+                              ),
+                              if (i < _features.length - 1)
+                                Divider(height: 1, color: _kBone, indent: 62),
+                            ]);
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        'By tapping Continue, you will be charged. Subscription auto-renews. Cancel anytime via your app store.',
+                        style: GoogleFonts.figtree(fontSize: 11, color: _kInkMuted, height: 1.5),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            );
-          }),
+            ),
+
+            // ── Sticky bottom bar ──────────────────────────────────────────
+            Container(
+              decoration: BoxDecoration(
+                color: _kParchment,
+                border: Border(top: BorderSide(color: _kBone, width: 1)),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Selected plan summary
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(plan.label, style: GoogleFonts.figtree(color: _kInk, fontSize: 13, fontWeight: FontWeight.w600)),
+                      const SizedBox(width: 6),
+                      Text('·', style: GoogleFonts.figtree(color: _kInkMuted, fontSize: 13)),
+                      const SizedBox(width: 6),
+                      Text(plan.price, style: GoogleFonts.figtree(color: _kInk, fontSize: 13, fontWeight: FontWeight.w700)),
+                      if (plan.discount != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: _kGold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
+                          child: Text(plan.discount!, style: GoogleFonts.figtree(color: _kGold, fontSize: 10, fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Continue button
+                  GestureDetector(
+                    onTap: _showComingSoon,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        color: _kRose,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [BoxShadow(color: _kRose.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+                      ),
+                      child: Center(
+                        child: Text('Continue',
+                          style: GoogleFonts.gabarito(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-
-        const SizedBox(height: 16),
-
-        // ── Price summary ──────────────────────────────────────────────────
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          decoration: BoxDecoration(
-            color: _kParchment,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _kBone),
-          ),
-          child: Row(children: [
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(period.price, style: GoogleFonts.montserrat(fontSize: 28, fontWeight: FontWeight.bold, color: _kInk)),
-              Text("for ${period.duration} · incl. taxes", style: GoogleFonts.montserrat(fontSize: 12, color: _kInkMuted)),
-            ]),
-            const Spacer(),
-            if (period.strikePrice != null)
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(period.strikePrice!, style: GoogleFonts.montserrat(fontSize: 14, color: _kInkMuted, decoration: TextDecoration.lineThrough, decorationColor: _kInkMuted)),
-                Text("You save ${period.discount!}", style: GoogleFonts.montserrat(fontSize: 12, color: _kGold, fontWeight: FontWeight.w600)),
-              ]),
-          ]),
-        ),
-
-        const SizedBox(height: 20),
-
-        // ── Features ──────────────────────────────────────────────────────
-        Text("Everything included", style: GoogleFonts.montserrat(fontSize: 13, fontWeight: FontWeight.w700, color: _kInkMuted, letterSpacing: 0.5)),
-        const SizedBox(height: 12),
-        Container(
-          decoration: _cardDecor(),
-          child: Column(
-            children: _features.asMap().entries.map((entry) {
-              final i = entry.key;
-              final f = entry.value;
-              return Column(children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                  child: Row(children: [
-                    Container(width: 36, height: 36, decoration: BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
-                      child: Icon(f.$1, color: _kRose, size: 18)),
-                    const SizedBox(width: 14),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(f.$2, style: GoogleFonts.montserrat(fontSize: 13, fontWeight: FontWeight.w600, color: _kInk)),
-                      Text(f.$3, style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted)),
-                    ])),
-                    Icon(Icons.check_circle_rounded, color: _kRose, size: 18),
-                  ]),
-                ),
-                if (i < _features.length - 1) Divider(height: 1, color: _kBone, indent: 66),
-              ]);
-            }).toList(),
-          ),
-        ),
-
-        const SizedBox(height: 24),
-
-        // ── Subscribe button ──────────────────────────────────────────────
-        _saveButton("Subscribe · ${period.price}", false, _showComingSoon),
-
-        const SizedBox(height: 12),
-        Center(child: Text("Renews automatically · Cancel anytime", style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted))),
-
-        // ── High Fives section ────────────────────────────────────────────
-        const SizedBox(height: 36),
-        Row(children: [
-          Container(width: 3, height: 14, color: _kGold, margin: const EdgeInsets.only(right: 9)),
-          Text("HIGH FIVES", style: GoogleFonts.montserrat(fontSize: 11, fontWeight: FontWeight.w700, color: _kInkMuted, letterSpacing: 1.8)),
-        ]),
-        const SizedBox(height: 8),
-        Text("Send a High Five to someone you really like — they'll get notified and you'll stand out.", style: GoogleFonts.montserrat(fontSize: 13, color: _kInkMuted, height: 1.4)),
-        const SizedBox(height: 16),
-        ...[
-          _HighFivePack(count: 5,  price: '₹99',  tag: null),
-          _HighFivePack(count: 10, price: '₹179', tag: 'Popular'),
-          _HighFivePack(count: 20, price: '₹299', tag: 'Best Value'),
-        ].map((pack) => Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: _buildHighFiveTile(pack),
-        )),
-
-        const SizedBox(height: 8),
-        Center(child: Text("High Fives never expire.", style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted))),
-      ]),
+      ),
     );
   }
-
-  Widget _buildHighFiveTile(_HighFivePack pack) {
-    return Stack(clipBehavior: Clip.none, children: [
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: _kParchment,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: pack.tag == 'Best Value' ? _kRose : _kBone, width: pack.tag == 'Best Value' ? 1.5 : 1),
-        ),
-        child: Row(children: [
-          Stack(children: [
-            Container(width: 48, height: 48, decoration: BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
-              child: const Icon(Icons.back_hand_rounded, color: _kRose, size: 24)),
-            Positioned(top: -2, right: -2,
-              child: Container(
-                width: 20, height: 20,
-                decoration: const BoxDecoration(color: _kRose, shape: BoxShape.circle),
-                child: Center(child: Text('${pack.count}', style: GoogleFonts.montserrat(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
-              )),
-          ]),
-          const SizedBox(width: 16),
-          Expanded(child: Text("${pack.count} High Fives", style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w600, color: _kInk))),
-          Text(pack.price, style: GoogleFonts.montserrat(fontSize: 16, fontWeight: FontWeight.bold, color: _kRose)),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: _showComingSoon,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(color: _kRose, borderRadius: BorderRadius.circular(20)),
-              child: Text("Buy", style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-            ),
-          ),
-        ]),
-      ),
-      if (pack.tag != null)
-        Positioned(top: -10, left: 16,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            decoration: BoxDecoration(color: pack.tag == 'Best Value' ? _kRose : _kGold, borderRadius: BorderRadius.circular(20)),
-            child: Text(pack.tag!.toUpperCase(), style: GoogleFonts.montserrat(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-          )),
-    ]);
-  }
 }
 
-class _Period {
-  final String duration;
+class _Plan {
+  final String label;
   final String price;
+  final String perUnit;
+  final bool isPopular;
   final String? strikePrice;
   final String? discount;
-  const _Period(this.duration, this.price, this.strikePrice, this.discount);
+  const _Plan({
+    required this.label, required this.price, required this.perUnit,
+    required this.isPopular, required this.strikePrice, required this.discount,
+  });
 }
 
-class _HighFivePack {
-  final int count;
-  final String price;
-  final String? tag;
-  const _HighFivePack({required this.count, required this.price, required this.tag});
-}
 
 // ─── DOWNLOAD MY DATA ─────────────────────────────────────────────────────────
 class DownloadMyDataPage extends StatefulWidget {

@@ -6,21 +6,15 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:clush/main.dart';
 import 'package:clush/services/profile_store.dart';
 import 'package:clush/services/image_validation_service.dart';
-import 'package:clush/services/matching_service.dart';
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/services/content_moderator.dart';
-import 'package:clush/screens/success_screen.dart'; 
-import 'package:clush/screens/permission_request_page.dart';
-import 'package:clush/services/notification_service.dart';
-import 'package:permission_handler/permission_handler.dart' as ph;
+import 'package:clush/screens/success_screen.dart';
 
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import 'package:google_fonts/google_fonts.dart';
 
 // --- Premium Theme Constants ---

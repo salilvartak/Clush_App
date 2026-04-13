@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:clush/screens/discover_page.dart';
 import 'package:clush/screens/likes_page.dart';
 import 'package:clush/screens/matches_page.dart';
 import 'package:clush/screens/profile_tab.dart'; 
 import 'package:clush/screens/setting_sub_pages.dart';
 import 'package:clush/services/matching_service.dart';
+import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart'; 
 import 'package:clush/widgets/heart_loader.dart'; 
 import 'package:google_fonts/google_fonts.dart'; 
@@ -25,6 +28,7 @@ class _HomePageState extends State<HomePage> {
   bool _isLoading = true;
   int _unreadCount = 0;
   final MatchingService _matchingService = MatchingService();
+  StreamSubscription<Event>? _unreadSubscription;
 
   final List<Widget> _pages = [
     const DiscoverPage(),
@@ -38,13 +42,42 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _checkVerificationStatus();
     _fetchUnreadCount();
+    _listenForUnreadMessages();
+  }
+
+  @override
+  void dispose() {
+    _unreadSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchUnreadCount() async {
-    final count = await _matchingService.getTotalUnreadCount();
+    // We try to get the count from Stream first as it's our primary chat provider
+    final streamClient = StreamService.instance.client;
+    int count = 0;
+    
+    if (streamClient.state.totalUnreadCount > 0) {
+      count = streamClient.state.totalUnreadCount;
+    } else {
+      // Fallback to Supabase matching service if Stream count is 0 or unavailable
+      count = await _matchingService.getTotalUnreadCount();
+    }
+
     if (mounted) {
       setState(() => _unreadCount = count);
     }
+  }
+
+  void _listenForUnreadMessages() {
+    _unreadSubscription = StreamService.instance.client.on().listen((event) {
+      if (event.totalUnreadCount != null) {
+        if (mounted) {
+          setState(() {
+            _unreadCount = event.totalUnreadCount!;
+          });
+        }
+      }
+    });
   }
 
   Future<void> _checkVerificationStatus() async {
@@ -141,13 +174,11 @@ class _HomePageState extends State<HomePage> {
             BottomNavigationBarItem(
               icon: Badge(
                 isLabelVisible: _unreadCount > 0,
-                label: Text('$_unreadCount'),
                 backgroundColor: kRose,
                 child: const Icon(Icons.chat_bubble_rounded),
               ),
               activeIcon: Badge(
                 isLabelVisible: _unreadCount > 0,
-                label: Text('$_unreadCount'),
                 backgroundColor: kRose,
                 child: const Icon(Icons.chat_bubble_rounded),
               ),

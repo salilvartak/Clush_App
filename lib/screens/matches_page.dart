@@ -9,7 +9,6 @@ import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 
 import 'package:clush/screens/chat_page.dart';
-import 'package:clush/screens/setting_sub_pages.dart';
 import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart';
 import 'package:clush/widgets/activity_badge.dart';
@@ -38,11 +37,43 @@ class _MatchesPageState extends State<MatchesPage> {
     super.initState();
     _myId = FirebaseAuth.instance.currentUser?.uid;
     _fetchData();
+    _setupRealtime();
+  }
+
+  RealtimeChannel? _matchesChannel;
+
+  void _setupRealtime() {
+    _matchesChannel = _supabase
+        .channel('matches_updates')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matches',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_a',
+            value: _myId,
+          ),
+          callback: (payload) => _fetchData(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matches',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_b',
+            value: _myId,
+          ),
+          callback: (payload) => _fetchData(),
+        )
+        .subscribe();
   }
 
   @override
   void dispose() {
     _streamEventSub?.cancel();
+    _matchesChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -207,83 +238,87 @@ class _MatchesPageState extends State<MatchesPage> {
         elevation: 0,
         centerTitle: false,
       ),
-      body: AnimatedSwitcher(
+      body: RefreshIndicator(
+        onRefresh: _fetchData,
+        color: kRose,
+        backgroundColor: kParchment,
+        child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 400),
         switchInCurve: Curves.easeOutQuad,
         transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
         child: isLoading
             ? const Center(key: ValueKey('loading'), child: HeartLoader())
             : matches.isEmpty
-                ? Center(
+                ? ListView(
                     key: const ValueKey('empty'),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 36),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SvgPicture.asset('assets/images/2.svg', width: 180, height: 180),
-                          const SizedBox(height: 28),
-                          Text(
-                            "You're reaching far, but the right connection hasn't locked in yet.",
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.gabarito(
-                                fontWeight: FontWeight.bold, fontSize: 20, color: kBlack),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            "We're tuning your signal—your match is coming soon.",
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.figtree(
-                                fontSize: 15, color: kInkMuted, height: 1.5),
-                          ),
-                          const SizedBox(height: 28),
-                          GestureDetector(
-                            onTap: () => Navigator.push(context,
-                                MaterialPageRoute(builder: (_) => const SubscriptionsPage())),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 36),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SvgPicture.asset('assets/images/2.svg', width: 180, height: 180),
+                            const SizedBox(height: 28),
+                            Text(
+                              "You're reaching far, but the right connection hasn't locked in yet.",
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.gabarito(
+                                  fontWeight: FontWeight.bold, fontSize: 20, color: kBlack),
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              width: 120,
+                              height: 120,
+                              padding: const EdgeInsets.all(24),
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [Color(0xFF1A0010), Color(0xFF5C0030), kRose],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(20),
+                                color: kRosePale,
+                                shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                      color: kRose.withValues(alpha: 0.3),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 6))
+                                      color: kRose.withOpacity(0.1),
+                                      blurRadius: 30,
+                                      spreadRadius: 5)
                                 ],
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.auto_awesome_rounded, color: kGold, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text('Get Clush+',
-                                      style: GoogleFonts.figtree(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15)),
-                                  const SizedBox(width: 4),
-                                  Text('and match faster',
-                                      style: GoogleFonts.figtree(
-                                          color: Colors.white70, fontSize: 14)),
-                                ],
+                              child: SvgPicture.asset(
+                                'assets/clush_logo_alt.svg',
+                                colorFilter: const ColorFilter.mode(
+                                    kRose, BlendMode.srcIn),
                               ),
                             ),
-                          ),
-                        ],
-                      )
-                          .animate()
-                          .fade(duration: 600.ms)
-                          .slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
-                    ),
+                            const SizedBox(height: 32),
+                            Text(
+                              "No matches yet",
+                              style: GoogleFonts.gabarito(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: kBlack),
+                            ),
+                            const SizedBox(height: 12),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 48),
+                              child: Text(
+                                "The best things happen when you least expect them. Keep swiping!",
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.figtree(
+                                    fontSize: 16, color: kInkMuted, height: 1.5),
+                              ),
+                            ),
+                            const SizedBox(height: 40),
+                          ],
+                        )
+                            .animate()
+                            .fade(duration: 600.ms)
+                            .slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
+                      ),
+                    ],
                   )
                 : ListView.builder(
                     key: const ValueKey('list'),
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.only(top: 8, bottom: 24),
                     itemCount: matches.length,
                     itemBuilder: (context, index) {
@@ -292,33 +327,35 @@ class _MatchesPageState extends State<MatchesPage> {
                       final hasUnread = unread > 0;
 
                       return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 6),
                         decoration: BoxDecoration(
                           color: kParchment,
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: kInk.withValues(alpha: 0.08),
+                              color: kInk.withOpacity(0.08),
                               blurRadius: 18,
                               offset: const Offset(0, 6),
                             )
                           ],
                         ),
                         child: ListTile(
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
                           leading: Stack(
                             clipBehavior: Clip.none,
                             children: [
                               CircleAvatar(
                                 radius: 26,
-                                backgroundColor: kRose.withValues(alpha: 0.1),
+                                backgroundColor: kRose.withOpacity(0.1),
                                 backgroundImage: match['photo_url'] != null
                                     ? NetworkImage(match['photo_url'] as String)
                                     : null,
                                 child: match['photo_url'] == null
                                     ? Text(
-                                        (match['display_name'] as String)[0].toUpperCase(),
+                                        (match['display_name'] as String)[0]
+                                            .toUpperCase(),
                                         style: GoogleFonts.gabarito(
                                             fontWeight: FontWeight.bold,
                                             color: kRose,
@@ -336,8 +373,8 @@ class _MatchesPageState extends State<MatchesPage> {
                                       color: kRose,
                                       shape: BoxShape.circle,
                                     ),
-                                    constraints:
-                                        const BoxConstraints(minWidth: 18, minHeight: 18),
+                                    constraints: const BoxConstraints(
+                                        minWidth: 18, minHeight: 18),
                                     child: Text(
                                       unread > 99 ? '99+' : '$unread',
                                       style: GoogleFonts.figtree(
@@ -353,7 +390,8 @@ class _MatchesPageState extends State<MatchesPage> {
                                   right: 0,
                                   bottom: 0,
                                   child: ActivityBadge(
-                                    lastSeenAt: match['last_seen_at'] as String?,
+                                    lastSeenAt:
+                                        match['last_seen_at'] as String?,
                                     compact: true,
                                   ),
                                 ),
@@ -372,11 +410,11 @@ class _MatchesPageState extends State<MatchesPage> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 )
-                              : ActivityBadge(lastSeenAt: match['last_seen_at'] as String?),
-                          trailing:
-                              const Icon(Icons.chevron_right_rounded, color: kInkMuted),
+                              : ActivityBadge(
+                                  lastSeenAt: match['last_seen_at'] as String?),
+                          trailing: const Icon(Icons.chevron_right_rounded,
+                              color: kInkMuted),
                           onTap: () async {
-                            // Optimistically clear badge before navigating
                             setState(() => matches[index]['unread_count'] = 0);
                             await Navigator.push(
                               context,
@@ -390,15 +428,16 @@ class _MatchesPageState extends State<MatchesPage> {
                                 ),
                               ),
                             );
-                            // Recheck unread after returning from chat
                             final myId = _myId;
                             if (myId == null || !mounted) return;
-                            final channelId =
-                                _getRoomId(myId, match['match_uuid'] as String);
-                            final ch = StreamService.instance.client.state.channels[channelId];
+                            final channelId = _getRoomId(
+                                myId, match['match_uuid'] as String);
+                            final ch = StreamService
+                                .instance.client.state.channels[channelId];
                             final count = ch?.state?.unreadCount ?? 0;
                             if (mounted) {
-                              setState(() => matches[index]['unread_count'] = count);
+                              setState(
+                                  () => matches[index]['unread_count'] = count);
                             }
                           },
                         ),
@@ -408,6 +447,7 @@ class _MatchesPageState extends State<MatchesPage> {
                           .slideX(begin: 0.1, end: 0, curve: Curves.easeOutQuad);
                     },
                   ),
+        ),
       ),
     );
   }

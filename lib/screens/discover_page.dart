@@ -2,6 +2,7 @@ import 'dart:math' show cos, sqrt, asin, pi;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui'; // For blur effects
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:clush/services/matching_service.dart';
@@ -26,16 +27,16 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   final MatchingService _matchingService = MatchingService();
 
   List<Map<String, dynamic>> _profiles = [];
+  Map<String, dynamic>? _lastDislikedProfile;
   bool _isLoading = true;
-  String? _errorMessage;
-
-  // Track swipe direction for animation
+  bool _isActionLoading = false;
+  int _likesRemaining = 6;
+  bool _isPremium = false;
   String _lastSwipeDirection = 'like';
 
   String? _myPhotoUrl;
 
   // Filter States
-  bool _isPremium = false;
   RangeValues _filterAge = const RangeValues(18, 60);
   double _filterDistance = 50;
   String _filterIntent = '';
@@ -53,8 +54,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   String? _filterSmoke;
   String? _filterWeed;
 
-  int _likesRemaining = 6;
-  bool _isActionLoading = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -329,10 +329,10 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   }
 
   // --- SWIPE LOGIC ---
-  void _onSwipe(String targetUserId, String swipeType) async {
+  void _onSwipe(String targetUserId, String swipeType, {String? message}) async {
     if (_profiles.isEmpty) return;
 
-    if (swipeType == 'like' && _likesRemaining <= 0) {
+    if ((swipeType == 'like' || swipeType == 'pulse') && _likesRemaining <= 0) {
       _showThemedToast('Out of likes! Save them for later or wait until they replenish.', isError: true);
       return;
     }
@@ -340,27 +340,212 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     final droppedProfile = _profiles.first;
 
     setState(() {
-      _lastSwipeDirection = swipeType;
-      if (swipeType == 'like') _likesRemaining--;
+      _lastSwipeDirection = swipeType == 'dislike' ? 'dislike' : 'like';
+      if (swipeType == 'like' || swipeType == 'pulse') _likesRemaining--;
+      if (swipeType == 'dislike') {
+        _lastDislikedProfile = Map<String, dynamic>.from(droppedProfile);
+      }
       if (_profiles.isNotEmpty) {
         _profiles.removeAt(0);
       }
     });
 
-    bool isMatch = false;
     try {
+      Map<String, dynamic> result;
       if (swipeType == 'like') {
-        isMatch = await _matchingService.swipeRight(targetUserId);
-      } else if (swipeType == 'dislike') {
-        await _matchingService.swipeLeft(targetUserId);
+        result = await _matchingService.swipeRight(targetUserId);
+      } else if (swipeType == 'pulse') {
+        result = await _matchingService.pulse(targetUserId, message);
+      } else {
+        result = await _matchingService.swipeLeft(targetUserId);
+      }
+
+      if (result['success'] == false) {
+        if (result['error'] == 'limit_exceeded') {
+          _showThemedToast('You have reached your weekly limit for this feature.', isError: true);
+        }
+      } else if (result['match'] == true && mounted) {
+        _showMatchDialog(droppedProfile);
       }
     } catch (e) {
       print("Error recording swipe: $e");
     }
+  }
 
-    if (isMatch && mounted) {
-      _showMatchDialog(droppedProfile);
+  void _handleRewind() async {
+    if (_lastDislikedProfile == null) {
+      _showThemedToast('Nothing to rewind!', isError: true);
+      return;
     }
+
+    setState(() => _isActionLoading = true);
+    
+    final result = await _matchingService.rewind(_lastDislikedProfile!['id'].toString());
+    
+    setState(() => _isActionLoading = false);
+
+    if (result['success'] == true) {
+      setState(() {
+        _profiles.insert(0, _lastDislikedProfile!);
+        _lastDislikedProfile = null;
+      });
+      _showThemedToast('Profile brought back!', isError: false);
+    } else {
+      if (result['error'] == 'limit_exceeded') {
+        _showThemedToast('Weekly rewind limit reached! Get Clush+ for unlimited rewinds.', isError: true);
+      } else {
+        _showThemedToast('Failed to rewind.', isError: true);
+      }
+    }
+  }
+
+  void _showPulseDialog(String targetUserId, String targetName) {
+    final TextEditingController pulseController = TextEditingController();
+    final FocusNode focusNode = FocusNode();
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: kInk.withOpacity(0.5),
+      builder: (ctx) {
+        // Delay focus slightly to let bottom sheet animation start smoothly
+        Future.delayed(350.ms, () {
+          if (ctx.mounted) focusNode.requestFocus();
+        });
+        
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            decoration: BoxDecoration(
+              color: kCream,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              boxShadow: [
+                BoxShadow(
+                  color: kInk.withOpacity(0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, -5),
+                )
+              ],
+            ),
+            child: SafeArea(
+              bottom: true,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: kBone.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: kGold.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.bolt_rounded, color: kGold, size: 28),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Send a Pulse",
+                                style: GoogleFonts.gabarito(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 24,
+                                  color: kInk,
+                                ),
+                              ),
+                              Text(
+                                "To $targetName",
+                                style: GoogleFonts.figtree(
+                                  fontSize: 14,
+                                  color: kInkMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: pulseController,
+                      focusNode: focusNode,
+                      maxLines: 4,
+                      style: GoogleFonts.figtree(color: kInk, fontSize: 16),
+                      decoration: InputDecoration(
+                        hintText: "Write a message...",
+                        hintStyle: GoogleFonts.figtree(
+                          color: kInkMuted.withOpacity(0.5),
+                        ),
+                        filled: true,
+                        fillColor: kParchment,
+                        contentPadding: const EdgeInsets.all(16),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(color: kGold.withOpacity(0.3), width: 2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final message = pulseController.text.trim();
+                          Navigator.pop(ctx);
+                          _onSwipe(targetUserId, 'pulse', message: message.isEmpty ? null : message);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kGold,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          "Send Pulse",
+                          style: GoogleFonts.figtree(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ).animate().fade(duration: 250.ms).slideY(begin: 0.05, end: 0, curve: Curves.easeOutCubic);
+      },
+    );
   }
 
   void _showMatchDialog(Map<String, dynamic> profile) {
@@ -409,45 +594,49 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     if (_profiles.isEmpty) {
       return Scaffold(
         backgroundColor: kCream,
-        body: Stack(
-          children: [
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: kRosePale,
-                      shape: BoxShape.circle,
+        body: RefreshIndicator(
+          onRefresh: _fetchProfiles,
+          color: kRose,
+          backgroundColor: kParchment,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: kRosePale,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.favorite_border_rounded, color: kRose, size: 32),
                     ),
-                    child: const Icon(Icons.favorite_border_rounded, color: kRose, size: 32),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    "You've seen everyone",
-                    style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26,
-                      color: kInk,
-                      fontStyle: FontStyle.italic,
+                    const SizedBox(height: 20),
+                    Text(
+                      "You've seen everyone",
+                      style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26,
+                        color: kInk,
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Check back soon for new profiles",
-                    style: GoogleFonts.figtree(
-                      fontSize: 14,
-                      color: kInkMuted,
+                    const SizedBox(height: 8),
+                    Text(
+                      "Check back soon for new profiles",
+                      style: GoogleFonts.figtree(
+                        fontSize: 14,
+                        color: kInkMuted,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Positioned(
-              top: 0, left: 0, right: 0,
-              child: _buildHeader(context),
-            ),
-          ],
+              // Header spacer or just the header on top of Stack if we use Stack in ListView
+            ],
+          ),
         ),
       );
     }
@@ -456,8 +645,12 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
     return Scaffold(
       backgroundColor: kCream,
-      body: Stack(
-        children: [
+      body: RefreshIndicator(
+        onRefresh: _fetchProfiles,
+        color: kRose,
+        backgroundColor: kParchment,
+        child: Stack(
+          children: [
           // 1. SCROLLABLE PROFILE CONTENT (Animated Transition)
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 500),
@@ -514,8 +707,9 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ================= CONTENT BUILDER =================
 
@@ -536,30 +730,30 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
     final Map<String, String?> allEssentials = {
       'Age': age > 0 ? age.toString() : null,
-      'Looking For': intent.isNotEmpty ? intent : null,
-      'Height': profile['height'],
-      'Education': profile['education'],
-      'Job': profile['job_title'],
-      'Religion': profile['religion'],
-      'Politics': profile['political_views'],
-      'Star Sign': profile['star_sign'],
-      'Kids': profile['kids'],
-      'Pets': profile['pets'],
-      'Drink': profile['drink'],
-      'Smoke': profile['smoke'],
-      'Weed': profile['weed'],
       'Location': (() { 
         final loc = profile['location'] as String?; 
         if (loc == null) return null; 
         final idx = loc.indexOf('('); 
         return idx != -1 ? loc.substring(0, idx).trim().split(',').take(2).join(',').trim() : loc;
       })(),
+      'Job': profile['job_title'],
+      'Education': profile['education'],
+      'Height': profile['height'],
       'Gender': profile['gender'],
-      'Orientation': profile['sexual_orientation'],
       'Pronouns': profile['pronouns'],
+      'Orientation': profile['sexual_orientation'],
+      'Looking For': intent.isNotEmpty ? intent : null,
+      'Religion': profile['religion'],
       'Ethnicity': profile['ethnicity'],
       'Languages': profile['languages'],
+      'Star Sign': profile['star_sign'],
       'Exercise': profile['exercise'],
+      'Drink': profile['drink'],
+      'Smoke': profile['smoke'],
+      'Weed': profile['weed'],
+      'Kids': profile['kids'],
+      'Pets': profile['pets'],
+      'Politics': profile['political_views'],
     };
 
     List<String> remainingPhotos = [];
@@ -575,20 +769,19 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     }
 
     List<Widget> contentList = [];
-
+    
     // Header spacer
     contentList.add(const SizedBox(height: 106));
 
-    // ── Name, Age, Verification ──────────────────────────────────────────────
+    // ── Name, Age, Verification & Rewind ──────────────────────────────────────
     contentList.add(
       Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-            // Removed active badge from here, moving below the name
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Row(
@@ -608,13 +801,13 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                       if (isVerified) ...[
                         const SizedBox(width: 8),
                         Container(
-                          width: 28, // Increased background size
+                          width: 28,
                           height: 28,
                           decoration: BoxDecoration(
                             color: kRosePale,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.verified_rounded, color: kRose, size: 22), // Increased icon size
+                          child: const Icon(Icons.verified_rounded, color: kRose, size: 22),
                         ),
                       ],
                       if (_likesRemaining <= 0) ...[
@@ -633,7 +826,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                                  });
                                } else if (mounted) {
                                   _showThemedToast('Already saved or failed to save.', isError: true);
-                               }
+                                }
                              } catch (e) {
                                setState(() => _isActionLoading = false);
                                if (mounted) _showThemedToast('Error saving profile.', isError: true);
@@ -657,6 +850,27 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                     ],
                   ),
                 ),
+                if (_lastDislikedProfile != null)
+                  GestureDetector(
+                    onTap: _isActionLoading ? null : _handleRewind,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: kParchment,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: kGold.withOpacity(0.5), width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: kGold.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          )
+                        ],
+                      ),
+                      child: const Icon(Icons.undo_rounded, color: kGold, size: 24),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 12),
@@ -1096,7 +1310,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     final currentProfileId = _profiles.first['id'].toString();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1110,15 +1324,43 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
               onTap: () => _onSwipe(currentProfileId, 'dislike'),
               customBorder: const CircleBorder(),
               child: Container(
-                width: 72,
-                height: 72,
+                width: 64,
+                height: 64,
                 alignment: Alignment.center,
-                child: const Icon(Icons.close_rounded, color: kInkMuted, size: 36),
+                child: const Icon(Icons.close_rounded, color: kInkMuted, size: 32),
               ),
             ),
           ),
 
-          const SizedBox(width: 80),
+          const SizedBox(width: 32),
+
+          // PULSE (Super Like)
+          Material(
+            color: _likesRemaining > 0 ? kGold : Colors.grey.shade300,
+            shape: const CircleBorder(),
+            elevation: _likesRemaining > 0 ? 12 : 2,
+            shadowColor: _likesRemaining > 0 ? kGold.withOpacity(0.5) : Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                final profile = _profiles.first;
+                final name = profile['fullName'] ?? profile['full_name'] ?? 'them';
+                _showPulseDialog(currentProfileId, name);
+              },
+              customBorder: const CircleBorder(),
+              child: Container(
+                width: 76,
+                height: 76,
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.bolt_rounded, 
+                  color: _likesRemaining > 0 ? Colors.white : Colors.grey.shade500, 
+                  size: 40
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 32),
 
           // LIKE
           Material(
@@ -1130,13 +1372,13 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
               onTap: () => _onSwipe(currentProfileId, 'like'),
               customBorder: const CircleBorder(),
               child: Container(
-                width: 72,
-                height: 72,
+                width: 64,
+                height: 64,
                 alignment: Alignment.center,
                 child: Icon(
                   _likesRemaining > 0 ? Icons.favorite_rounded : Icons.lock_rounded, 
                   color: _likesRemaining > 0 ? Colors.white : Colors.grey.shade500, 
-                  size: 36
+                  size: 32
                 ),
               ),
             ),
@@ -1182,7 +1424,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   }
 
   Widget _buildUnifiedEssentialsCard(Map<String, String?> allData, String? customMessage) {
-    final verticalKeys = ['Religion', 'Looking For', 'Ethnicity', 'Star Sign'];
+    final verticalKeys = ['Looking For', 'Religion', 'Ethnicity', 'Star Sign'];
     final Map<String, String> verticalData = {};
     final Map<String, String> horizontalData = {};
 

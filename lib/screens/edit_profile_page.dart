@@ -376,7 +376,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         child: Container(
           height: 100,
           decoration: BoxDecoration(
-            color: kCream.withOpacity(0.88),
+            color: kCream.withValues(alpha: 0.88),
             border: Border(bottom: BorderSide(color: kBone, width: 0.5)),
           ),
           padding: const EdgeInsets.fromLTRB(6, 44, 16, 10),
@@ -446,7 +446,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         color: kParchment,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: kBone, width: 1),
-        boxShadow: [BoxShadow(color: kInk.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 6))],
+        boxShadow: [BoxShadow(color: kInk.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 6))],
       ),
       child: Column(children: children),
     );
@@ -475,7 +475,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 color: kParchment,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: kBone, width: 1),
-                boxShadow: [BoxShadow(color: kInk.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+                boxShadow: [BoxShadow(color: kInk.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
               ),
               child: _validatingIndex == index
                   ? const Center(child: HeartLoader())
@@ -493,7 +493,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                 child: Container(
                                   width: 26, height: 26,
                                   decoration: BoxDecoration(
-                                    color: kCream.withOpacity(0.92),
+                                    color: kCream.withValues(alpha: 0.92),
                                     shape: BoxShape.circle,
                                     border: Border.all(color: kBone, width: 1),
                                   ),
@@ -865,7 +865,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               color: kParchment,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: kBone, width: 1),
-              boxShadow: [BoxShadow(color: kInk.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 6))],
+              boxShadow: [BoxShadow(color: kInk.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 6))],
             ),
             child: p == null
                 ? InkWell(
@@ -905,7 +905,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                               // Opening quote
                               Text(
                                 "\u201C",
-                                style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 36, color: kRose.withOpacity(0.3), height: 0.8,
+                                style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 36, color: kRose.withValues(alpha: 0.3), height: 0.8,
                                 ),
                               ),
                               const Spacer(),
@@ -933,12 +933,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           const SizedBox(height: 12),
                           Row(
                             children: [
-                              Icon(Icons.edit_rounded, color: kRose.withOpacity(0.6), size: 12),
+                              Icon(Icons.edit_rounded, color: kRose.withValues(alpha: 0.6), size: 12),
                               const SizedBox(width: 5),
                               Text(
                                 "Tap to edit",
                                 style: GoogleFonts.figtree(
-                                  color: kRose.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w600,
+                                  color: kRose.withValues(alpha: 0.7), fontSize: 11, fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],

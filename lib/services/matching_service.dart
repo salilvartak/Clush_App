@@ -6,34 +6,56 @@ class MatchingService {
   final SupabaseClient _client = Supabase.instance.client;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Future<bool> swipeRight(String targetUserId) async {
+  Future<Map<String, dynamic>> swipeRight(String targetUserId) async {
     return await _recordSwipe(targetUserId, 'like');
   }
 
-  Future<bool> swipeLeft(String targetUserId) async {
+  Future<Map<String, dynamic>> swipeLeft(String targetUserId) async {
     // Dislikes rarely trigger a match, but we record them.
     return await _recordSwipe(targetUserId, 'dislike');
   }
 
-  Future<bool> superLike(String targetUserId) async {
+  Future<Map<String, dynamic>> pulse(String targetUserId, String? message) async {
+    return await _recordSwipe(targetUserId, 'pulse', message: message);
+  }
+
+  Future<Map<String, dynamic>> superLike(String targetUserId) async {
     return await _recordSwipe(targetUserId, 'super_like');
   }
 
-  Future<bool> _recordSwipe(String targetUserId, String type) async {
+  Future<Map<String, dynamic>> _recordSwipe(String targetUserId, String type, {String? message}) async {
     final myId = _auth.currentUser?.uid;
-    if (myId == null) return false;
+    if (myId == null) return {'success': false, 'error': 'auth_error'};
 
     try {
       final response = await _client.rpc('handle_swipe', params: {
         'p_swiper_id': myId,
         'p_target_user_id': targetUserId,
         'p_swipe_type': type,
-      });
+        'p_message': message,
+      }) as Map<String, dynamic>;
       
-      return response as bool;
+      return response;
     } catch (e) {
       print('Error recording swipe: $e');
-      return false;
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> rewind(String targetUserId) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return {'success': false, 'error': 'auth_error'};
+
+    try {
+      final response = await _client.rpc('undo_swipe', params: {
+        'p_user_id': myId,
+        'p_target_user_id': targetUserId,
+      }) as Map<String, dynamic>;
+      
+      return response;
+    } catch (e) {
+      print('Error rewinding swipe: $e');
+      return {'success': false, 'error': e.toString()};
     }
   }
 
@@ -46,9 +68,9 @@ class MatchingService {
       // 1. Get IDs of people who liked me
       final List<dynamic> likesData = await _client
           .from('likes')
-          .select('user_id')
+          .select('user_id, type, message')
           .eq('target_user_id', myId) // I am the target
-          .or('type.eq.like,type.eq.super_like'); // They liked or super liked
+          .or('type.eq.like,type.eq.super_like,type.eq.pulse'); // They liked, super liked, or pulsed
 
       if (likesData.isEmpty) return [];
 
@@ -103,7 +125,23 @@ class MatchingService {
           .select()
           .filter('id', 'in', userIds);
 
-      return List<Map<String, dynamic>>.from(profilesData);
+      // 5. Merge like type/message with profile data
+      final Map<String, dynamic> profilesMap = {
+        for (var p in profilesData) p['id'] as String: Map<String, dynamic>.from(p)
+      };
+
+      final List<Map<String, dynamic>> results = [];
+      for (var like in likesData) {
+        final uid = like['user_id'].toString();
+        if (profilesMap.containsKey(uid) && !interactedIds.contains(uid)) {
+          final profile = profilesMap[uid]!;
+          profile['like_type'] = like['type'];
+          profile['like_message'] = like['message'];
+          results.add(profile);
+        }
+      }
+
+      return results;
     } catch (e) {
       print('Error fetching likes: $e');
       return [];
@@ -329,6 +367,30 @@ class MatchingService {
     } catch (e) {
       print('Error fetching saved profiles: $e');
       return [];
+    }
+  }
+
+  Future<bool> unmatchUser(String targetUserId) async {
+    final myId = _auth.currentUser?.uid;
+    if (myId == null) return false;
+
+    try {
+      // 1. Remove from matches table
+      await _client
+          .from('matches')
+          .delete()
+          .or('and(user_a.eq.$myId,user_b.eq.$targetUserId),and(user_a.eq.$targetUserId,user_b.eq.$myId)');
+
+      // 2. Remove the underlying likes so they don't immediately rematch or appear in likes tab
+      await _client
+          .from('likes')
+          .delete()
+          .or('and(user_id.eq.$myId,target_user_id.eq.$targetUserId),and(user_id.eq.$targetUserId,target_user_id.eq.$myId)');
+
+      return true;
+    } catch (e) {
+      print('Error unmatching user: $e');
+      return false;
     }
   }
 }

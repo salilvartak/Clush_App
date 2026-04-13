@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -20,6 +19,7 @@ import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart';
+import 'package:clush/screens/profile_view_page.dart';
 
 // ─── ChatCache — no-op stub kept for MatchesPage compatibility ────────────────
 class ChatCache {
@@ -71,9 +71,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // Track which message IDs are freshly received (so we only animate new ones)
   final Set<String> _freshIds = {};
 
-  // Twice-view feature
-  bool _isEphemeralMode = false;
-
   String? _currentlyPlayingId;
   bool _isMatchTyping = false;
   Map<String, dynamic>? _replyTo;
@@ -100,11 +97,27 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // Unread divider
   bool _hasUnreadDivider = false;
 
+  // Premium status
+  bool _myIsPremium = false;
+
+  // Draft messages — persisted across navigation (static so it survives dispose)
+  static final Map<String, String> _drafts = {};
+
+  // Voice preview — recorded path waiting to be sent or cancelled
+  String? _pendingAudioPath;
+  bool _isPreviewPlaying = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _roomId = _buildRoomId(widget.myId, widget.matchId);
+    // Restore any saved draft
+    final saved = _drafts[_roomId];
+    if (saved != null && saved.isNotEmpty) {
+      _textController.text = saved;
+      _hasText = true;
+    }
     _initChat();
     _enableScreenProtection();
   }
@@ -123,6 +136,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    // Save draft so it's restored when the user returns
+    final draft = _textController.text;
+    if (draft.trim().isNotEmpty) {
+      _drafts[_roomId] = draft;
+    } else {
+      _drafts.remove(_roomId);
+    }
     _disableScreenProtection();
     WidgetsBinding.instance.removeObserver(this);
     _msgSub?.cancel();
@@ -156,7 +176,26 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _initChat() async {
+    _fetchPremiumStatus();
     await _setupChannel();
+  }
+
+  Future<void> _fetchPremiumStatus() async {
+    try {
+      final data = await _supabase
+          .from('profiles')
+          .select('is_premium')
+          .eq('id', widget.myId)
+          .single();
+      final val = data['is_premium'];
+      bool premium = false;
+      if (val is bool) {
+        premium = val;
+      } else if (val is String) {
+        premium = val.toLowerCase() == 'true';
+      }
+      if (mounted) setState(() => _myIsPremium = premium);
+    } catch (_) {}
   }
 
 
@@ -325,13 +364,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     String type = (message.extraData['mt'] as String?) ?? 'text';
     String data = '';
 
+    String caption = '';
     if (isDeleted) {
       type = 'deleted';
+    } else if (type == 'image') {
+      // Path is always in text; optional caption in extraData['caption']
+      data = message.text ?? '';
+      caption = (message.extraData['caption'] as String?) ?? '';
     } else {
       final text = message.text ?? '';
-      if (text.isNotEmpty) {
-        data = text;
-      }
+      if (text.isNotEmpty) data = text;
     }
 
     return {
@@ -339,6 +381,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'sender': sender,
       'type': type,
       'data': data,
+      'caption': caption,
       'timestamp': message.createdAt.toIso8601String(),
       'isMe': isMe,
       'isDeleted': isDeleted,
@@ -358,6 +401,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     final replyId = _replyTo?['id'] as String?;
     _textController.clear();
+    _drafts.remove(_roomId);
     setState(() {
       _hasText = false;
       _replyTo = null;
@@ -381,30 +425,56 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final picker = ImagePicker();
     final file = await picker.pickImage(source: source, imageQuality: 75);
     if (file == null || _streamChannel == null) return;
+
+    final bytes = await file.readAsBytes();
+    final ext = file.path.split('.').last.toLowerCase();
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _ImageSendPreviewScreen(
+          bytes: bytes,
+          ext: ext,
+          onSend: _uploadAndSendImage,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _uploadAndSendImage(
+      Uint8List bytes, String ext, int vt, String caption) async {
+    if (_streamChannel == null) return;
     setState(() => _isUploadingMedia = true);
     try {
-      final bytes = await file.readAsBytes();
-      final ext = file.path.split('.').last.toLowerCase();
-      final path = 'chat/$_roomId/${DateTime.now().millisecondsSinceEpoch}.$ext';
-      final uploadBytes = bytes;
-      final contentType = 'image/$ext';
+      // Normalize extension for storage consistency
+      final normalizedExt = ext.toLowerCase() == 'jpg' ? 'jpeg' : ext.toLowerCase();
+      final path = 'chat/$_roomId/${DateTime.now().millisecondsSinceEpoch}.$normalizedExt';
+      
+      final mimeType = _getMimeType(normalizedExt);
+
       await _supabase.storage.from('chat-media').uploadBinary(
             path,
-            uploadBytes,
-            fileOptions: FileOptions(contentType: contentType),
+            bytes,
+            fileOptions: FileOptions(
+              contentType: mimeType,
+              upsert: true,
+            ),
           );
-      final envelope = path;
+
       await _streamChannel!.sendMessage(Message(
-        text: envelope,
+        text: path,
         extraData: {
           'mt': 'image',
-          if (_isEphemeralMode) 'vt': 2,
+          if (caption.isNotEmpty) 'caption': caption,
+          if (vt > 0) 'vt': vt,
         },
       ));
-      // Cache bytes locally for instant preview
+      
       _imageFutures[path] = Future.value(bytes);
       if (mounted) setState(() => _isUploadingMedia = false);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Image upload error: $e');
       if (mounted) {
         setState(() => _isUploadingMedia = false);
         _showToast('Image upload failed.', isError: true);
@@ -412,17 +482,75 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _toggleRecording() async {
-    if (_isRecording) {
-      final path = await _audioRecorder.stop();
-      setState(() => _isRecording = false);
-      if (path != null) await _sendAudio(path);
+  Future<void> _startRecording() async {
+    if (_isRecording) return;
+    if (!await _audioRecorder.hasPermission()) return;
+    final dir = await getTemporaryDirectory();
+    final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _audioRecorder.start(const RecordConfig(), path: path);
+    if (mounted) setState(() => _isRecording = true);
+  }
+
+  Future<void> _stopRecordingForPreview() async {
+    if (!_isRecording) return;
+    final path = await _audioRecorder.stop();
+    if (mounted) {
+      setState(() {
+        _isRecording = false;
+        _pendingAudioPath = path;
+      });
+    }
+  }
+
+  Future<void> _cancelAudioPreview() async {
+    await _audioPlayer.stop();
+    final path = _pendingAudioPath;
+    if (path != null) {
+      try { await File(path).delete(); } catch (_) {}
+    }
+    if (mounted) setState(() { _pendingAudioPath = null; _isPreviewPlaying = false; });
+  }
+
+  Future<void> _sendAudioPreview() async {
+    final path = _pendingAudioPath;
+    if (path == null) return;
+    await _audioPlayer.stop();
+    setState(() { _pendingAudioPath = null; _isPreviewPlaying = false; });
+    await _sendAudio(path);
+  }
+
+  Future<void> _togglePreviewPlayback() async {
+    final path = _pendingAudioPath;
+    if (path == null) return;
+    if (_isPreviewPlaying) {
+      await _audioPlayer.stop();
+      if (mounted) setState(() => _isPreviewPlaying = false);
     } else {
-      if (!await _audioRecorder.hasPermission()) return;
-      final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await _audioRecorder.start(const RecordConfig(), path: path);
-      if (mounted) setState(() => _isRecording = true);
+      if (mounted) setState(() => _isPreviewPlaying = true);
+      try {
+        await _audioPlayer.play(DeviceFileSource(path));
+        _audioPlayer.onPlayerComplete.first.then((_) {
+          if (mounted) setState(() => _isPreviewPlaying = false);
+        });
+      } catch (_) {
+        if (mounted) setState(() => _isPreviewPlaying = false);
+      }
+    }
+  }
+
+  Future<void> _openMatchProfile() async {
+    try {
+      final data = await _supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', widget.matchId)
+          .single();
+      if (!mounted) return;
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ProfileViewPage(profile: data),
+      ));
+    } catch (_) {
+      _showToast('Could not load profile.');
     }
   }
 
@@ -433,11 +561,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final bytes = await File(localPath).readAsBytes();
       final storagePath = 'chat/$_roomId/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       final uploadBytes = bytes;
+      final mimeType = _getMimeType('m4a');
       await _supabase.storage.from('chat-media').uploadBinary(
             storagePath,
             uploadBytes,
             fileOptions: FileOptions(
-                contentType: 'audio/m4a'),
+                contentType: mimeType,
+                upsert: true),
           );
       final envelope = storagePath;
       await _streamChannel!.sendMessage(Message(
@@ -486,19 +616,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<String?> _getAudioPath(String storagePath) async {
     if (storagePath.startsWith('/')) return storagePath;
     try {
-      final url = await _supabase.storage.from('chat-media').createSignedUrl(storagePath, 300);
-      final req = await HttpClient().getUrl(Uri.parse(url));
-      final res = await req.close();
-      final raw = <int>[];
-      await for (final chunk in res) {
-        raw.addAll(chunk);
-      }
-      final audioBytes = Uint8List.fromList(raw);
+      final audioBytes = await _supabase.storage.from('chat-media').download(storagePath);
       final dir = await getTemporaryDirectory();
       final tmp = '${dir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await File(tmp).writeAsBytes(audioBytes);
       return tmp;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Error downloading audio: $e');
       return null;
     }
   }
@@ -529,16 +653,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<Uint8List?> _downloadAndDecryptImage(String storagePath) async {
     try {
-      final url = await _supabase.storage.from('chat-media').createSignedUrl(storagePath, 300);
-      final req = await HttpClient().getUrl(Uri.parse(url));
-      final res = await req.close();
-      final raw = <int>[];
-      await for (final chunk in res) {
-        raw.addAll(chunk);
-      }
-      return Uint8List.fromList(raw);
-    } catch (_) {
+      // Use direct download which is safer and handles authentication/headers correctly
+      return await _supabase.storage.from('chat-media').download(storagePath);
+    } catch (e) {
+      debugPrint('Error downloading image ($storagePath): $e');
       return null;
+    }
+  }
+
+  String _getMimeType(String ext) {
+    final e = ext.toLowerCase();
+    switch (e) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'm4a':
+        return 'audio/mp4';
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'wav':
+        return 'audio/wav';
+      default:
+        return 'application/octet-stream';
     }
   }
 
@@ -625,14 +767,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return !ts.isAfter(_matchLastReadAt!);
   }
 
-  String _formatTime(String? ts) {
-    if (ts == null) return '';
-    final t = DateTime.tryParse(ts)?.toLocal();
-    if (t == null) return '';
-    final h = t.hour > 12 ? t.hour - 12 : (t.hour == 0 ? 12 : t.hour);
-    return '$h:${t.minute.toString().padLeft(2, '0')} ${t.hour >= 12 ? 'PM' : 'AM'}';
-  }
-
   String _formatDateHeader(String? ts) {
     if (ts == null) return '';
     final t = DateTime.tryParse(ts)?.toLocal();
@@ -678,6 +812,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _buildConnectionBanner(),
           Expanded(child: _buildBody()),
           if (_replyTo != null) _buildReplyBar(),
+          if (_isRecording || _pendingAudioPath != null) _buildVoicePreviewBar(),
           _buildInputBar(),
         ],
       ),
@@ -703,14 +838,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
       title: Row(
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: kRosePale,
-            backgroundImage:
-                widget.matchPhotoUrl != null ? NetworkImage(widget.matchPhotoUrl!) : null,
-            child: widget.matchPhotoUrl == null
-                ? const Icon(Icons.person_rounded, size: 22, color: kRose)
-                : null,
+          GestureDetector(
+            onTap: _openMatchProfile,
+            child: CircleAvatar(
+              radius: 20,
+              backgroundColor: kRosePale,
+              backgroundImage:
+                  widget.matchPhotoUrl != null ? NetworkImage(widget.matchPhotoUrl!) : null,
+              child: widget.matchPhotoUrl == null
+                  ? const Icon(Icons.person_rounded, size: 22, color: kRose)
+                  : null,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -742,10 +880,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           color: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           onSelected: (v) {
+            if (v == 'unmatch') _confirmUnmatch();
             if (v == 'block') _confirmBlock();
             if (v == 'report') _showReport();
           },
           itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'unmatch',
+              child: Row(children: [
+                const Icon(Icons.heart_broken_rounded, color: kInkMuted, size: 18),
+                const SizedBox(width: 10),
+                Text('Unmatch', style: GoogleFonts.figtree(color: kInk)),
+              ]),
+            ),
             PopupMenuItem(
               value: 'report',
               child: Row(children: [
@@ -776,7 +923,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Widget _buildConnectionBanner() {
     return Container(
       width: double.infinity,
-      color: kRose.withOpacity(0.1),
+      color: kRose.withValues(alpha: 0.1),
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Center(
         child: Row(
@@ -932,7 +1079,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
     } else if (type == 'image') {
       noPadding = true;
-      content = _buildImageBubble(msg['data'] as String);
+      final caption = (msg['caption'] as String?) ?? '';
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildImageBubble(msg['data'] as String),
+          if (caption.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+              child: Text(caption,
+                  style: GoogleFonts.figtree(
+                      fontSize: 14,
+                      color: isMe ? Colors.white : kInk,
+                      height: 1.4)),
+            ),
+        ],
+      );
     } else if (type == 'audio') {
       content = _buildAudioBubble(msg, isMe);
     } else {
@@ -959,7 +1122,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ),
         boxShadow: [
           BoxShadow(
-            color: (isMe ? kRose : kInk).withOpacity(isMe ? 0.2 : 0.06),
+            color: (isMe ? kRose : kInk).withValues(alpha: isMe ? 0.2 : 0.06),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1012,35 +1175,54 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         }
 
         return GestureDetector(
-          onTap: () => _openFullImage(snap.data!, msgId as String?, vt),
-          child: Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.memory(snap.data!, width: 220, height: 220, fit: BoxFit.cover),
-              ),
-              if (vt > 0)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.timer_outlined, color: Colors.white, size: 12),
-                        const SizedBox(width: 4),
-                        Text('${vt - views} left',
-                            style: GoogleFonts.figtree(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
+          onTap: () => _openFullImage(snap.data!, msgId, vt),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                Image.memory(
+                  snap.data!,
+                  width: 220,
+                  height: 220,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    width: 220,
+                    height: 220,
+                    color: kBone,
+                    child: const Icon(Icons.broken_image_rounded, color: kInkMuted),
                   ),
                 ),
-            ],
+                // Blur overlay for view-once / view-twice images
+                if (vt > 0)
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                      child: Container(color: Colors.black.withValues(alpha: 0.15)),
+                    ),
+                  ),
+                // Centre label showing view mode
+                if (vt > 0)
+                  Positioned.fill(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.visibility_outlined,
+                              color: Colors.white, size: 28),
+                          const SizedBox(height: 6),
+                          Text(
+                            vt == 1 ? 'View Once' : '${vt - views} view${vt - views == 1 ? '' : 's'} left',
+                            style: GoogleFonts.figtree(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -1048,34 +1230,57 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildAudioBubble(Map<String, dynamic> msg, bool isMe) {
-    final id = msg['id']?.toString() ?? msg['timestamp'] as String;
+    final id = msg['id']?.toString() ?? msg['timestamp'].toString();
     final storagePath = msg['data'] as String;
     final isPlaying = _currentlyPlayingId == id;
+
+    // Deterministic waveform heights from message ID
+    final seed = id.codeUnits.fold(0, (a, b) => a + b);
+    final rng = Random(seed);
+    final bars = List.generate(26, (_) => 0.25 + rng.nextDouble() * 0.75);
+
+    final barColor = isMe ? Colors.white : kRose;
+
     return GestureDetector(
       onTap: () => _playAudio(id, storagePath),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isPlaying ? Icons.stop_circle_rounded : Icons.play_circle_filled_rounded,
-            color: isMe ? Colors.white : kRose,
-            size: 34,
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Voice message',
-                  style: GoogleFonts.figtree(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isMe ? Colors.white : kInk)),
-              Text(isPlaying ? 'Playing…' : 'Tap to play',
-                  style: GoogleFonts.figtree(
-                      fontSize: 11, color: isMe ? Colors.white70 : kInkMuted)),
-            ],
-          ),
-        ],
+      child: SizedBox(
+        width: 190,
+        child: Row(
+          children: [
+            Icon(
+              isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
+              color: barColor,
+              size: 36,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: SizedBox(
+                height: 36,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: bars.asMap().entries.map((e) {
+                    final animated = isPlaying && (e.key % 3 == 0);
+                    Widget bar = Container(
+                      width: 3,
+                      height: 36 * e.value,
+                      decoration: BoxDecoration(
+                        color: barColor.withValues(alpha: isPlaying ? 1.0 : 0.65),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    );
+                    if (animated) {
+                      bar = bar
+                          .animate(onPlay: (c) => c.repeat(reverse: true))
+                          .scaleY(begin: 0.5, end: 1.0, duration: 400.ms, curve: Curves.easeInOut);
+                    }
+                    return bar;
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1095,7 +1300,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.07),
+        color: Colors.black.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(10),
         border: Border(left: BorderSide(color: kRose, width: 3)),
       ),
@@ -1107,52 +1312,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildMeta(Map<String, dynamic> msg, bool isMe) {
-    final isRead = isMe ? _isMessageRead(msg) : false;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(_formatTime(msg['timestamp'] as String?),
-            style: GoogleFonts.figtree(fontSize: 10, color: kInkMuted)),
-        if (isMe) ...[
-          const SizedBox(width: 3),
-          Icon(
-            Icons.done_all_rounded,
-            size: 14,
-            color: isRead ? const Color(0xFF4FC3F7) : kInkMuted,
-          ),
-        ],
-      ],
+    // Only premium users see read receipts; free users see nothing
+    if (!isMe || !_myIsPremium) return const SizedBox.shrink();
+    final isRead = _isMessageRead(msg);
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Icon(
+        Icons.done_all_rounded,
+        size: 13,
+        color: isRead ? const Color(0xFF4FC3F7) : kInkMuted,
+      ),
     );
   }
 
   // ── Unread divider ───────────────────────────────────────────────────────
 
-  Widget _buildUnreadDivider(int count) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Expanded(child: Divider(color: kRose.withOpacity(0.3), thickness: 1)),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: kRose.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: kRose.withOpacity(0.3)),
-            ),
-            child: Text(
-              '$count unread message${count == 1 ? '' : 's'}',
-              style: GoogleFonts.figtree(
-                  fontSize: 11, color: kRose, fontWeight: FontWeight.w600),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(child: Divider(color: kRose.withOpacity(0.3), thickness: 1)),
-        ],
-      ),
-    );
-  }
+  Widget _buildUnreadDivider(int count) => const SizedBox.shrink();
 
 
 
@@ -1196,80 +1371,246 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
+  // ── Voice preview bar (shown above input while recording / after recording) ─
+
+  Widget _buildVoicePreviewBar() {
+    // Deterministic bars: seeded from path when previewing, random-ish when recording
+    final seed = _pendingAudioPath != null
+        ? _pendingAudioPath!.codeUnits.fold(0, (a, b) => a + b)
+        : 42;
+    final rng = Random(seed);
+    final bars = List.generate(28, (_) => 0.25 + rng.nextDouble() * 0.75);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: kParchment,
+        border: Border(top: BorderSide(color: kBone)),
+      ),
+      child: Row(
+        children: [
+          // Cancel
+          GestureDetector(
+            onTap: _isRecording ? null : _cancelAudioPreview,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: kInkMuted.withValues(alpha: 0.4), width: 1.5),
+              ),
+              child: Icon(Icons.close_rounded,
+                  size: 18, color: _isRecording ? kInkMuted.withValues(alpha: 0.3) : kInkMuted),
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // Recording dot (only while recording)
+          if (_isRecording) ...[
+            Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(right: 8),
+              decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+            ).animate(onPlay: (c) => c.repeat(reverse: true))
+                .fade(begin: 1.0, end: 0.2, duration: 600.ms),
+          ],
+
+          // Play button (only in preview mode)
+          if (_pendingAudioPath != null) ...[
+            GestureDetector(
+              onTap: _togglePreviewPlayback,
+              child: Icon(
+                _isPreviewPlaying
+                    ? Icons.pause_circle_filled_rounded
+                    : Icons.play_circle_filled_rounded,
+                color: kRose,
+                size: 34,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+
+          // Waveform
+          Expanded(
+            child: SizedBox(
+              height: 40,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: bars.asMap().entries.map((e) {
+                  final barH = 40 * e.value;
+                  Widget bar = Container(
+                    width: 3,
+                    height: barH,
+                    decoration: BoxDecoration(
+                      color: _isRecording
+                          ? Colors.redAccent.withValues(alpha: 0.75)
+                          : kRose.withValues(alpha: _isPreviewPlaying ? 1.0 : 0.6),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  );
+                  if (_isRecording) {
+                    bar = bar
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .scaleY(
+                          begin: 0.25,
+                          end: 1.0,
+                          duration: Duration(milliseconds: 250 + (e.key * 37) % 350),
+                          curve: Curves.easeInOut,
+                        );
+                  } else if (_isPreviewPlaying && e.key % 3 == 0) {
+                    bar = bar
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .scaleY(begin: 0.4, end: 1.0, duration: 400.ms, curve: Curves.easeInOut);
+                  }
+                  return bar;
+                }).toList(),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // Label / send button
+          if (_isRecording)
+            Text('Release to send',
+                style: GoogleFonts.figtree(fontSize: 11, color: kInkMuted))
+          else
+            GestureDetector(
+              onTap: _sendAudioPreview,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                      colors: [kRoseLight, kRose],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                        color: kRose.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4))
+                  ],
+                ),
+                child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ── Input bar ────────────────────────────────────────────────────────────
 
   Widget _buildInputBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      decoration:
-          BoxDecoration(color: kParchment, border: Border(top: BorderSide(color: kBone))),
+      decoration: BoxDecoration(
+        color: kParchment,
+        border: Border(top: BorderSide(color: kBone)),
+      ),
       child: SafeArea(
         top: false,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            IconButton(
-              icon: _isUploadingMedia
-                  ? SizedBox(width: 22, height: 22, child: HeartLoader(size: 22))
-                  : const Icon(Icons.add_photo_alternate_outlined, color: kInkMuted),
-              onPressed: _isUploadingMedia ? null : _showImageSourceSheet,
-            ),
-            Expanded(
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 120),
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                decoration: BoxDecoration(
-                  color: kCream,
-                  border: Border.all(color: kBone.withOpacity(0.8), width: 1.5),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(color: kInk.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))
-                  ],
-                ),
-                child: TextField(
-                  controller: _textController,
-                  textCapitalization: TextCapitalization.sentences,
-                  maxLines: null,
-                  enabled: !_isRecording,
-                  style: GoogleFonts.figtree(fontSize: 15, color: kInk),
-                  decoration: InputDecoration(
-                        hintText: _isRecording
-                        ? 'Recording…'
-                        : 'Write a message…',
-                    hintStyle: GoogleFonts.figtree(
-                        color: _isRecording ? Colors.redAccent : kInkMuted, fontSize: 15),
-                    border: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  ),
-                  onChanged: _onTextChanged,
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            if (_hasText)
-              _sendButton()
-            else
-              GestureDetector(
-                onTap: _toggleRecording,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  margin: const EdgeInsets.only(bottom: 6),
-                  decoration: BoxDecoration(
-                    color: _isRecording ? Colors.redAccent : kBone,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _isRecording ? Icons.stop_rounded : Icons.mic_rounded,
-                    color: _isRecording ? Colors.white : kInkMuted,
-                    size: 20,
-                  ),
-                ),
-              ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: _buildNormalInputRow(),
         ),
       ),
+    );
+  }
+
+  Widget _buildNormalInputRow() {
+    // All three elements share the same intrinsic height with crossAxisAlignment.end.
+    // No bottom margins — the vertical padding on the container handles spacing.
+    // Buttons are 44 px; text field min height is also ~44 px via contentPadding.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // ── Image attach button ───────────────────────────────────────
+        GestureDetector(
+          onTap: _isUploadingMedia ? null : _showImageSourceSheet,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: kBone,
+              border: Border.all(color: kBone, width: 1.5),
+            ),
+            child: Center(
+              child: _isUploadingMedia
+                  ? SizedBox(width: 22, height: 22, child: HeartLoader(size: 22))
+                  : const Icon(Icons.add_photo_alternate_outlined,
+                      color: kInkMuted, size: 22),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // ── Text field ───────────────────────────────────────────────
+        Expanded(
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 120, minHeight: 44),
+            decoration: BoxDecoration(
+              color: kCream,
+              border: Border.all(color: kBone.withValues(alpha: 0.8), width: 1.5),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                    color: kInk.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2)),
+              ],
+            ),
+            child: TextField(
+              controller: _textController,
+              textCapitalization: TextCapitalization.sentences,
+              maxLines: null,
+              style: GoogleFonts.figtree(fontSize: 15, color: kInk),
+              decoration: InputDecoration(
+                hintText: 'Write a message…',
+                hintStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 15),
+                border: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              onChanged: _onTextChanged,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // ── Send / Mic button ────────────────────────────────────────
+        if (_hasText)
+          _sendButton()
+        else
+          // Listener fires on raw pointer events — no gesture disambiguation delay,
+          // so press-and-hold works reliably as push-to-talk.
+          Listener(
+            onPointerDown: (_) => _startRecording(),
+            onPointerUp: (_) => _stopRecordingForPreview(),
+            onPointerCancel: (_) => _cancelAudioPreview(),
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _isRecording ? Colors.redAccent : kBone,
+                border: Border.all(
+                  color: _isRecording ? Colors.redAccent : kBone,
+                  width: 1.5,
+                ),
+              ),
+              child: Icon(
+                Icons.mic_rounded,
+                color: _isRecording ? Colors.white : kInkMuted,
+                size: 20,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1279,7 +1620,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       child: Container(
         width: 44,
         height: 44,
-        margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
               colors: [kRoseLight, kRose],
@@ -1287,7 +1627,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               end: Alignment.bottomRight),
           shape: BoxShape.circle,
           boxShadow: [
-            BoxShadow(color: kRose.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4))
+            BoxShadow(color: kRose.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 4))
           ],
         ),
         child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
@@ -1328,19 +1668,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               onTap: () {
                 Navigator.pop(context);
                 _sendImage(ImageSource.camera);
-              },
-            ),
-            const Divider(height: 1),
-            SwitchListTile(
-              secondary: Icon(Icons.timer_outlined, color: _isEphemeralMode ? kRose : kInkMuted),
-              title: Text('View Twice Mode', style: GoogleFonts.figtree(color: kInk, fontSize: 15)),
-              subtitle: Text('Images disappear after 2 views', style: GoogleFonts.figtree(fontSize: 12)),
-              value: _isEphemeralMode,
-              activeColor: kRose,
-              onChanged: (v) {
-                setState(() => _isEphemeralMode = v);
-                Navigator.pop(context);
-                _showImageSourceSheet(); // Reopen to show updated state
               },
             ),
             const SizedBox(height: 8),
@@ -1450,9 +1777,43 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             onPressed: () async {
               Navigator.pop(context);
               await _matchingService.blockUser(widget.matchId);
+              // Also delete stream channel if blocking
+              await StreamService.instance.deleteChannel(widget.myId, widget.matchId);
               if (mounted) Navigator.pop(context);
             },
             child: Text('Block',
+                style: GoogleFonts.figtree(
+                    color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmUnmatch() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: kParchment,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Unmatch with ${widget.matchName}?',
+            style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, color: kInk)),
+        content: Text("This will permanently end your connection and delete your chat history.",
+            style: GoogleFonts.figtree(color: kInkMuted)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel', style: GoogleFonts.figtree(color: kInkMuted))),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              final success = await _matchingService.unmatchUser(widget.matchId);
+              if (success) {
+                await StreamService.instance.deleteChannel(widget.myId, widget.matchId);
+                if (mounted) Navigator.pop(context); // Return to matches list
+              }
+            },
+            child: Text('Unmatch',
                 style: GoogleFonts.figtree(
                     color: Colors.redAccent, fontWeight: FontWeight.bold)),
           ),
@@ -1504,6 +1865,257 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 },
               ),
             const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image send preview screen
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ImageSendPreviewScreen extends StatefulWidget {
+  final Uint8List bytes;
+  final String ext;
+  final Future<void> Function(Uint8List bytes, String ext, int vt, String caption) onSend;
+
+  const _ImageSendPreviewScreen({
+    required this.bytes,
+    required this.ext,
+    required this.onSend,
+  });
+
+  @override
+  State<_ImageSendPreviewScreen> createState() => _ImageSendPreviewScreenState();
+}
+
+class _ImageSendPreviewScreenState extends State<_ImageSendPreviewScreen> {
+  // 0 = normal, 1 = view once, 2 = view twice
+  int _viewType = 0;
+  final _captionCtrl = TextEditingController();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _captionCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _doSend() async {
+    setState(() => _sending = true);
+    try {
+      await widget.onSend(
+          widget.bytes, widget.ext, _viewType, _captionCtrl.text.trim());
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blur = _viewType > 0;
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ── Full-screen image (blurred when view-once / view-twice) ──────
+          Positioned.fill(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.memory(widget.bytes, fit: BoxFit.contain),
+                if (blur)
+                  BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                    child: Container(color: Colors.black.withValues(alpha: 0.18)),
+                  ),
+              ],
+            ),
+          ),
+
+          // ── Back button ──────────────────────────────────────────────────
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 12,
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                    color: Colors.black45, shape: BoxShape.circle),
+                child: const Icon(Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white, size: 18),
+              ),
+            ),
+          ),
+
+          // ── Blur label (when active) ─────────────────────────────────────
+          if (blur)
+            Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.visibility_off_rounded,
+                        color: Colors.white70, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      _viewType == 1 ? 'View Once' : 'View Twice',
+                      style: GoogleFonts.figtree(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // ── Bottom controls ──────────────────────────────────────────────
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: bottom,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // View mode chips
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _viewChip('Normal', 0, Icons.image_rounded),
+                      const SizedBox(width: 8),
+                      _viewChip('View Once', 1, Icons.looks_one_rounded),
+                      const SizedBox(width: 8),
+                      _viewChip('View Twice', 2, Icons.looks_two_rounded),
+                    ],
+                  ),
+                ),
+
+                // Caption field
+                Container(
+                  color: Colors.black54,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.add_photo_alternate_outlined,
+                          color: Colors.white60, size: 22),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _captionCtrl,
+                          style: GoogleFonts.figtree(
+                              color: Colors.white, fontSize: 15),
+                          decoration: InputDecoration(
+                            hintText: 'Add a caption…',
+                            hintStyle: GoogleFonts.figtree(
+                                color: Colors.white54, fontSize: 15),
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Send row
+                Container(
+                  color: Colors.black87,
+                  padding: EdgeInsets.only(
+                    left: 20,
+                    right: 12,
+                    top: 10,
+                    bottom: MediaQuery.of(context).padding.bottom + 10,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        _viewType == 0
+                            ? 'Send photo'
+                            : _viewType == 1
+                                ? 'View once • blurred'
+                                : 'View twice • blurred',
+                        style: GoogleFonts.figtree(
+                            color: Colors.white60, fontSize: 13),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: _sending ? null : _doSend,
+                        child: Container(
+                          width: 52,
+                          height: 52,
+                          decoration: const BoxDecoration(
+                              color: kRose, shape: BoxShape.circle),
+                          child: _sending
+                              ? const Padding(
+                                  padding: EdgeInsets.all(14),
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white),
+                                )
+                              : const Icon(Icons.send_rounded,
+                                  color: Colors.white, size: 22),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _viewChip(String label, int value, IconData icon) {
+    final selected = _viewType == value;
+    return GestureDetector(
+      onTap: () => setState(() => _viewType = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.black45,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+              color: selected ? Colors.white : Colors.white30,
+              width: 1.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 15,
+                color: selected ? Colors.black87 : Colors.white70),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: GoogleFonts.figtree(
+                color: selected ? Colors.black87 : Colors.white70,
+                fontSize: 13,
+                fontWeight:
+                    selected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
           ],
         ),
       ),
