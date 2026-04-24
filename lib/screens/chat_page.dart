@@ -11,7 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:screen_protector/screen_protector.dart';
+
 import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -119,20 +119,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _hasText = true;
     }
     _initChat();
-    _enableScreenProtection();
+
   }
 
-  Future<void> _enableScreenProtection() async {
-    try {
-      await ScreenProtector.preventScreenshotOn();
-    } catch (_) {}
-  }
 
-  Future<void> _disableScreenProtection() async {
-    try {
-      await ScreenProtector.preventScreenshotOff();
-    } catch (_) {}
-  }
 
   @override
   void dispose() {
@@ -143,7 +133,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } else {
       _drafts.remove(_roomId);
     }
-    _disableScreenProtection();
+
     WidgetsBinding.instance.removeObserver(this);
     _msgSub?.cancel();
     _typingStartSub?.cancel();
@@ -1174,54 +1164,70 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           );
         }
 
+        // View-once / view-twice: show compact "Photo" row instead of the image
+        if (vt > 0) {
+          return GestureDetector(
+            onTap: () => _openFullImage(snap.data!, msgId, vt),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Circular timer badge
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: CircularProgressIndicator(
+                            value: 1.0,
+                            strokeWidth: 2.5,
+                            color: kInkMuted,
+                          ),
+                        ),
+                        Text(
+                          vt == 1 ? '1' : '${vt - views}',
+                          style: GoogleFonts.figtree(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Photo',
+                    style: GoogleFonts.figtree(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
         return GestureDetector(
           onTap: () => _openFullImage(snap.data!, msgId, vt),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: Stack(
-              children: [
-                Image.memory(
-                  snap.data!,
-                  width: 220,
-                  height: 220,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    width: 220,
-                    height: 220,
-                    color: kBone,
-                    child: const Icon(Icons.broken_image_rounded, color: kInkMuted),
-                  ),
-                ),
-                // Blur overlay for view-once / view-twice images
-                if (vt > 0)
-                  Positioned.fill(
-                    child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                      child: Container(color: Colors.black.withValues(alpha: 0.15)),
-                    ),
-                  ),
-                // Centre label showing view mode
-                if (vt > 0)
-                  Positioned.fill(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.visibility_outlined,
-                              color: Colors.white, size: 28),
-                          const SizedBox(height: 6),
-                          Text(
-                            vt == 1 ? 'View Once' : '${vt - views} view${vt - views == 1 ? '' : 's'} left',
-                            style: GoogleFonts.figtree(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
+            child: Image.memory(
+              snap.data!,
+              width: 220,
+              height: 220,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Container(
+                width: 220,
+                height: 220,
+                color: kBone,
+                child: const Icon(Icons.broken_image_rounded, color: kInkMuted),
+              ),
             ),
           ),
         );

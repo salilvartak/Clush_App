@@ -536,7 +536,7 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
   );
 }
 
-// ─── TRAVEL MODE ──────────────────────────────────────────────────────────────
+
 // ─── VERIFICATION ─────────────────────────────────────────────────────────────
 class VerificationPage extends StatefulWidget {
   const VerificationPage({super.key});

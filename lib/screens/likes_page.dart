@@ -182,9 +182,11 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
 
     if (!mounted) return;
 
-    if (result['error'] == 'limit_exceeded') {
+    if (result['error'] == 'daily_limit' || result['error'] == 'exhausted') {
        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Weekly limit exceeded!',
+        content: Text(result['error'] == 'daily_limit' 
+            ? 'Out of likes! Wait until they replenish.'
+            : 'No credits left! Get Clush+ or purchase more.',
             style: GoogleFonts.figtree(color: Colors.white)),
         backgroundColor: Colors.red,
         behavior: SnackBarBehavior.floating,

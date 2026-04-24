@@ -339,6 +339,9 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
     final droppedProfile = _profiles.first;
 
+    // Map UI 'dislike' to backend 'pass'
+    final backendType = swipeType == 'dislike' ? 'pass' : swipeType;
+
     setState(() {
       _lastSwipeDirection = swipeType == 'dislike' ? 'dislike' : 'like';
       if (swipeType == 'like' || swipeType == 'pulse') _likesRemaining--;
@@ -352,17 +355,20 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
     try {
       Map<String, dynamic> result;
-      if (swipeType == 'like') {
+      if (backendType == 'like') {
         result = await _matchingService.swipeRight(targetUserId);
-      } else if (swipeType == 'pulse') {
+      } else if (backendType == 'pulse') {
         result = await _matchingService.pulse(targetUserId, message);
       } else {
         result = await _matchingService.swipeLeft(targetUserId);
       }
 
       if (result['success'] == false) {
-        if (result['error'] == 'limit_exceeded') {
-          _showThemedToast('You have reached your weekly limit for this feature.', isError: true);
+        final error = result['error'];
+        if (error == 'daily_limit') {
+          _showThemedToast('Out of likes! Wait until they replenish.', isError: true);
+        } else if (error == 'exhausted') {
+          _showThemedToast('No ${result['type'] ?? 'feature'} credits left! Get Clush+ or purchase more.', isError: true);
         }
       } else if (result['match'] == true && mounted) {
         _showMatchDialog(droppedProfile);
@@ -391,8 +397,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       });
       _showThemedToast('Profile brought back!', isError: false);
     } else {
-      if (result['error'] == 'limit_exceeded') {
-        _showThemedToast('Weekly rewind limit reached! Get Clush+ for unlimited rewinds.', isError: true);
+      if (result['error'] == 'exhausted') {
+        _showThemedToast('No rewind credits left! Get Clush+ for unlimited rewinds.', isError: true);
       } else {
         _showThemedToast('Failed to rewind.', isError: true);
       }
