@@ -48,3 +48,8 @@ app.*.map.json
 # android/key.properties
 # *.jks
 # *.keystore
+
+# Service account credentials — never commit these
+*-service-account*.json
+clush-publishing*.json
+google-services-secret*.json
