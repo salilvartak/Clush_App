@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -106,45 +107,33 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: const Center(child: HeartLoader()),
+      return Scaffold(
+        backgroundColor: kCream,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: Container(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            const Center(child: HeartLoader()),
+          ],
+        ),
       );
     }
 
-    // --- GATEKEEPER LOGIC ---
-    Widget activeBody;
-
-    if (_isVerified) {
-      // 1. If verified, show everything
-      activeBody = _pages[_selectedIndex];
-    } else {
-      // 2. If NOT verified...
-      if (_selectedIndex == 3) {
-        // ...Allow Profile Tab
-        activeBody = _pages[_selectedIndex];
-      } else {
-        // ...Block everything else
-        activeBody = _buildVerificationPopup();
-      }
-    }
-
     return Scaffold(
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 260),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(begin: const Offset(0, 0.025), end: Offset.zero)
-                .animate(animation),
-            child: child,
-          ),
-        ),
-        child: KeyedSubtree(
-          key: ValueKey('${_selectedIndex}_$_isVerified'),
-          child: activeBody,
-        ),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages.asMap().entries.map((entry) {
+          final i = entry.key;
+          final page = entry.value;
+          // If not verified, block all tabs except Profile (index 3)
+          if (!_isVerified && i != 3) {
+            return _buildVerificationPopup();
+          }
+          return page;
+        }).toList(),
       ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
@@ -154,11 +143,10 @@ class _HomePageState extends State<HomePage> {
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
           onTap: (idx) {
-            setState(() => _selectedIndex = idx);
-            // Re-check verification whenever they switch tabs to ensure they haven't 
-            // bypassed the gate (e.g. by changing photo in edit profile)
-            _checkVerificationStatus();
-            _fetchUnreadCount();
+            if (idx != _selectedIndex) {
+              setState(() => _selectedIndex = idx);
+              _fetchUnreadCount();
+            }
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: kCream, // Updated

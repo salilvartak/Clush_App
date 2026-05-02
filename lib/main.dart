@@ -1,3 +1,4 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,6 +17,7 @@ import 'package:clush/services/notification_service.dart';
 import 'package:clush/services/language_service.dart';
 import 'package:clush/services/presence_service.dart';
 import 'package:clush/services/stream_service.dart';
+import 'package:clush/services/purchase_service.dart';
 import 'package:clush/widgets/heart_loader.dart'; 
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:clush/l10n/app_localizations.dart';
@@ -51,6 +53,9 @@ void main() async {
   // 5. Initialize Language Service
   final languageService = LanguageService();
   await languageService.init();
+
+  // 6. Initialize In-App Purchase Service
+  await PurchaseService.instance.init();
 
   runApp(const AuraApp());
 }
@@ -109,7 +114,11 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  
+  // Cache the profile-check future so that auth token refreshes (which cause
+  // StreamBuilder to rebuild) do NOT restart FutureBuilder and reset HomePageState.
+  String? _cachedUid;
+  Future<bool>? _profileCheckFuture;
+
   @override
   void initState() {
     super.initState();
@@ -130,20 +139,45 @@ class _AuthWrapperState extends State<AuthWrapper> {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: HeartLoader()), // <-- Replaced with HeartLoader
+          return Scaffold(
+            backgroundColor: kCream,
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                  child: Container(color: Colors.white.withValues(alpha: 0.18)),
+                ),
+                const Center(child: HeartLoader()),
+              ],
+            ),
           );
-        } 
-        
+        }
+
         if (snapshot.hasData) {
+          final uid = snapshot.data!.uid;
+          // Only create a new Future when the signed-in user actually changes
+          if (uid != _cachedUid) {
+            _cachedUid = uid;
+            _profileCheckFuture = _checkProfileExists(uid);
+          }
           return FutureBuilder<bool>(
-            future: _checkProfileExists(snapshot.data!.uid),
+            future: _profileCheckFuture,
             builder: (context, profileSnapshot) {
               if (profileSnapshot.connectionState == ConnectionState.waiting) {
-                 return const Scaffold(
-                    backgroundColor: kTan,
-                    body: Center(child: HeartLoader()), // <-- Replaced with HeartLoader
-                 );
+                return Scaffold(
+                  backgroundColor: kCream,
+                  body: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                        child: Container(color: Colors.white.withValues(alpha: 0.18)),
+                      ),
+                      const Center(child: HeartLoader()),
+                    ],
+                  ),
+                );
               }
 
               final bool profileExists = profileSnapshot.data ?? false;
@@ -156,7 +190,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
             },
           );
         } else {
-          return const LoginScreen(); 
+          // User signed out — reset cache so next sign-in starts fresh
+          _cachedUid = null;
+          _profileCheckFuture = null;
+          return const LoginScreen();
         }
       },
     );
@@ -294,7 +331,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kTan,
+      backgroundColor: kCream,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {

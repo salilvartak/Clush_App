@@ -15,10 +15,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_contacts/flutter_contacts.dart' as fc;
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
+import 'package:flutter_animate/flutter_animate.dart';
 
 import 'package:clush/theme/colors.dart';
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/screens/permission_request_page.dart';
+import 'package:clush/services/purchase_service.dart';
 
 // ─── PALETTE (mapped to theme/colors.dart) ───────────────────────────────────
 const Color _kRose      = kRose;
@@ -87,7 +89,7 @@ class BaseSettingsPage extends StatelessWidget {
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 110, 20, 40),
-            child: body,
+            child: body.animate().fade(duration: 500.ms).slideY(begin: 0.05, end: 0),
           ),
         ),
         // Frosted header
@@ -115,7 +117,7 @@ class BaseSettingsPage extends StatelessWidget {
               ),
             ),
           ),
-        ),
+        ).animate().fade(duration: 400.ms).slideY(begin: -0.2, end: 0),
       ]),
     );
   }
@@ -578,7 +580,20 @@ class _VerificationPageState extends State<VerificationPage> {
 
     final List? result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const VerificationCameraPage()),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => const VerificationCameraPage(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOutQuart;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 500),
+      ),
     );
     if (result != null) {
       setState(() {
@@ -1762,12 +1777,13 @@ class SubscriptionsPage extends StatefulWidget {
 class _SubscriptionsPageState extends State<SubscriptionsPage> {
   int _selectedPlan = 0;
   late final PageController _pageController;
+  bool _isPurchasing = false;
 
   static const _plans = [
-    _Plan(label: '1 month',  price: '₹165',   perUnit: '₹165/mo · incl. taxes',  isPopular: true,  strikePrice: null,    discount: null),
-    _Plan(label: '3 months', price: '₹449',   perUnit: '₹149.67/mo · incl. taxes', isPopular: false, strikePrice: null,    discount: '~9% off'),
-    _Plan(label: '6 months', price: '₹699',   perUnit: '₹116.50/mo · incl. taxes', isPopular: false, strikePrice: null,    discount: '~30% off'),
-    _Plan(label: '12 months',price: '₹1,199', perUnit: '₹99.92/mo · incl. taxes',  isPopular: false, strikePrice: null,    discount: '~40% off'),
+    _Plan(label: '1 month',  price: '₹165',   perUnit: '₹165/mo · incl. taxes',  isPopular: true,  strikePrice: null,    discount: null,       productId: PurchaseIds.monthly),
+    _Plan(label: '3 months', price: '₹449',   perUnit: '₹149.67/mo · incl. taxes', isPopular: false, strikePrice: null,    discount: '~9% off',  productId: PurchaseIds.quarter),
+    _Plan(label: '6 months', price: '₹699',   perUnit: '₹116.50/mo · incl. taxes', isPopular: false, strikePrice: null,    discount: '~30% off', productId: PurchaseIds.half),
+    _Plan(label: '12 months',price: '₹1,199', perUnit: '₹99.92/mo · incl. taxes',  isPopular: false, strikePrice: null,    discount: '~40% off', productId: PurchaseIds.annual),
   ];
 
   static const _features = [
@@ -1786,21 +1802,64 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 0.72, initialPage: 0);
+
+    // Register purchase callbacks
+    PurchaseService.instance.onPurchaseSuccess = (productId) {
+      if (!mounted) return;
+      setState(() => _isPurchasing = false);
+      _showSnack('🎉 Welcome to Clush+! Your subscription is now active.', isError: false);
+      // Optionally pop back after a delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) Navigator.pop(context, true);
+      });
+    };
+    PurchaseService.instance.onPurchaseError = (error) {
+      if (!mounted) return;
+      setState(() => _isPurchasing = false);
+      _showSnack(error, isError: true);
+    };
+    PurchaseService.instance.onPurchasePending = () {
+      if (!mounted) return;
+      _showSnack('Purchase pending. Processing your payment...', isError: false);
+    };
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    // Clear callbacks so they don't fire on a disposed widget
+    PurchaseService.instance.onPurchaseSuccess = null;
+    PurchaseService.instance.onPurchaseError = null;
+    PurchaseService.instance.onPurchasePending = null;
     super.dispose();
   }
 
-  void _showComingSoon() {
+  void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Subscriptions coming soon!', style: GoogleFonts.figtree(color: Colors.white)),
-      backgroundColor: _kRose, behavior: SnackBarBehavior.floating,
+      content: Text(msg, style: GoogleFonts.figtree(color: Colors.white)),
+      backgroundColor: isError ? Colors.red.shade400 : _kRose,
+      behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.all(16),
     ));
+  }
+
+  void _purchaseSelectedPlan() {
+    if (_isPurchasing) return;
+    setState(() => _isPurchasing = true);
+
+    final plan = _plans[_selectedPlan];
+    final success = PurchaseService.instance.buySubscription(plan.productId);
+
+    if (!success) {
+      // buySubscription returns false if store unavailable or product not found
+      setState(() => _isPurchasing = false);
+    }
+  }
+
+  void _restorePurchases() async {
+    _showSnack('Restoring purchases...', isError: false);
+    await PurchaseService.instance.restorePurchases();
   }
 
   @override
@@ -1893,12 +1952,12 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                 right: i == _plans.length - 1 ? 20 : 8,
                               ),
                               decoration: BoxDecoration(
-                                color: selected ? _kRose : _kParchment,
+                                color: selected ? _kInk : _kParchment,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: selected ? _kRose : _kBone, width: 1.5),
+                                  color: selected ? _kInk : _kBone, width: 1.5),
                                 boxShadow: selected
-                                    ? [BoxShadow(color: _kRose.withValues(alpha: 0.28), blurRadius: 16, offset: const Offset(0, 6))]
+                                    ? [BoxShadow(color: _kInk.withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 6))]
                                     : [BoxShadow(color: _kInk.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
                               ),
                               padding: const EdgeInsets.all(18),
@@ -1915,13 +1974,13 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                           decoration: BoxDecoration(
                                             color: selected
-                                                ? Colors.white.withValues(alpha: 0.25)
-                                                : _kRose.withValues(alpha: 0.12),
+                                                ? _kGold.withValues(alpha: 0.25)
+                                                : _kGold.withValues(alpha: 0.12),
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text('Popular',
                                             style: GoogleFonts.figtree(
-                                              color: selected ? Colors.white : _kRose,
+                                              color: selected ? _kGold : const Color(0xFFB8860B),
                                               fontSize: 10, fontWeight: FontWeight.w700)),
                                         )
                                       else
@@ -1930,7 +1989,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                         Container(
                                           width: 22, height: 22,
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withValues(alpha: 0.25),
+                                            color: _kGold.withValues(alpha: 0.3),
                                             shape: BoxShape.circle,
                                           ),
                                           child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
@@ -1987,7 +2046,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                         height: 6,
                         margin: const EdgeInsets.symmetric(horizontal: 3),
                         decoration: BoxDecoration(
-                          color: _selectedPlan == i ? _kRose : _kBone,
+                          color: _selectedPlan == i ? _kInk : _kBone,
                           borderRadius: BorderRadius.circular(3),
                         ),
                       )),
@@ -2016,8 +2075,8 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                 child: Row(children: [
                                   Container(
                                     width: 34, height: 34,
-                                    decoration: const BoxDecoration(color: _kRosePale, shape: BoxShape.circle),
-                                    child: Icon(f.$1, color: _kRose, size: 17),
+                                    decoration: BoxDecoration(color: _kGold.withValues(alpha: 0.12), shape: BoxShape.circle),
+                                    child: Icon(f.$1, color: _kGold, size: 17),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(child: Column(
@@ -2027,7 +2086,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                       Text(f.$3, style: GoogleFonts.figtree(fontSize: 12, color: _kInkMuted)),
                                     ],
                                   )),
-                                  Icon(Icons.check_circle_rounded, color: _kRose, size: 18),
+                                  Icon(Icons.check_circle_rounded, color: _kGold, size: 18),
                                 ]),
                               ),
                               if (i < _features.length - 1)
@@ -2083,20 +2142,37 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                   const SizedBox(height: 10),
                   // Continue button
                   GestureDetector(
-                    onTap: _showComingSoon,
-                    child: Container(
+                    onTap: _isPurchasing ? null : _purchaseSelectedPlan,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       decoration: BoxDecoration(
-                        color: _kRose,
+                        color: _isPurchasing ? _kInk.withValues(alpha: 0.6) : _kInk,
                         borderRadius: BorderRadius.circular(16),
-                        boxShadow: [BoxShadow(color: _kRose.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+                        boxShadow: [BoxShadow(color: _kInk.withValues(alpha: 0.2), blurRadius: 12, offset: const Offset(0, 4))],
                       ),
                       child: Center(
-                        child: Text('Continue',
-                          style: GoogleFonts.gabarito(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                        child: _isPurchasing
+                          ? const SizedBox(
+                              width: 22, height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Text('Continue',
+                              style: GoogleFonts.gabarito(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Restore purchases link
+                  GestureDetector(
+                    onTap: _restorePurchases,
+                    child: Text('Restore Purchases',
+                      style: GoogleFonts.figtree(color: _kInkMuted, fontSize: 13, fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.underline, decorationColor: _kInkMuted)),
                   ),
                 ],
               ),
@@ -2115,9 +2191,11 @@ class _Plan {
   final bool isPopular;
   final String? strikePrice;
   final String? discount;
+  final String productId;
   const _Plan({
     required this.label, required this.price, required this.perUnit,
     required this.isPopular, required this.strikePrice, required this.discount,
+    required this.productId,
   });
 }
 

@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:clush/screens/chat_page.dart';
 import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart';
+import 'package:clush/screens/setting_sub_pages.dart';
 import 'package:clush/widgets/activity_badge.dart';
 import 'package:clush/widgets/heart_loader.dart';
 
@@ -227,14 +228,14 @@ class _MatchesPageState extends State<MatchesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kTan,
+      backgroundColor: kCream,
       appBar: AppBar(
         title: Text(
           'Matches',
           style: GoogleFonts.gabarito(
               fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5),
         ),
-        backgroundColor: kTan,
+        backgroundColor: kCream,
         elevation: 0,
         centerTitle: false,
       ),
@@ -262,34 +263,6 @@ class _MatchesPageState extends State<MatchesPage> {
                             SvgPicture.asset('assets/images/2.svg', width: 180, height: 180),
                             const SizedBox(height: 28),
                             Text(
-                              "You're reaching far, but the right connection hasn't locked in yet.",
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.gabarito(
-                                  fontWeight: FontWeight.bold, fontSize: 20, color: kBlack),
-                            ),
-                            const SizedBox(height: 10),
-                            Container(
-                              width: 120,
-                              height: 120,
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color: kRosePale,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                      color: kRose.withOpacity(0.1),
-                                      blurRadius: 30,
-                                      spreadRadius: 5)
-                                ],
-                              ),
-                              child: SvgPicture.asset(
-                                'assets/clush_logo_alt.svg',
-                                colorFilter: const ColorFilter.mode(
-                                    kRose, BlendMode.srcIn),
-                              ),
-                            ),
-                            const SizedBox(height: 32),
-                            Text(
                               "No matches yet",
                               style: GoogleFonts.gabarito(
                                   fontSize: 28,
@@ -305,6 +278,41 @@ class _MatchesPageState extends State<MatchesPage> {
                                 textAlign: TextAlign.center,
                                 style: GoogleFonts.figtree(
                                     fontSize: 16, color: kInkMuted, height: 1.5),
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const SubscriptionsPage()),
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                                decoration: BoxDecoration(
+                                  color: kInk,
+                                  borderRadius: BorderRadius.circular(100),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Get Clush',
+                                      style: GoogleFonts.gabarito(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      '+',
+                                      style: GoogleFonts.gabarito(
+                                        color: kGold,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                             const SizedBox(height: 40),

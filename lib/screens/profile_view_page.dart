@@ -401,6 +401,7 @@ class ProfileViewPage extends StatelessWidget {
                               letterSpacing: 0.5,
                             ),
                           ),
+                          const Spacer(),
                           Text(
                             entry.value,
                             style: GoogleFonts.figtree(

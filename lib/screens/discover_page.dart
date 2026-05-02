@@ -11,6 +11,9 @@ import 'package:clush/widgets/match_animation_dialog.dart';
 import 'package:clush/widgets/activity_badge.dart';
 
 import 'package:clush/theme/colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:clush/screens/setting_sub_pages.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -19,7 +22,8 @@ class DiscoverPage extends StatefulWidget {
   State<DiscoverPage> createState() => _DiscoverPageState();
 }
 
-class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClientMixin {
+class _DiscoverPageState extends State<DiscoverPage>
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -31,6 +35,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   bool _isLoading = true;
   bool _isActionLoading = false;
   int _likesRemaining = 6;
+  int _superLikesRemaining = 1;
   bool _isPremium = false;
   String _lastSwipeDirection = 'like';
 
@@ -56,10 +61,113 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
   String? _errorMessage;
 
+  final ScrollController _scrollController = ScrollController();
+  bool _showFloatingName = false;
+
+  // ── Swipe animation ──────────────────────────────────────────────────────────
+  late AnimationController _swipeController;
+  late Animation<double> _swipeProgress;
+  bool _isSwiping = false;
+  bool _isRewinding = false; // Card slide-in from left (rewind)
+  String _swipeType = ''; // 'like' | 'dislike' | 'gem'
+  String? _pendingTargetId;
+  String? _pendingMessage;
+
   @override
   void initState() {
     super.initState();
-    _fetchProfiles();
+    _swipeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    )..addStatusListener((status) {
+      if (status == AnimationStatus.completed && _isSwiping) {
+        _onSwipeAnimationComplete();
+      }
+      if (status == AnimationStatus.dismissed && _isRewinding) {
+        setState(() => _isRewinding = false);
+      }
+    });
+    _swipeProgress = CurvedAnimation(
+      parent: _swipeController,
+      curve: Curves.easeInOutCubic,
+    );
+
+    _scrollController.addListener(() {
+      if (_profiles.isEmpty) return;
+      // Show floating name when scrolled past the main header name
+      final show = _scrollController.offset > 120;
+      if (show != _showFloatingName) {
+        setState(() => _showFloatingName = show);
+      }
+    });
+
+    _loadFilters().then((_) {
+      _fetchProfiles();
+    });
+  }
+
+  Future<void> _loadFilters() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        final ageStart = prefs.getDouble('filter_age_start');
+        final ageEnd = prefs.getDouble('filter_age_end');
+        if (ageStart != null && ageEnd != null) {
+          _filterAge = RangeValues(ageStart, ageEnd);
+        }
+
+        _filterDistance = prefs.getDouble('filter_distance') ?? 50;
+        _filterIntent = prefs.getString('filter_intent') ?? '';
+        _filterReligion = prefs.getString('filter_religion');
+        _filterEthnicity = prefs.getString('filter_ethnicity');
+
+        final heightStart = prefs.getDouble('filter_height_start');
+        final heightEnd = prefs.getDouble('filter_height_end');
+        if (heightStart != null && heightEnd != null) {
+          _filterHeight = RangeValues(heightStart, heightEnd);
+        }
+
+        _filterPolitics = prefs.getString('filter_politics');
+        _filterStarSign = prefs.getString('filter_star_sign');
+        _filterEducation = prefs.getString('filter_education');
+        _filterKids = prefs.getString('filter_kids');
+        _filterPets = prefs.getString('filter_pets');
+        _filterExercise = prefs.getString('filter_exercise');
+        _filterDrinks = prefs.getString('filter_drinks');
+        _filterSmoke = prefs.getString('filter_smoke');
+        _filterWeed = prefs.getString('filter_weed');
+      });
+    }
+  }
+
+  Future<void> _saveFilters() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('filter_age_start', _filterAge.start);
+    await prefs.setDouble('filter_age_end', _filterAge.end);
+    await prefs.setDouble('filter_distance', _filterDistance);
+    await prefs.setString('filter_intent', _filterIntent);
+    
+    if (_filterReligion != null) await prefs.setString('filter_religion', _filterReligion!);
+    if (_filterEthnicity != null) await prefs.setString('filter_ethnicity', _filterEthnicity!);
+    
+    await prefs.setDouble('filter_height_start', _filterHeight.start);
+    await prefs.setDouble('filter_height_end', _filterHeight.end);
+    
+    if (_filterPolitics != null) await prefs.setString('filter_politics', _filterPolitics!);
+    if (_filterStarSign != null) await prefs.setString('filter_star_sign', _filterStarSign!);
+    if (_filterEducation != null) await prefs.setString('filter_education', _filterEducation!);
+    if (_filterKids != null) await prefs.setString('filter_kids', _filterKids!);
+    if (_filterPets != null) await prefs.setString('filter_pets', _filterPets!);
+    if (_filterExercise != null) await prefs.setString('filter_exercise', _filterExercise!);
+    if (_filterDrinks != null) await prefs.setString('filter_drinks', _filterDrinks!);
+    if (_filterSmoke != null) await prefs.setString('filter_smoke', _filterSmoke!);
+    if (_filterWeed != null) await prefs.setString('filter_weed', _filterWeed!);
+  }
+
+  @override
+  void dispose() {
+    _swipeController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchProfiles() async {
@@ -310,16 +418,25 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
       if (mounted) {
         final elapsed = stopwatch.elapsedMilliseconds;
-        if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
+        if (elapsed < 1200) await Future.delayed(Duration(milliseconds: 1200 - elapsed));
+        
+        // Fetch wallet to sync credits
+        final wallet = await _matchingService.getWallet();
+        
         setState(() {
           _profiles = filteredProfiles.take(20).toList();
           _isLoading = false;
+          if (wallet.isNotEmpty) {
+            _likesRemaining = wallet['likes_remaining'] ?? 6;
+            _superLikesRemaining = wallet['super_likes_remaining'] ?? 0;
+            _isPremium = wallet['is_premium'] ?? false;
+          }
         });
       }
     } catch (e) {
       if (mounted) {
         final elapsed = stopwatch.elapsedMilliseconds;
-        if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
+        if (elapsed < 1200) await Future.delayed(Duration(milliseconds: 1200 - elapsed));
         setState(() {
           _errorMessage = 'Error loading profiles: $e';
           _isLoading = false;
@@ -329,40 +446,78 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   }
 
   // --- SWIPE LOGIC ---
-  void _onSwipe(String targetUserId, String swipeType, {String? message}) async {
-    if (_profiles.isEmpty) return;
 
-    if ((swipeType == 'like' || swipeType == 'pulse') && _likesRemaining <= 0) {
+  void _triggerSwipe(String targetUserId, String swipeType, {String? message}) {
+    if (_isSwiping || _isRewinding || _profiles.isEmpty) return;
+    
+    if (swipeType == 'gem') {
+      if (_superLikesRemaining <= 0) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsPage())).then((_) => _fetchProfiles());
+        return;
+      }
+    } else if (swipeType == 'like' && _likesRemaining <= 0) {
       _showThemedToast('Out of likes! Save them for later or wait until they replenish.', isError: true);
       return;
     }
 
-    final droppedProfile = _profiles.first;
+    _pendingTargetId = targetUserId;
+    _pendingMessage = message;
+    setState(() {
+      _isSwiping = true;
+      _swipeType = swipeType;
+    });
+    _swipeController.forward();
+  }
 
-    // Map UI 'dislike' to backend 'pass'
-    final backendType = swipeType == 'dislike' ? 'pass' : swipeType;
+  void _onSwipeAnimationComplete() {
+    if (_profiles.isEmpty) return;
+    final droppedProfile = _profiles.first;
+    final swipeType = _swipeType;
+    final targetId = _pendingTargetId!;
+    final message = _pendingMessage;
+
+    // Reset scroll and floating name state for the next profile
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
 
     setState(() {
+      _isSwiping = false;
+      _swipeType = '';
+      _showFloatingName = false;
       _lastSwipeDirection = swipeType == 'dislike' ? 'dislike' : 'like';
-      if (swipeType == 'like' || swipeType == 'pulse') _likesRemaining--;
+      if (swipeType == 'like') _likesRemaining--;
+      if (swipeType == 'gem') _superLikesRemaining--;
+      
       if (swipeType == 'dislike') {
         _lastDislikedProfile = Map<String, dynamic>.from(droppedProfile);
       }
-      if (_profiles.isNotEmpty) {
-        _profiles.removeAt(0);
-      }
+      _profiles.removeAt(0);
+      _pendingTargetId = null;
+      _pendingMessage = null;
     });
+    _swipeController.reset();
+    _recordSwipeInBackground(targetId, swipeType, droppedProfile, message: message);
+  }
 
+  void _recordSwipeInBackground(
+    String targetUserId,
+    String swipeType,
+    Map<String, dynamic> droppedProfile, {
+    String? message,
+  }) async {
+    final backendType = swipeType == 'dislike' ? 'pass' : swipeType;
     try {
       Map<String, dynamic> result;
       if (backendType == 'like') {
         result = await _matchingService.swipeRight(targetUserId);
-      } else if (backendType == 'pulse') {
+      } else if (backendType == 'gem') {
+        // Map UI 'gem' to the backend 'pulse' endpoint
         result = await _matchingService.pulse(targetUserId, message);
       } else {
         result = await _matchingService.swipeLeft(targetUserId);
       }
-
+      if (!mounted) return;
       if (result['success'] == false) {
         final error = result['error'];
         if (error == 'daily_limit') {
@@ -374,7 +529,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         _showMatchDialog(droppedProfile);
       }
     } catch (e) {
-      print("Error recording swipe: $e");
+      debugPrint('Error recording swipe: $e');
     }
   }
 
@@ -383,17 +538,24 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       _showThemedToast('Nothing to rewind!', isError: true);
       return;
     }
+    if (_isSwiping || _isRewinding) return;
 
     setState(() => _isActionLoading = true);
-    
     final result = await _matchingService.rewind(_lastDislikedProfile!['id'].toString());
-    
     setState(() => _isActionLoading = false);
 
     if (result['success'] == true) {
       setState(() {
         _profiles.insert(0, _lastDislikedProfile!);
         _lastDislikedProfile = null;
+        _isRewinding = true;
+      });
+      // Let the widget rebuild with the new profile at index 0, then start
+      // sliding it in from the left
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _swipeController.value = 1.0;
+        _swipeController.reverse();
       });
       _showThemedToast('Profile brought back!', isError: false);
     } else {
@@ -405,7 +567,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     }
   }
 
-  void _showPulseDialog(String targetUserId, String targetName) {
+  void _showGemDialog(String targetUserId, String targetName) {
     final TextEditingController pulseController = TextEditingController();
     final FocusNode focusNode = FocusNode();
     
@@ -461,7 +623,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                             color: kGold.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.bolt_rounded, color: kGold, size: 28),
+                          child: const Icon(Icons.diamond_rounded, color: kGold, size: 28),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -469,7 +631,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                "Send a Pulse",
+                                "Send a Gem",
                                 style: GoogleFonts.gabarito(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 24,
@@ -524,7 +686,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                         onPressed: () {
                           final message = pulseController.text.trim();
                           Navigator.pop(ctx);
-                          _onSwipe(targetUserId, 'pulse', message: message.isEmpty ? null : message);
+                          _triggerSwipe(targetUserId, 'gem', message: message.isEmpty ? null : message);
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: kGold,
@@ -535,7 +697,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                           elevation: 0,
                         ),
                         child: Text(
-                          "Send Pulse",
+                          "Send Gem",
                           style: GoogleFonts.figtree(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -575,8 +737,15 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     if (_isLoading) {
       return Scaffold(
         backgroundColor: kCream,
-        body: const Center(
-          child: HeartLoader(),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: Container(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            const Center(child: HeartLoader()),
+          ],
         ),
       );
     }
@@ -637,6 +806,21 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                         color: kInkMuted,
                       ),
                     ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: () => _showFiltersModal(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kInk,
+                        foregroundColor: kCream,
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+                      ),
+                      child: Text(
+                        "Broaden your view",
+                        style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -648,6 +832,10 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     }
 
     final profile = _profiles.first;
+    // Pre-build next card outside AnimatedBuilder so it isn't rebuilt every frame
+    final Widget nextCard = _profiles.length > 1
+        ? _buildProfileContent(_profiles[1])
+        : const SizedBox.shrink();
 
     return Scaffold(
       backgroundColor: kCream,
@@ -657,65 +845,136 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         backgroundColor: kParchment,
         child: Stack(
           children: [
-          // 1. SCROLLABLE PROFILE CONTENT (Animated Transition)
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 500),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              final isIncoming = child.key == ValueKey(profile['id'] ?? profile['full_name']);
+            // 1. SCROLLABLE PROFILE CONTENT — swipe-animated
+            AnimatedBuilder(
+              animation: _swipeProgress,
+              child: _buildProfileContent(profile),
+              builder: (context, currentCard) {
+                final double t  = _swipeProgress.value;
+                final double sw = MediaQuery.of(context).size.width;
 
-              if (isIncoming) {
-                final scaleAnimation = Tween<double>(begin: 0.95, end: 1.0).animate(animation);
-                final fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(animation);
-                return FadeTransition(
-                  opacity: fadeAnimation,
-                  child: ScaleTransition(scale: scaleAnimation, child: child),
+                // Build transform based on current phase
+                final Matrix4 mat;
+                if (_isRewinding) {
+                  // Slide in from left: at t=1 card is off-screen left; reverse() takes t 1→0
+                  mat = t > 0
+                      ? (Matrix4.translationValues(-sw * 1.2 * t, 30.0 * t, 0)
+                        ..rotateZ(-0.15 * t))
+                      : Matrix4.identity();
+                } else if (_isSwiping) {
+                  if (_swipeType == 'gem') {
+                    // Superlike: fly UP
+                    final double sh = MediaQuery.of(context).size.height;
+                    mat = Matrix4.translationValues(0, -sh * 1.2 * t, 0)
+                      ..scale(1.0 - 0.1 * t);
+                  } else {
+                    final bool goLeft = _swipeType == 'dislike';
+                    mat = Matrix4.translationValues(
+                      goLeft ? -sw * 1.4 * t : sw * 1.4 * t,
+                      40.0 * t, 0,
+                    )..rotateZ((goLeft ? -0.2 : 0.2) * t);
+                  }
+                } else {
+                  mat = Matrix4.identity();
+                }
+
+                return Stack(
+                  children: [
+                    // Next card — scales up from 0.94 as current flies away (swipe only)
+                    if (_isSwiping && _profiles.length > 1)
+                      Transform.scale(
+                        scale: 0.94 + 0.06 * t,
+                        alignment: Alignment.bottomCenter,
+                        child: Opacity(
+                          opacity: t.clamp(0.0, 1.0),
+                          child: nextCard,
+                        ),
+                      ),
+                    // Current card — slides off (swipe) or slides in from left (rewind)
+                    Transform(
+                      transform: mat,
+                      alignment: Alignment.bottomCenter,
+                      child: currentCard,
+                    ),
+                  ],
                 );
-              } else {
-                final isLike = _lastSwipeDirection == 'like';
-                final outOffset = Tween<Offset>(
-                  begin: isLike ? const Offset(1.5, 0.1) : const Offset(-1.5, 0.1),
-                  end: Offset.zero,
-                ).animate(animation);
-                final rotationAnimation = Tween<double>(
-                  begin: isLike ? 0.1 : -0.1,
-                  end: 0.0,
-                ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
-                return FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(
-                    position: outOffset,
-                    child: RotationTransition(
-                      turns: rotationAnimation,
-                      child: child,
+              },
+            ),
+
+            // 2. Floating Name Pill
+            if (_showFloatingName)
+              Positioned(
+                top: 54, left: 0, right: 0,
+                child: _buildFloatingNamePill(profile)
+                    .animate()
+                    .fadeIn(duration: 300.ms)
+                    .slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+              ),
+
+            // 3. FLOATING ACTION BUTTONS
+            Positioned(
+              bottom: 40, left: 0, right: 0,
+              child: _buildFloatingButtons(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingNamePill(Map<String, dynamic> profile) {
+    final String name = profile['fullName'] ?? profile['full_name'] ?? 'User';
+    final bool isVerified = profile['is_verified'] ?? true;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                color: kCream.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: kBone.withOpacity(0.5), width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: kInk.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.gabarito(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: kInk,
+                        letterSpacing: -0.2,
+                      ),
                     ),
                   ),
-                );
-              }
-            },
-            child: KeyedSubtree(
-              key: ValueKey(profile['id'] ?? profile['full_name']),
-              child: _buildProfileContent(profile),
+                  if (isVerified) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.verified_rounded, color: kRose, size: 16),
+                  ],
+                ],
+              ),
             ),
           ),
-
-          // 2. HEADER
-          Positioned(
-            top: 0, left: 0, right: 0,
-            child: _buildHeader(context),
-          ),
-
-          // 3. FLOATING ACTION BUTTONS
-          Positioned(
-            bottom: 40, left: 0, right: 0,
-            child: _buildFloatingButtons(),
-          ),
-        ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   // ================= CONTENT BUILDER =================
 
@@ -776,8 +1035,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
     List<Widget> contentList = [];
     
-    // Header spacer
-    contentList.add(const SizedBox(height: 106));
+    // Header
+    contentList.add(_buildHeader(context));
 
     // ── Name, Age, Verification & Rewind ──────────────────────────────────────
     contentList.add(
@@ -801,7 +1060,9 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                             letterSpacing: -1.0,
                             height: 1.0,
                           ),
-                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
+                          overflow: TextOverflow.visible,
+                          softWrap: true,
                         ),
                       ),
                       if (isVerified) ...[
@@ -1003,11 +1264,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                   () => _showReportDialog(profile),
                 ),
                 Container(width: 1, height: 20, color: kBone),
-                _buildTextAction(
-                  Icons.block_outlined,
-                  "Block",
-                  () => _showBlockConfirmation(profile),
-                ),
+                _buildBlockAction(profile),
               ],
             ),
           ],
@@ -1018,6 +1275,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     contentList.add(const SizedBox(height: 140));
 
     return SingleChildScrollView(
+      controller: _scrollController,
       physics: const BouncingScrollPhysics(),
       padding: EdgeInsets.zero,
       child: Column(
@@ -1044,6 +1302,34 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBlockAction(Map<String, dynamic> profile) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showBlockConfirmation(profile),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.block_outlined, color: kInkMuted.withOpacity(0.6), size: 16),
+              const SizedBox(width: 6),
+              Text(
+                "Block",
+                style: GoogleFonts.figtree(
+                  color: kInkMuted.withOpacity(0.6),
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1327,7 +1613,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             elevation: 8,
             shadowColor: kBone,
             child: InkWell(
-              onTap: () => _onSwipe(currentProfileId, 'dislike'),
+              onTap: () => _triggerSwipe(currentProfileId, 'dislike'),
               customBorder: const CircleBorder(),
               child: Container(
                 width: 64,
@@ -1342,15 +1628,15 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
           // PULSE (Super Like)
           Material(
-            color: _likesRemaining > 0 ? kGold : Colors.grey.shade300,
+            color: _superLikesRemaining > 0 ? kGold : Colors.grey.shade300,
             shape: const CircleBorder(),
-            elevation: _likesRemaining > 0 ? 12 : 2,
-            shadowColor: _likesRemaining > 0 ? kGold.withOpacity(0.5) : Colors.transparent,
+            elevation: _superLikesRemaining > 0 ? 12 : 2,
+            shadowColor: _superLikesRemaining > 0 ? kGold.withOpacity(0.5) : Colors.transparent,
             child: InkWell(
               onTap: () {
                 final profile = _profiles.first;
                 final name = profile['fullName'] ?? profile['full_name'] ?? 'them';
-                _showPulseDialog(currentProfileId, name);
+                _showGemDialog(currentProfileId, name);
               },
               customBorder: const CircleBorder(),
               child: Container(
@@ -1358,9 +1644,9 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
                 height: 76,
                 alignment: Alignment.center,
                 child: Icon(
-                  Icons.bolt_rounded, 
-                  color: _likesRemaining > 0 ? Colors.white : Colors.grey.shade500, 
-                  size: 40
+                  Icons.diamond_rounded,
+                  color: _superLikesRemaining > 0 ? Colors.white : Colors.grey.shade500,
+                  size: 36
                 ),
               ),
             ),
@@ -1375,7 +1661,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             elevation: _likesRemaining > 0 ? 8 : 2,
             shadowColor: _likesRemaining > 0 ? kRose.withOpacity(0.4) : Colors.transparent,
             child: InkWell(
-              onTap: () => _onSwipe(currentProfileId, 'like'),
+              onTap: () => _triggerSwipe(currentProfileId, 'like'),
               customBorder: const CircleBorder(),
               child: Container(
                 width: 64,
@@ -1396,6 +1682,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
 
   // ================= REUSED WIDGETS =================
 
+  // ── Lottie reaction overlay ──────────────────────────────────────────────────
+  // Shown OVER the current profile card; when the animation finishes the card
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
       color: kParchment,
@@ -1593,10 +1881,14 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(21),
-        child: Image.network(
-          url,
+        child: CachedNetworkImage(
+          imageUrl: url,
           fit: BoxFit.cover,
-          errorBuilder: (c, e, s) => Container(
+          placeholder: (context, url) => Container(
+            color: kParchment,
+            child: const Center(child: HeartLoader(size: 40)),
+          ),
+          errorWidget: (context, url, error) => Container(
             color: kParchment,
             child: const Center(
               child: Icon(Icons.person_outline_rounded, color: kBone, size: 64),
@@ -1708,6 +2000,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             _filterWeed = weed;
             _isLoading = true;
           });
+          _saveFilters();
           _fetchProfiles();
         },
       ),

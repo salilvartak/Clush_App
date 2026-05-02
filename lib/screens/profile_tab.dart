@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:clush/services/matching_service.dart';
 import 'package:google_fonts/google_fonts.dart'; // Typography
 import 'package:flutter_animate/flutter_animate.dart'; // Animations
 import 'package:clush/screens/profile_view_page.dart'; 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:clush/screens/settings_page.dart';
 import 'package:clush/screens/setting_sub_pages.dart';
 import 'package:clush/widgets/heart_loader.dart';
@@ -20,6 +22,7 @@ class ProfileTab extends StatefulWidget {
 
 class _ProfileTabState extends State<ProfileTab> {
   late Future<Map<String, dynamic>?> _profileFuture;
+  final MatchingService _matchingService = MatchingService();
 
   @override
   void initState() {
@@ -31,7 +34,7 @@ class _ProfileTabState extends State<ProfileTab> {
     final sw = Stopwatch()..start();
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return null;
-    
+
     final data = await Supabase.instance.client
         .from('profile_discovery')
         .select()
@@ -39,16 +42,27 @@ class _ProfileTabState extends State<ProfileTab> {
         .maybeSingle();
     if (data == null) return null;
 
+    final result = Map<String, dynamic>.from(data);
+
+    // Merge wallet credits so the feature tiles show live numbers
+    try {
+      final wallet = await _matchingService.getWallet();
+      if (wallet.isNotEmpty) {
+        result['super_likes_remaining']   = wallet['super_likes_remaining']   ?? 0;
+        result['rewinds_remaining']       = wallet['rewinds_remaining']       ?? 0;
+        result['profile_saves_remaining'] = wallet['profile_saves_remaining'] ?? 0;
+      }
+    } catch (_) {}
+
     final elapsed = sw.elapsedMilliseconds;
     if (elapsed < 1200) await Future.delayed(Duration(milliseconds: 1200 - elapsed));
-    return data;
+    return result;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Wrapped in a Scaffold to provide the kTan background consistent with other pages
     return Scaffold(
-      backgroundColor: kTan,
+      backgroundColor: kCream,
       body: SafeArea(
         child: FutureBuilder<Map<String, dynamic>?>(
           future: _profileFuture,
@@ -88,7 +102,20 @@ class _ProfileTabState extends State<ProfileTab> {
                           onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => const SettingsPage()),
+                              PageRouteBuilder(
+                                pageBuilder: (context, animation, secondaryAnimation) => const SettingsPage(),
+                                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                  const begin = Offset(1.0, 0.0);
+                                  const end = Offset.zero;
+                                  const curve = Curves.easeInOutQuart;
+                                  var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                                  return SlideTransition(
+                                    position: animation.drive(tween),
+                                    child: child,
+                                  );
+                                },
+                                transitionDuration: const Duration(milliseconds: 500),
+                              ),
                             );
                           },
                           icon: const Icon(Icons.settings_rounded, color: kBlack),
@@ -155,13 +182,13 @@ class _ProfileTabState extends State<ProfileTab> {
           ClipRRect(
             borderRadius: BorderRadius.circular(25),
             child: photoUrl.isNotEmpty
-                ? Image.network(
-                    photoUrl,
+                ? CachedNetworkImage(
+                    imageUrl: photoUrl,
                     fit: BoxFit.cover,
-                    loadingBuilder: (context, child, progress) => progress == null
-                        ? child
-                        : Container(color: kBone, child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: kRose))),
-                    errorBuilder: (context, error, stack) =>
+                    placeholder: (context, url) => Container(
+                        color: kBone, 
+                        child: const Center(child: HeartLoader(size: 40))),
+                    errorWidget: (context, url, error) =>
                         Container(color: kBone, child: const Icon(Icons.person, size: 50, color: kInkMuted)),
                   )
                 : Container(color: kBone, child: const Icon(Icons.person, size: 50, color: kInkMuted)),
@@ -182,16 +209,17 @@ class _ProfileTabState extends State<ProfileTab> {
             left: 24,
             right: 24,
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Flexible(
                   child: Text(
                     "$name, $age",
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.gabarito(
                       fontWeight: FontWeight.bold, 
                       color: Colors.white,
-                      fontSize: 36,
+                      fontSize: 32,
                       letterSpacing: -0.5,
                       shadows: [
                         Shadow(color: kInk.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2)),
@@ -202,7 +230,7 @@ class _ProfileTabState extends State<ProfileTab> {
 
                 if (isVerified) ...[
                   const SizedBox(width: 8),
-                  const Icon(Icons.verified, color: Colors.blue, size: 28),
+                  const Icon(Icons.verified, color: kRose, size: 28),
                 ],
               ],
             ),

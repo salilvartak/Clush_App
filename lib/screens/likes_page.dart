@@ -238,13 +238,13 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kTan, 
+      backgroundColor: kCream,
       appBar: AppBar(
         title: Text(
           "Connections",
           style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5)
         ),
-        backgroundColor: kTan,
+        backgroundColor: kCream,
         elevation: 0,
         centerTitle: false,
         bottom: TabBar(

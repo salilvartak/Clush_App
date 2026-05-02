@@ -14,6 +14,7 @@ import 'package:clush/theme/colors.dart';
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/services/language_service.dart';
 import 'package:clush/l10n/app_localizations.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -142,7 +143,23 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _navTo(Widget page) async {
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    await Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => page,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOutQuart;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 500),
+      ),
+    );
     _loadSettings();
   }
 
@@ -176,18 +193,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kCream,
-      body: TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeOutCubic,
-        builder: (context, value, child) => Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 18 * (1 - value)),
-            child: child,
-          ),
-        ),
-        child: Stack(children: [
+      body: Stack(children: [
         CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
@@ -196,7 +202,8 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _sectionLabel(AppLocalizations.of(context)?.account ?? "Account"),
+                  _sectionLabel(AppLocalizations.of(context)?.account ?? "Account")
+                      .animate().fade(duration: 400.ms, delay: 100.ms).slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.edit_outlined, title: AppLocalizations.of(context)?.editProfile ?? "Edit Profile",
                         trailing: _isLoadingProfile
@@ -215,14 +222,18 @@ class _SettingsPageState extends State<SettingsPage> {
                     _divider(),
                     _tile(icon: Icons.pause_circle_outline, title: AppLocalizations.of(context)?.pauseAccount ?? "Pause Account",
                         onTap: () => _navTo(const PauseAccountPage())),
-                  ]),
-                  _sectionLabel(AppLocalizations.of(context)?.discovery ?? "Discovery"),
+                  ]).animate().fade(duration: 500.ms, delay: 200.ms).slideY(begin: 0.05, end: 0),
+
+                  _sectionLabel(AppLocalizations.of(context)?.discovery ?? "Discovery")
+                      .animate().fade(duration: 400.ms, delay: 250.ms).slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.location_on_outlined, title: AppLocalizations.of(context)?.location ?? "Location",
                         subtitle: _userLocation != null ? _formatLocation(_userLocation) : (AppLocalizations.of(context)?.notSet ?? "Not set"),
                         onTap: () => _navTo(const CurrentLocationPage())),
-                  ]),
-                  _sectionLabel(AppLocalizations.of(context)?.privacyAndSafety ?? "Privacy & Safety"),
+                  ]).animate().fade(duration: 500.ms, delay: 350.ms).slideY(begin: 0.05, end: 0),
+
+                  _sectionLabel(AppLocalizations.of(context)?.privacyAndSafety ?? "Privacy & Safety")
+                      .animate().fade(duration: 400.ms, delay: 400.ms).slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.access_time_rounded, title: AppLocalizations.of(context)?.activityStatus ?? "Activity Status",
                         trailing: Switch.adaptive(value: activityStatus, activeColor: kRose,
@@ -234,8 +245,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     _divider(),
                     _tile(icon: Icons.block_outlined, title: AppLocalizations.of(context)?.blockedUsers ?? "Blocked Users",
                         onTap: () => _navTo(const BlockListPage())),
-                  ]),
-                  _sectionLabel(AppLocalizations.of(context)?.notifications ?? "Notifications"),
+                  ]).animate().fade(duration: 500.ms, delay: 500.ms).slideY(begin: 0.05, end: 0),
+
+                  _sectionLabel(AppLocalizations.of(context)?.notifications ?? "Notifications")
+                      .animate().fade(duration: 400.ms, delay: 550.ms).slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.notifications_none_rounded, title: AppLocalizations.of(context)?.pushNotifications ?? "Push Notifications",
                         trailing: Switch.adaptive(value: notificationsEnabled, activeColor: kRose,
@@ -244,8 +257,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     _tile(icon: Icons.mail_outline_rounded, title: AppLocalizations.of(context)?.emailUpdates ?? "Email Updates",
                         trailing: Switch.adaptive(value: emailUpdates, activeColor: kRose,
                             onChanged: (v) => setState(() => emailUpdates = v))),
-                  ]),
-                  _sectionLabel(AppLocalizations.of(context)?.appSettings ?? "App Settings"),
+                  ]).animate().fade(duration: 500.ms, delay: 650.ms).slideY(begin: 0.05, end: 0),
+
+                  _sectionLabel(AppLocalizations.of(context)?.appSettings ?? "App Settings")
+                      .animate().fade(duration: 400.ms, delay: 700.ms).slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(
                       icon: Icons.language_rounded, 
@@ -253,20 +268,26 @@ class _SettingsPageState extends State<SettingsPage> {
                       subtitle: _getLanguageName(LanguageService().localeNotifier.value.languageCode),
                       onTap: _showLanguageSelector,
                     ),
-                  ]),
-                  _sectionLabel("Subscriptions"),
+                  ]).animate().fade(duration: 500.ms, delay: 800.ms).slideY(begin: 0.05, end: 0),
+
+                  _sectionLabel("Subscriptions")
+                      .animate().fade(duration: 400.ms, delay: 850.ms).slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.star_rounded, title: "Subscriptions",
                         subtitle: "Upgrade to Gold or Platinum",
                         onTap: () => _navTo(const SubscriptionsPage())),
-                  ]),
-                  _sectionLabel("Privacy & Data"),
+                  ]).animate().fade(duration: 500.ms, delay: 950.ms).slideY(begin: 0.05, end: 0),
+
+                  _sectionLabel("Privacy & Data")
+                      .animate().fade(duration: 400.ms, delay: 1000.ms).slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.download_outlined, title: "Download My Data",
                         subtitle: "Export a copy of your data",
                         onTap: () => _navTo(const DownloadMyDataPage())),
-                  ]),
-                  _sectionLabel(AppLocalizations.of(context)?.legal ?? "Legal"),
+                  ]).animate().fade(duration: 500.ms, delay: 1100.ms).slideY(begin: 0.05, end: 0),
+
+                  _sectionLabel(AppLocalizations.of(context)?.legal ?? "Legal")
+                      .animate().fade(duration: 400.ms, delay: 1150.ms).slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.privacy_tip_outlined, title: AppLocalizations.of(context)?.privacyPolicy ?? "Privacy Policy",
                         isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/privacy')),
@@ -279,28 +300,28 @@ class _SettingsPageState extends State<SettingsPage> {
                     _divider(),
                     _tile(icon: Icons.favorite_border_rounded, title: AppLocalizations.of(context)?.safeDating ?? "Safe Dating",
                         isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/safe-dating')),
-                  ]),
+                  ]).animate().fade(duration: 500.ms, delay: 1250.ms).slideY(begin: 0.05, end: 0),
+
                   const SizedBox(height: 48),
-                  _buildLogoutButton(),
+                  _buildLogoutButton().animate().fade(duration: 500.ms, delay: 1350.ms),
                   const SizedBox(height: 12),
                   Center(child: TextButton(
                     onPressed: _showRetentionDialog,
                     child: Text("Delete Account", style: GoogleFonts.montserrat(
                         color: kInkMuted, fontSize: 14,
                         decoration: TextDecoration.underline, decorationColor: kInkMuted)),
-                  )),
+                  )).animate().fade(duration: 500.ms, delay: 1450.ms),
                   const SizedBox(height: 20),
                   Center(child: Text("Version 1.0.0 (Build 24)",
-                      style: GoogleFonts.montserrat(color: kBone, fontSize: 12))),
+                      style: GoogleFonts.montserrat(color: kBone, fontSize: 12))).animate().fade(duration: 500.ms, delay: 1550.ms),
                   const SizedBox(height: 60),
                 ]),
               ),
             ),
           ],
         ),
-        Positioned(top: 0, left: 0, right: 0, child: _buildHeader()),
+        Positioned(top: 0, left: 0, right: 0, child: _buildHeader().animate().fade(duration: 400.ms).slideY(begin: -0.2, end: 0)),
       ]),
-      ),
     );
   }
 
@@ -314,11 +335,28 @@ class _SettingsPageState extends State<SettingsPage> {
             color: kCream.withOpacity(0.88),
             border: Border(bottom: BorderSide(color: kBone, width: 0.5)),
           ),
-          padding: const EdgeInsets.fromLTRB(24, 52, 24, 12),
+          padding: const EdgeInsets.fromLTRB(16, 52, 24, 12),
           child: Align(
             alignment: Alignment.bottomLeft,
-            child: Text("Settings", style: GoogleFonts.montserrat(
-                color: kInk, fontSize: 30, fontWeight: FontWeight.w400, letterSpacing: -0.5)),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: kParchment,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: kBone, width: 1),
+                    ),
+                    child: const Icon(Icons.arrow_back_rounded, size: 18, color: kInk),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text("Settings", style: GoogleFonts.montserrat(
+                    color: kInk, fontSize: 30, fontWeight: FontWeight.w400, letterSpacing: -0.5)),
+              ],
+            ),
           ),
         ),
       ),

@@ -68,7 +68,7 @@ class PermissionRequestPage extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: kTan,
+      backgroundColor: kCream,
       body: Stack(
         children: [
           // Background Gradient/Details

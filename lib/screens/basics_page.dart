@@ -504,7 +504,7 @@ class _BasicsPageState extends State<BasicsPage> {
             bool allChecked = isAgeTruthChecked && isLegalAgreementsChecked && isBiometricConsentChecked;
 
             return AlertDialog(
-              backgroundColor: kTan,
+              backgroundColor: kCream,
               surfaceTintColor: Colors.transparent,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
               title: Text(
@@ -768,7 +768,7 @@ class _BasicsPageState extends State<BasicsPage> {
     final progress = (_currentQuestionIndex + 1) / _totalQuestionScreens;
 
     return Scaffold(
-      backgroundColor: kTan,
+      backgroundColor: kCream,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(

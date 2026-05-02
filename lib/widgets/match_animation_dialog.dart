@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:clush/theme/colors.dart';
 
 Future<void> showMatchAnimation(
@@ -506,8 +507,15 @@ class _Avatar extends StatelessWidget {
       ),
       child: ClipOval(
         child: url.startsWith('http')
-            ? Image.network(url, fit: BoxFit.cover,
-                errorBuilder: (_, e, s) => _placeholder())
+            ? CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  color: kRosePale,
+                  child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: kRose)),
+                ),
+                errorWidget: (context, url, error) => _placeholder(),
+              )
             : _placeholder(),
       ),
     );

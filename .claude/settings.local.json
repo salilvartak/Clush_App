@@ -7,7 +7,14 @@
       "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter \"git rm --cached --ignore-unmatch clush-publishing-e4c7699971d9.json\" --prune-empty --tag-name-filter cat -- --all)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(cp \"webfetch-1777099582906-wzakso.bin\" \"design.gz\")",
+      "Bash(gunzip -f design.gz)",
+      "Bash(adb devices *)",
+      "Bash(flutter run *)",
+      "Bash(adb -s 2d87f341 get-state)",
+      "Bash(flutter devices *)"
     ]
   }
 }
