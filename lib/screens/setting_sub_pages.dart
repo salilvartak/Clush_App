@@ -35,10 +35,9 @@ const Color _kGold      = kGold;
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 BoxDecoration _cardDecor() => BoxDecoration(
-  color: _kParchment,
-  borderRadius: BorderRadius.circular(20),
-  border: Border.all(color: _kBone, width: 1),
-  boxShadow: [BoxShadow(color: _kInk.withOpacity(0.09), blurRadius: 28, offset: const Offset(0, 8))],
+  color: kCard,
+  borderRadius: BorderRadius.circular(16),
+  border: Border.all(color: kBorderLight, width: 1),
 );
 
 InputDecoration _inputDecor(String hint, {IconData? icon}) => InputDecoration(
@@ -49,7 +48,7 @@ InputDecoration _inputDecor(String hint, {IconData? icon}) => InputDecoration(
   prefixIcon: icon != null ? Icon(icon, color: _kRose, size: 20) : null,
   border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: _kBone)),
   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: _kBone)),
-  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: _kRose, width: 1.5)),
+  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: _kInk, width: 1.5)),
 );
 
 Widget _saveButton(String label, bool isLoading, VoidCallback? onTap) {
@@ -61,8 +60,8 @@ Widget _saveButton(String label, bool isLoading, VoidCallback? onTap) {
       padding: const EdgeInsets.symmetric(vertical: 16),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: isDisabled ? _kRose.withOpacity(0.4) : _kRose,
-        borderRadius: BorderRadius.circular(14),
+        color: isDisabled ? _kInk.withValues(alpha: 0.4) : _kInk,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: isLoading
           ? const SizedBox(width: 20, height: 20,
@@ -1837,7 +1836,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: GoogleFonts.figtree(color: Colors.white)),
-      backgroundColor: isError ? Colors.red.shade400 : _kRose,
+      backgroundColor: isError ? kDestructive : _kInk,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.all(16),
@@ -1973,14 +1972,12 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                           decoration: BoxDecoration(
-                                            color: selected
-                                                ? _kGold.withValues(alpha: 0.25)
-                                                : _kGold.withValues(alpha: 0.12),
+                                            color: _kInk,
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text('Popular',
                                             style: GoogleFonts.figtree(
-                                              color: selected ? _kGold : const Color(0xFFB8860B),
+                                              color: Colors.white,
                                               fontSize: 10, fontWeight: FontWeight.w700)),
                                         )
                                       else
@@ -2073,12 +2070,8 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
                                 child: Row(children: [
-                                  Container(
-                                    width: 34, height: 34,
-                                    decoration: BoxDecoration(color: _kGold.withValues(alpha: 0.12), shape: BoxShape.circle),
-                                    child: Icon(f.$1, color: _kGold, size: 17),
-                                  ),
-                                  const SizedBox(width: 12),
+                                  Icon(f.$1, color: _kInk, size: 18),
+                                  const SizedBox(width: 14),
                                   Expanded(child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
@@ -2086,11 +2079,10 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                       Text(f.$3, style: GoogleFonts.figtree(fontSize: 12, color: _kInkMuted)),
                                     ],
                                   )),
-                                  Icon(Icons.check_circle_rounded, color: _kGold, size: 18),
                                 ]),
                               ),
                               if (i < _features.length - 1)
-                                Divider(height: 1, color: _kBone, indent: 62),
+                                Divider(height: 1, color: kBorderLight, indent: 46),
                             ]);
                           }).toList(),
                         ),
@@ -2149,8 +2141,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       decoration: BoxDecoration(
                         color: _isPurchasing ? _kInk.withValues(alpha: 0.6) : _kInk,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [BoxShadow(color: _kInk.withValues(alpha: 0.2), blurRadius: 12, offset: const Offset(0, 4))],
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Center(
                         child: _isPurchasing

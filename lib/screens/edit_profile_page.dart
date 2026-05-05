@@ -653,8 +653,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
             Icon(icon, size: 18, color: kRose),
             const SizedBox(width: 12),
             Text(label, style: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: kInkMuted, fontSize: 14)),
-            const SizedBox(width: 8),
-            Flexible(
+            const SizedBox(width: 12),
+            Expanded(
               child: Text(
                 value ?? "Add",
                 textAlign: TextAlign.end,
@@ -685,13 +685,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
             Icon(icon, size: 18, color: kRose),
             const SizedBox(width: 12),
             Text(label, style: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: kInkMuted, fontSize: 14)),
-            const Spacer(),
-            Text(
-              values.isEmpty ? "Add" : "${values.length} selected",
-              style: GoogleFonts.figtree(
-                fontWeight: FontWeight.w500,
-                color: values.isEmpty ? kRoseLight : kInk,
-                fontSize: 14,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                values.isEmpty ? "Add" : "${values.length} selected",
+                textAlign: TextAlign.end,
+                style: GoogleFonts.figtree(
+                  fontWeight: FontWeight.w500,
+                  color: values.isEmpty ? kRoseLight : kInk,
+                  fontSize: 14,
+                ),
               ),
             ),
             const SizedBox(width: 6),
@@ -713,8 +716,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
             const Icon(Icons.location_on_outlined, size: 18, color: kRose),
             const SizedBox(width: 12),
             Text("Location", style: GoogleFonts.figtree(fontWeight: FontWeight.w500, color: kInkMuted, fontSize: 14)),
-            const Spacer(),
-            Flexible(
+            const SizedBox(width: 12),
+            Expanded(
               child: Text(
                 _location ?? "Tap to update",
                 textAlign: TextAlign.end,
@@ -820,12 +823,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    _educationLevel ?? "Select Level",
-                    style: GoogleFonts.figtree(
-                      fontWeight: FontWeight.w500,
-                      color: _educationLevel == null ? kRoseLight : kInk,
-                      fontSize: 14,
+                  SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      _educationLevel ?? "Select Level",
+                      textAlign: TextAlign.end,
+                      style: GoogleFonts.figtree(
+                        fontWeight: FontWeight.w500,
+                        color: _educationLevel == null ? kRoseLight : kInk,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                   TextField(

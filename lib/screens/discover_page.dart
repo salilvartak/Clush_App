@@ -8,7 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/widgets/match_animation_dialog.dart';
-import 'package:clush/widgets/activity_badge.dart';
+// activity_badge import removed — badge moved into _buildFirstProfileCard overlay;
 
 import 'package:clush/theme/colors.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -31,13 +31,10 @@ class _DiscoverPageState extends State<DiscoverPage>
   final MatchingService _matchingService = MatchingService();
 
   List<Map<String, dynamic>> _profiles = [];
-  Map<String, dynamic>? _lastDislikedProfile;
   bool _isLoading = true;
-  bool _isActionLoading = false;
   int _likesRemaining = 6;
   int _superLikesRemaining = 1;
   bool _isPremium = false;
-  String _lastSwipeDirection = 'like';
 
   String? _myPhotoUrl;
 
@@ -485,13 +482,8 @@ class _DiscoverPageState extends State<DiscoverPage>
       _isSwiping = false;
       _swipeType = '';
       _showFloatingName = false;
-      _lastSwipeDirection = swipeType == 'dislike' ? 'dislike' : 'like';
       if (swipeType == 'like') _likesRemaining--;
       if (swipeType == 'gem') _superLikesRemaining--;
-      
-      if (swipeType == 'dislike') {
-        _lastDislikedProfile = Map<String, dynamic>.from(droppedProfile);
-      }
       _profiles.removeAt(0);
       _pendingTargetId = null;
       _pendingMessage = null;
@@ -530,40 +522,6 @@ class _DiscoverPageState extends State<DiscoverPage>
       }
     } catch (e) {
       debugPrint('Error recording swipe: $e');
-    }
-  }
-
-  void _handleRewind() async {
-    if (_lastDislikedProfile == null) {
-      _showThemedToast('Nothing to rewind!', isError: true);
-      return;
-    }
-    if (_isSwiping || _isRewinding) return;
-
-    setState(() => _isActionLoading = true);
-    final result = await _matchingService.rewind(_lastDislikedProfile!['id'].toString());
-    setState(() => _isActionLoading = false);
-
-    if (result['success'] == true) {
-      setState(() {
-        _profiles.insert(0, _lastDislikedProfile!);
-        _lastDislikedProfile = null;
-        _isRewinding = true;
-      });
-      // Let the widget rebuild with the new profile at index 0, then start
-      // sliding it in from the left
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _swipeController.value = 1.0;
-        _swipeController.reverse();
-      });
-      _showThemedToast('Profile brought back!', isError: false);
-    } else {
-      if (result['error'] == 'exhausted') {
-        _showThemedToast('No rewind credits left! Get Clush+ for unlimited rewinds.', isError: true);
-      } else {
-        _showThemedToast('Failed to rewind.', isError: true);
-      }
     }
   }
 
@@ -771,26 +729,16 @@ class _DiscoverPageState extends State<DiscoverPage>
         backgroundColor: kCream,
         body: RefreshIndicator(
           onRefresh: _fetchProfiles,
-          color: kRose,
-          backgroundColor: kParchment,
+          color: kAccent,
+          backgroundColor: kCard,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
-              SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+              SizedBox(height: MediaQuery.of(context).size.height * 0.25),
               Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: kRosePale,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.favorite_border_rounded, color: kRose, size: 32),
-                    ),
-                    const SizedBox(height: 20),
                     Text(
                       "You've seen everyone",
                       style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26,
@@ -841,8 +789,8 @@ class _DiscoverPageState extends State<DiscoverPage>
       backgroundColor: kCream,
       body: RefreshIndicator(
         onRefresh: _fetchProfiles,
-        color: kRose,
-        backgroundColor: kParchment,
+        color: kAccent,
+        backgroundColor: kCard,
         child: Stack(
           children: [
             // 1. SCROLLABLE PROFILE CONTENT — swipe-animated
@@ -965,7 +913,7 @@ class _DiscoverPageState extends State<DiscoverPage>
                   ),
                   if (isVerified) ...[
                     const SizedBox(width: 6),
-                    const Icon(Icons.verified_rounded, color: kRose, size: 16),
+                    const Icon(Icons.verified_rounded, color: kGold, size: 16),
                   ],
                 ],
               ),
@@ -987,11 +935,9 @@ class _DiscoverPageState extends State<DiscoverPage>
     final List places = profile['places'] ?? [];
     final allInterests = [...interests, ...foods, ...places];
 
-    final String name = profile['fullName'] ?? profile['full_name'] ?? 'User';
     final String? birthdayString = profile['birthday'];
     final int age = _calculateAge(birthdayString);
     final String intent = profile['intent'] ?? '';
-    final bool isVerified = profile['is_verified'] ?? true;
 
     final Map<String, String?> allEssentials = {
       'Age': age > 0 ? age.toString() : null,
@@ -1038,159 +984,13 @@ class _DiscoverPageState extends State<DiscoverPage>
     // Header
     contentList.add(_buildHeader(context));
 
-    // ── Name, Age, Verification & Rewind ──────────────────────────────────────
-    contentList.add(
-      Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          name,
-                          style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 38,
-                            color: kInk,
-                            letterSpacing: -1.0,
-                            height: 1.0,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.visible,
-                          softWrap: true,
-                        ),
-                      ),
-                      if (isVerified) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: kRosePale,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.verified_rounded, color: kRose, size: 22),
-                        ),
-                      ],
-                      if (_likesRemaining <= 0) ...[
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () async {
-                             if (_isActionLoading) return;
-                             setState(() => _isActionLoading = true);
-                             try {
-                               final succ = await _matchingService.saveProfileForLater(profile['id'].toString());
-                               setState(() => _isActionLoading = false);
-                               if (succ && mounted) {
-                                 _showThemedToast('Profile saved for later!', isError: false);
-                                 setState(() { 
-                                    if (_profiles.isNotEmpty) _profiles.removeAt(0);
-                                 });
-                               } else if (mounted) {
-                                  _showThemedToast('Already saved or failed to save.', isError: true);
-                                }
-                             } catch (e) {
-                               setState(() => _isActionLoading = false);
-                               if (mounted) _showThemedToast('Error saving profile.', isError: true);
-                             }
-                          },
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: kGold.withOpacity(0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                               _isActionLoading ? Icons.hourglass_empty_rounded : Icons.bookmark_add_rounded, 
-                               color: kGold, 
-                               size: 20
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (_lastDislikedProfile != null)
-                  GestureDetector(
-                    onTap: _isActionLoading ? null : _handleRewind,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: kParchment,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: kGold.withOpacity(0.5), width: 1),
-                        boxShadow: [
-                          BoxShadow(
-                            color: kGold.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          )
-                        ],
-                      ),
-                      child: const Icon(Icons.undo_rounded, color: kGold, size: 24),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ActivityBadge(lastSeenAt: profile['last_seen_at'] as String?),
-            // Thin decorative rule under the name
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Container(width: 32, height: 1, color: kGold),
-                const SizedBox(width: 8),
-                Container(width: 8, height: 1, color: kBone),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-
-    // 1st Image
-    if (photoUrls.isNotEmpty) {
-      contentList.add(_buildPhotoCard(photoUrls[0], isFirst: true));
-    } else {
-      contentList.add(_buildPhotoCard('https://via.placeholder.com/600x800', isFirst: true));
-    }
+    // First profile card: image with overlay + interests panel
+    contentList.add(_buildFirstProfileCard(profile, allInterests));
 
     // Essentials card
     final customMessage = profile['custom_message'] as String?;
     if (allEssentials.values.any((v) => v != null && v.isNotEmpty)) {
       contentList.add(_buildUnifiedEssentialsCard(allEssentials, customMessage));
-    }
-
-    // Interests/Hobbies
-    if (allInterests.isNotEmpty) {
-      contentList.add(
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), // Increased vertical padding
-          padding: const EdgeInsets.all(24),
-          decoration: _cardDecoration(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildCardLabel("Hobbies & Interests"),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: allInterests.map((e) => _buildChip(e.toString())).toList(),
-              ),
-            ],
-          ),
-        ),
-      );
     }
 
     // 1st Prompt
@@ -1390,7 +1190,7 @@ class _DiscoverPageState extends State<DiscoverPage>
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
         decoration: BoxDecoration(
           color: kParchment,
           borderRadius: BorderRadius.circular(10),
@@ -1408,7 +1208,7 @@ class _DiscoverPageState extends State<DiscoverPage>
               ),
             ),
             const SizedBox(width: 3),
-            const Icon(Icons.keyboard_arrow_down_rounded, color: kRose, size: 16),
+            const Icon(Icons.keyboard_arrow_down_rounded, color: kInkMuted, size: 16),
           ],
         ),
       ),
@@ -1462,7 +1262,7 @@ class _DiscoverPageState extends State<DiscoverPage>
             },
             child: Text(
               'Block',
-              style: GoogleFonts.figtree(color: Colors.red.shade400, fontWeight: FontWeight.w600),
+              style: GoogleFonts.figtree(color: kDestructive, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -1584,7 +1384,7 @@ class _DiscoverPageState extends State<DiscoverPage>
             ),
           ],
         ),
-        backgroundColor: isError ? Colors.red.shade400 : kRose,
+        backgroundColor: isError ? kDestructive : kAccent,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
@@ -1607,72 +1407,41 @@ class _DiscoverPageState extends State<DiscoverPage>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // DISLIKE
-          Material(
-            color: Colors.white,
-            shape: const CircleBorder(),
-            elevation: 8,
-            shadowColor: kBone,
-            child: InkWell(
-              onTap: () => _triggerSwipe(currentProfileId, 'dislike'),
-              customBorder: const CircleBorder(),
-              child: Container(
-                width: 64,
-                height: 64,
-                alignment: Alignment.center,
-                child: const Icon(Icons.close_rounded, color: kInkMuted, size: 32),
-              ),
-            ),
+          _actionBtn(
+            size: 64,
+            onTap: () => _triggerSwipe(currentProfileId, 'dislike'),
+            child: const Icon(Icons.close_rounded, color: kInkMuted, size: 28),
           ),
 
           const SizedBox(width: 32),
 
-          // PULSE (Super Like)
-          Material(
-            color: _superLikesRemaining > 0 ? kGold : Colors.grey.shade300,
-            shape: const CircleBorder(),
-            elevation: _superLikesRemaining > 0 ? 12 : 2,
-            shadowColor: _superLikesRemaining > 0 ? kGold.withOpacity(0.5) : Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                final profile = _profiles.first;
-                final name = profile['fullName'] ?? profile['full_name'] ?? 'them';
-                _showGemDialog(currentProfileId, name);
-              },
-              customBorder: const CircleBorder(),
-              child: Container(
-                width: 76,
-                height: 76,
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.diamond_rounded,
-                  color: _superLikesRemaining > 0 ? Colors.white : Colors.grey.shade500,
-                  size: 36
-                ),
-              ),
+          // PULSE (Super Like / Gem)
+          _actionBtn(
+            size: 76,
+            enabled: _superLikesRemaining > 0,
+            onTap: () {
+              final profile = _profiles.first;
+              final name = profile['fullName'] ?? profile['full_name'] ?? 'them';
+              _showGemDialog(currentProfileId, name);
+            },
+            child: Icon(
+              Icons.diamond_rounded,
+              color: _superLikesRemaining > 0 ? kGold : kInkMuted,
+              size: 32,
             ),
           ),
 
           const SizedBox(width: 32),
 
           // LIKE
-          Material(
-            color: _likesRemaining > 0 ? kRose : Colors.grey.shade300,
-            shape: const CircleBorder(),
-            elevation: _likesRemaining > 0 ? 8 : 2,
-            shadowColor: _likesRemaining > 0 ? kRose.withOpacity(0.4) : Colors.transparent,
-            child: InkWell(
-              onTap: () => _triggerSwipe(currentProfileId, 'like'),
-              customBorder: const CircleBorder(),
-              child: Container(
-                width: 64,
-                height: 64,
-                alignment: Alignment.center,
-                child: Icon(
-                  _likesRemaining > 0 ? Icons.favorite_rounded : Icons.lock_rounded, 
-                  color: _likesRemaining > 0 ? Colors.white : Colors.grey.shade500, 
-                  size: 32
-                ),
-              ),
+          _actionBtn(
+            size: 64,
+            enabled: _likesRemaining > 0,
+            onTap: () => _triggerSwipe(currentProfileId, 'like'),
+            child: Icon(
+              _likesRemaining > 0 ? Icons.favorite_rounded : Icons.lock_rounded,
+              color: _likesRemaining > 0 ? kAccent : kInkMuted,
+              size: 28,
             ),
           ),
         ],
@@ -1682,38 +1451,205 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   // ================= REUSED WIDGETS =================
 
-  // ── Lottie reaction overlay ──────────────────────────────────────────────────
-  // Shown OVER the current profile card; when the animation finishes the card
+  Widget _actionBtn({
+    required double size,
+    required VoidCallback onTap,
+    required Widget child,
+    bool enabled = true,
+  }) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: kBorderLight, width: 1),
+        ),
+        alignment: Alignment.center,
+        child: child,
+      ),
+    );
+  }
+
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: kParchment,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: kBone, width: 1),
-      boxShadow: [
-        BoxShadow(
-          color: kInk.withOpacity(0.06),
-          blurRadius: 20,
-          spreadRadius: 0,
-          offset: const Offset(0, 6),
-        )
-      ],
+      color: kCard,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: kBorderLight, width: 1),
+    );
+  }
+
+  // ── First profile card: full-bleed image + gradient overlay + interests ───────
+  Widget _buildFirstProfileCard(
+      Map<String, dynamic> profile, List allInterests) {
+    final List photoUrls = profile['photo_urls'] ?? [];
+    final String name = profile['fullName'] ?? profile['full_name'] ?? 'User';
+    final int age = _calculateAge(profile['birthday']);
+    final bool isVerified = profile['is_verified'] ?? true;
+    final String? jobTitle = profile['job_title'] as String?;
+    final String? location = (() {
+      final loc = profile['location'] as String?;
+      if (loc == null) return null;
+      final idx = loc.indexOf('(');
+      final clean = idx != -1 ? loc.substring(0, idx).trim() : loc;
+      final parts =
+          clean.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      return parts.length >= 2 ? '${parts[0]}, ${parts[1]}' : clean;
+    })();
+
+    final String photoUrl = photoUrls.isNotEmpty ? photoUrls[0].toString() : '';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      decoration: BoxDecoration(
+        color: kCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kBorderLight, width: 1),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Image + gradient overlay ──────────────────────────────────
+            Stack(
+              children: [
+                SizedBox(
+                  height: 420,
+                  width: double.infinity,
+                  child: photoUrl.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: photoUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(
+                            color: kBorderLight,
+                            child: const Center(child: HeartLoader(size: 40)),
+                          ),
+                          errorWidget: (_, __, ___) => Container(
+                            color: kBorderLight,
+                            child: const Center(
+                              child: Icon(Icons.person_outline_rounded,
+                                  color: kCard, size: 64),
+                            ),
+                          ),
+                        )
+                      : Container(color: kBorderLight),
+                ),
+                // Gradient + name/job/location
+                Positioned(
+                  bottom: 0, left: 0, right: 0,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Color(0xD9000000), Colors.transparent],
+                        stops: [0.0, 1.0],
+                      ),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(16, 56, 16, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$name, $age',
+                              style: GoogleFonts.gabarito(
+                                color: Colors.white,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            if (isVerified) ...[
+                              const SizedBox(width: 8),
+                              const Icon(Icons.verified_rounded,
+                                  color: kGold, size: 20),
+                            ],
+                          ],
+                        ),
+                        if (jobTitle != null && jobTitle.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            jobTitle,
+                            style: GoogleFonts.figtree(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                        if (location != null && location.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Icon(Icons.location_on_outlined,
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                location,
+                                style: GoogleFonts.figtree(
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // ── Interests panel ───────────────────────────────────────────
+            if (allInterests.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'INTERESTS',
+                      style: GoogleFonts.figtree(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: kInkMuted,
+                        letterSpacing: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: allInterests
+                          .map((e) => _buildChip(e.toString()))
+                          .toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildCardLabel(String label) {
-    return Row(
-      children: [
-        Container(width: 3, height: 16, color: kGold, margin: const EdgeInsets.only(right: 10)),
-        Text(
-          label.toUpperCase(),
-          style: GoogleFonts.figtree(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: kInkMuted,
-            letterSpacing: 1.8,
-          ),
-        ),
-      ],
+    return Text(
+      label.toUpperCase(),
+      style: GoogleFonts.figtree(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: kInkMuted,
+        letterSpacing: 1.8,
+      ),
     );
   }
 
@@ -1784,7 +1720,7 @@ class _DiscoverPageState extends State<DiscoverPage>
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(icons[key] ?? Icons.circle_outlined, color: kRose, size: 16),
+                      Icon(icons[key] ?? Icons.circle_outlined, color: kInk, size: 16),
                       const SizedBox(width: 6),
                       Text(
                         value,
@@ -1811,7 +1747,7 @@ class _DiscoverPageState extends State<DiscoverPage>
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                       child: Row(
                         children: [
-                          Icon(icons[entry.key] ?? Icons.circle_outlined, size: 18, color: kRose),
+                          Icon(icons[entry.key] ?? Icons.circle_outlined, size: 18, color: kInk),
                           const SizedBox(width: 14),
                           Text(
                             entry.key,
@@ -1863,35 +1799,28 @@ class _DiscoverPageState extends State<DiscoverPage>
 
 
 
-  Widget _buildPhotoCard(String url, {bool isFirst = false}) {
+  Widget _buildPhotoCard(String url) {
     return Container(
-      height: 520,
+      height: 500,
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: kBone, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: kInk.withOpacity(0.1),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          )
-        ],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kBorderLight, width: 1),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(21),
+        borderRadius: BorderRadius.circular(12),
         child: CachedNetworkImage(
           imageUrl: url,
           fit: BoxFit.cover,
           placeholder: (context, url) => Container(
-            color: kParchment,
+            color: kBorderLight,
             child: const Center(child: HeartLoader(size: 40)),
           ),
           errorWidget: (context, url, error) => Container(
-            color: kParchment,
+            color: kBorderLight,
             child: const Center(
-              child: Icon(Icons.person_outline_rounded, color: kBone, size: 64),
+              child: Icon(Icons.person_outline_rounded, color: kCard, size: 64),
             ),
           ),
         ),
@@ -1912,7 +1841,7 @@ class _DiscoverPageState extends State<DiscoverPage>
           Text(
             "\u201C",
             style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 48,
-              color: kRose.withOpacity(0.3),
+              color: kAccent.withValues(alpha: 0.2),
               height: 0.8,
             ),
           ),
@@ -1941,11 +1870,11 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   Widget _buildChip(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: kCream,
-        border: Border.all(color: kBone, width: 1),
-        borderRadius: BorderRadius.circular(10),
+        color: kCard,
+        border: Border.all(color: kBorderLight, width: 1),
+        borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         label,
@@ -2203,9 +2132,9 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: kRose,
+              backgroundColor: kAccent,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
             onPressed: () => Navigator.pop(ctx),
@@ -2264,7 +2193,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                   Text(
                     "Filters",
                     style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 32,
-                      color: kRose,
+                      color: kAccent,
                     ),
                   ),
                 ],
@@ -2299,11 +2228,11 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                         onTap: () => setState(() => _intent = i),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 180),
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
                           decoration: BoxDecoration(
-                            color: selected ? kRose : kParchment,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: selected ? kRose : kBone, width: 1),
+                            color: selected ? kAccent : kCard,
+                            borderRadius: BorderRadius.circular(99),
+                            border: Border.all(color: selected ? kAccent : kBorderLight, width: 1),
                           ),
                           child: Text(i, style: GoogleFonts.figtree(color: selected ? Colors.white : kInk, fontWeight: FontWeight.w600, fontSize: 13)),
                         ),
@@ -2421,8 +2350,8 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
               height: 54,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: kRose,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  backgroundColor: kAccent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 0,
                 ),
                 onPressed: () {
@@ -2440,10 +2369,10 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
 
   SliderThemeData _sliderTheme(BuildContext context, {bool locked = false}) {
     return SliderTheme.of(context).copyWith(
-      activeTrackColor: locked ? kBone : kRose,
-      inactiveTrackColor: locked ? kBone.withOpacity(0.5) : kRosePale,
-      thumbColor: locked ? kBone : kRose,
-      overlayColor: kRose.withOpacity(0.12),
+      activeTrackColor: locked ? kBone : kAccent,
+      inactiveTrackColor: locked ? kBone.withValues(alpha: 0.5) : kBorderLight,
+      thumbColor: locked ? kBone : kAccent,
+      overlayColor: kAccent.withValues(alpha: 0.1),
       thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
       trackHeight: 3,
     );
@@ -2479,7 +2408,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
             value,
             style: GoogleFonts.figtree(
               fontWeight: FontWeight.w700,
-              color: locked ? kInkMuted.withOpacity(0.4) : kRose,
+              color: locked ? kInkMuted.withValues(alpha: 0.4) : kAccent,
               fontSize: 13,
             ),
           ),
@@ -2588,7 +2517,6 @@ class _BouncingButton extends StatefulWidget {
   final VoidCallback onTap;
 
   const _BouncingButton({
-    super.key,
     required this.icon,
     required this.color,
     required this.iconColor,

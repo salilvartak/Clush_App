@@ -157,13 +157,13 @@ class _HomePageState extends State<HomePage> {
           unselectedItemColor: kInkMuted,
           iconSize: 26,
           items: [
-            const BottomNavigationBarItem(icon: Icon(Icons.style_rounded),        activeIcon: Icon(Icons.style_rounded),         label: ''),
-            const BottomNavigationBarItem(icon: Icon(Icons.favorite),            activeIcon: Icon(Icons.favorite),              label: ''),
+            const BottomNavigationBarItem(icon: Icon(Icons.style_outlined),       activeIcon: Icon(Icons.style_rounded),         label: ''),
+            const BottomNavigationBarItem(icon: Icon(Icons.favorite_border),      activeIcon: Icon(Icons.favorite),              label: ''),
             BottomNavigationBarItem(
               icon: Badge(
                 isLabelVisible: _unreadCount > 0,
                 backgroundColor: kRose,
-                child: const Icon(Icons.chat_bubble_rounded),
+                child: const Icon(Icons.chat_bubble_outline_rounded),
               ),
               activeIcon: Badge(
                 isLabelVisible: _unreadCount > 0,
@@ -172,7 +172,7 @@ class _HomePageState extends State<HomePage> {
               ),
               label: '',
             ),
-            const BottomNavigationBarItem(icon: Icon(Icons.person_rounded),       activeIcon: Icon(Icons.person_rounded),        label: ''),
+            const BottomNavigationBarItem(icon: Icon(Icons.person_outline_rounded), activeIcon: Icon(Icons.person_rounded),      label: ''),
           ],
         ),
       ),

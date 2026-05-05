@@ -105,15 +105,7 @@ class ProfileViewPage extends StatelessWidget {
                       ),
                       if (isVerified) ...[
                         const SizedBox(width: 8),
-                        Container(
-                          width: 28, // Increased background size
-                          height: 28,
-                          decoration: const BoxDecoration(
-                            color: kRosePale,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.verified_rounded, color: kRose, size: 18), // Increased icon size
-                        ),
+                        const Icon(Icons.verified_rounded, color: kGold, size: 22),
                       ],
                     ],
                   ),
@@ -236,9 +228,9 @@ class ProfileViewPage extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: kCream.withOpacity(0.9),
+                    color: kCream.withValues(alpha: 0.9),
                     shape: BoxShape.circle,
-                    border: Border.all(color: kBone.withOpacity(0.5), width: 1),
+                    border: Border.all(color: kBorderLight, width: 1),
                   ),
                   child: const Icon(Icons.arrow_back_ios_new_rounded, color: kInk, size: 20),
                 ),
@@ -262,17 +254,9 @@ class ProfileViewPage extends StatelessWidget {
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: kParchment,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: kBone, width: 1),
-      boxShadow: [
-        BoxShadow(
-          color: kInk.withOpacity(0.06),
-          blurRadius: 20,
-          spreadRadius: 0,
-          offset: const Offset(0, 6),
-        )
-      ],
+      color: kCard,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: kBorderLight, width: 1),
     );
   }
 
@@ -363,7 +347,7 @@ class ProfileViewPage extends StatelessWidget {
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(icons[key] ?? Icons.circle_outlined, color: kRose, size: 16),
+                      Icon(icons[key] ?? Icons.circle_outlined, color: kInk, size: 16),
                       const SizedBox(width: 6),
                       Text(
                         value,
@@ -390,7 +374,7 @@ class ProfileViewPage extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                       child: Row(
                         children: [
-                          Icon(icons[entry.key] ?? Icons.circle_outlined, size: 18, color: kRose),
+                          Icon(icons[entry.key] ?? Icons.circle_outlined, size: 18, color: kInk),
                           const SizedBox(width: 14),
                           Text(
                             entry.key,
@@ -423,7 +407,7 @@ class ProfileViewPage extends StatelessWidget {
                             style: GoogleFonts.figtree(
                               fontSize: 14,
                               height: 1.4,
-                              color: kInk.withOpacity(0.8),
+                              color: kInkMuted,
                               fontStyle: FontStyle.italic,
                             ),
                           ),
@@ -448,18 +432,11 @@ class ProfileViewPage extends StatelessWidget {
       width: double.infinity,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: kBone, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: kInk.withOpacity(0.1),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          )
-        ],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kBorderLight, width: 1),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(21),
+        borderRadius: BorderRadius.circular(15),
         child: Image.network(
           url,
           fit: BoxFit.cover,
@@ -487,7 +464,7 @@ class ProfileViewPage extends StatelessWidget {
           Text(
             "\u201C",
             style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 48,
-              color: kRose.withOpacity(0.3),
+              color: kGold.withValues(alpha: 0.35),
               height: 0.8,
             ),
           ),
@@ -516,11 +493,10 @@ class ProfileViewPage extends StatelessWidget {
 
   Widget _buildChip(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: kCream,
-        border: Border.all(color: kBone, width: 1),
-        borderRadius: BorderRadius.circular(10),
+        color: kTagBg,
+        borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         label,

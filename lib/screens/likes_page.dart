@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -265,8 +264,8 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
           : TabBarView(
               controller: _tabController,
               children: [
-                _likedByUsers.isEmpty ? _buildEmptyState("Hearts are drifting just beyond your beam.", "assets/images/1.svg") : _buildList(_likedByUsers, false),
-                _savedUsers.isEmpty ? _buildEmptyState("No saved profiles yet. Save them for later in Discover!", "assets/images/1.svg") : _buildList(_savedUsers, true),
+                _likedByUsers.isEmpty ? _buildEmptyState("Hearts are drifting just beyond your beam.") : _buildList(_likedByUsers, false),
+                _savedUsers.isEmpty ? _buildEmptyState("No saved profiles yet. Save them for later in Discover!") : _buildList(_savedUsers, true),
               ],
             ),
     );
@@ -327,7 +326,7 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildEmptyState(String text, String asset) {
+  Widget _buildEmptyState(String text) {
     return RefreshIndicator(
       onRefresh: _initData,
       color: kRose,
@@ -335,14 +334,12 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          SizedBox(height: MediaQuery.of(context).size.height * 0.1),
+          SizedBox(height: MediaQuery.of(context).size.height * 0.15),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 36),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SvgPicture.asset(asset, width: 180, height: 180),
-                const SizedBox(height: 28),
                 Text(
                   text,
                   textAlign: TextAlign.center,
@@ -358,29 +355,24 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
                 GestureDetector(
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsPage())),
                   child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF1A0010), Color(0xFF5C0030), kRose],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: kRose.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))],
+                      color: kInk,
+                      borderRadius: BorderRadius.circular(100),
                     ),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      const Icon(Icons.auto_awesome_rounded, color: kGold, size: 18),
-                      const SizedBox(width: 8),
-                      Text("Get Clush+", style: GoogleFonts.figtree(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                      const SizedBox(width: 4),
-                      Text("and see more profiles", style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14)),
-                    ]),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Get Clush', style: GoogleFonts.gabarito(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                        Text('+', style: GoogleFonts.gabarito(color: kGold, fontSize: 16, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-          ).animate().fade(duration: 600.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
+          ).animate().slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
         ],
       ),
     );

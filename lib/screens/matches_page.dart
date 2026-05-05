@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
@@ -260,8 +259,6 @@ class _MatchesPageState extends State<MatchesPage> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            SvgPicture.asset('assets/images/2.svg', width: 180, height: 180),
-                            const SizedBox(height: 28),
                             Text(
                               "No matches yet",
                               style: GoogleFonts.gabarito(

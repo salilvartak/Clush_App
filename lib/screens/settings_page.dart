@@ -95,7 +95,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void _showRetentionDialog() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: kCream,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBorderLight)),
       title: Text(AppLocalizations.of(context)?.leavingSoSoon ?? "Leaving so soon?", textAlign: TextAlign.center,
           style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
       content: Text(AppLocalizations.of(context)?.deleteRetentionMessage ?? "Delete your account?\n\nStay and get 1 WEEK OF PREMIUM FREE!", textAlign: TextAlign.center,
@@ -108,7 +108,7 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 10),
         _outlineBtn(AppLocalizations.of(context)?.putOnHold ?? "Put Account on Hold", () { Navigator.pop(ctx); _navTo(const PauseAccountPage()); }),
         TextButton(onPressed: () { Navigator.pop(ctx); _confirmFinalDeletion(); },
-            child: Text(AppLocalizations.of(context)?.deleteAnyway ?? "Delete Anyway", style: GoogleFonts.montserrat(color: Colors.red.shade400))),
+            child: Text(AppLocalizations.of(context)?.deleteAnyway ?? "Delete Anyway", style: GoogleFonts.montserrat(color: kDestructive))),
         TextButton(onPressed: () => Navigator.pop(ctx),
             child: Text(AppLocalizations.of(context)?.cancel ?? "Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
       ])],
@@ -118,7 +118,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void _confirmFinalDeletion() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: kCream,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBorderLight)),
       title: Text(AppLocalizations.of(context)?.areYouSure ?? "Are you sure?", style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
       content: Text(AppLocalizations.of(context)?.deleteWarning ?? "This is permanent. All data, matches and messages will be lost.",
           style: GoogleFonts.montserrat(color: kInkMuted, height: 1.5)),
@@ -126,7 +126,7 @@ class _SettingsPageState extends State<SettingsPage> {
         TextButton(onPressed: () => Navigator.pop(ctx),
             child: Text(AppLocalizations.of(context)?.cancel ?? "Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
         TextButton(onPressed: () async { Navigator.pop(ctx); await _deleteAccount(); },
-            child: Text(AppLocalizations.of(context)?.yesDelete ?? "Yes, Delete", style: GoogleFonts.montserrat(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
+            child: Text(AppLocalizations.of(context)?.yesDelete ?? "Yes, Delete", style: GoogleFonts.montserrat(color: kDestructive, fontWeight: FontWeight.w600))),
       ],
     ));
   }
@@ -173,7 +173,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void _toast(String msg, {bool err = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w500)),
-      backgroundColor: err ? Colors.red.shade400 : kRose,
+      backgroundColor: err ? kDestructive : kInk,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.all(16),
@@ -203,7 +203,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   _sectionLabel(AppLocalizations.of(context)?.account ?? "Account")
-                      .animate().fade(duration: 400.ms, delay: 100.ms).slideX(begin: 0.1, end: 0),
+                      .animate().slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.edit_outlined, title: AppLocalizations.of(context)?.editProfile ?? "Edit Profile",
                         trailing: _isLoadingProfile
@@ -222,21 +222,21 @@ class _SettingsPageState extends State<SettingsPage> {
                     _divider(),
                     _tile(icon: Icons.pause_circle_outline, title: AppLocalizations.of(context)?.pauseAccount ?? "Pause Account",
                         onTap: () => _navTo(const PauseAccountPage())),
-                  ]).animate().fade(duration: 500.ms, delay: 200.ms).slideY(begin: 0.05, end: 0),
+                  ]).animate().slideY(begin: 0.05, end: 0),
 
                   _sectionLabel(AppLocalizations.of(context)?.discovery ?? "Discovery")
-                      .animate().fade(duration: 400.ms, delay: 250.ms).slideX(begin: 0.1, end: 0),
+                      .animate().slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.location_on_outlined, title: AppLocalizations.of(context)?.location ?? "Location",
                         subtitle: _userLocation != null ? _formatLocation(_userLocation) : (AppLocalizations.of(context)?.notSet ?? "Not set"),
                         onTap: () => _navTo(const CurrentLocationPage())),
-                  ]).animate().fade(duration: 500.ms, delay: 350.ms).slideY(begin: 0.05, end: 0),
+                  ]).animate().slideY(begin: 0.05, end: 0),
 
                   _sectionLabel(AppLocalizations.of(context)?.privacyAndSafety ?? "Privacy & Safety")
-                      .animate().fade(duration: 400.ms, delay: 400.ms).slideX(begin: 0.1, end: 0),
+                      .animate().slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.access_time_rounded, title: AppLocalizations.of(context)?.activityStatus ?? "Activity Status",
-                        trailing: Switch.adaptive(value: activityStatus, activeColor: kRose,
+                        trailing: Switch.adaptive(value: activityStatus, activeColor: kInk,
                             onChanged: (v) => setState(() => activityStatus = v))),
                     _divider(),
                     _tile(icon: Icons.verified_user_outlined, title: AppLocalizations.of(context)?.verification ?? "Verification",
@@ -245,22 +245,22 @@ class _SettingsPageState extends State<SettingsPage> {
                     _divider(),
                     _tile(icon: Icons.block_outlined, title: AppLocalizations.of(context)?.blockedUsers ?? "Blocked Users",
                         onTap: () => _navTo(const BlockListPage())),
-                  ]).animate().fade(duration: 500.ms, delay: 500.ms).slideY(begin: 0.05, end: 0),
+                  ]).animate().slideY(begin: 0.05, end: 0),
 
                   _sectionLabel(AppLocalizations.of(context)?.notifications ?? "Notifications")
-                      .animate().fade(duration: 400.ms, delay: 550.ms).slideX(begin: 0.1, end: 0),
+                      .animate().slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.notifications_none_rounded, title: AppLocalizations.of(context)?.pushNotifications ?? "Push Notifications",
-                        trailing: Switch.adaptive(value: notificationsEnabled, activeColor: kRose,
+                        trailing: Switch.adaptive(value: notificationsEnabled, activeColor: kInk,
                             onChanged: _toggleNotifications)),
                     _divider(),
                     _tile(icon: Icons.mail_outline_rounded, title: AppLocalizations.of(context)?.emailUpdates ?? "Email Updates",
-                        trailing: Switch.adaptive(value: emailUpdates, activeColor: kRose,
+                        trailing: Switch.adaptive(value: emailUpdates, activeColor: kInk,
                             onChanged: (v) => setState(() => emailUpdates = v))),
-                  ]).animate().fade(duration: 500.ms, delay: 650.ms).slideY(begin: 0.05, end: 0),
+                  ]).animate().slideY(begin: 0.05, end: 0),
 
                   _sectionLabel(AppLocalizations.of(context)?.appSettings ?? "App Settings")
-                      .animate().fade(duration: 400.ms, delay: 700.ms).slideX(begin: 0.1, end: 0),
+                      .animate().slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(
                       icon: Icons.language_rounded, 
@@ -268,26 +268,26 @@ class _SettingsPageState extends State<SettingsPage> {
                       subtitle: _getLanguageName(LanguageService().localeNotifier.value.languageCode),
                       onTap: _showLanguageSelector,
                     ),
-                  ]).animate().fade(duration: 500.ms, delay: 800.ms).slideY(begin: 0.05, end: 0),
+                  ]).animate().slideY(begin: 0.05, end: 0),
 
                   _sectionLabel("Subscriptions")
-                      .animate().fade(duration: 400.ms, delay: 850.ms).slideX(begin: 0.1, end: 0),
+                      .animate().slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.star_rounded, title: "Subscriptions",
                         subtitle: "Upgrade to Gold or Platinum",
                         onTap: () => _navTo(const SubscriptionsPage())),
-                  ]).animate().fade(duration: 500.ms, delay: 950.ms).slideY(begin: 0.05, end: 0),
+                  ]).animate().slideY(begin: 0.05, end: 0),
 
                   _sectionLabel("Privacy & Data")
-                      .animate().fade(duration: 400.ms, delay: 1000.ms).slideX(begin: 0.1, end: 0),
+                      .animate().slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.download_outlined, title: "Download My Data",
                         subtitle: "Export a copy of your data",
                         onTap: () => _navTo(const DownloadMyDataPage())),
-                  ]).animate().fade(duration: 500.ms, delay: 1100.ms).slideY(begin: 0.05, end: 0),
+                  ]).animate().slideY(begin: 0.05, end: 0),
 
                   _sectionLabel(AppLocalizations.of(context)?.legal ?? "Legal")
-                      .animate().fade(duration: 400.ms, delay: 1150.ms).slideX(begin: 0.1, end: 0),
+                      .animate().slideX(begin: 0.1, end: 0),
                   _card([
                     _tile(icon: Icons.privacy_tip_outlined, title: AppLocalizations.of(context)?.privacyPolicy ?? "Privacy Policy",
                         isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/privacy')),
@@ -300,27 +300,27 @@ class _SettingsPageState extends State<SettingsPage> {
                     _divider(),
                     _tile(icon: Icons.favorite_border_rounded, title: AppLocalizations.of(context)?.safeDating ?? "Safe Dating",
                         isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/safe-dating')),
-                  ]).animate().fade(duration: 500.ms, delay: 1250.ms).slideY(begin: 0.05, end: 0),
+                  ]).animate().slideY(begin: 0.05, end: 0),
 
                   const SizedBox(height: 48),
-                  _buildLogoutButton().animate().fade(duration: 500.ms, delay: 1350.ms),
+                  _buildLogoutButton(),
                   const SizedBox(height: 12),
                   Center(child: TextButton(
                     onPressed: _showRetentionDialog,
                     child: Text("Delete Account", style: GoogleFonts.montserrat(
                         color: kInkMuted, fontSize: 14,
                         decoration: TextDecoration.underline, decorationColor: kInkMuted)),
-                  )).animate().fade(duration: 500.ms, delay: 1450.ms),
+                  )),
                   const SizedBox(height: 20),
                   Center(child: Text("Version 1.0.0 (Build 24)",
-                      style: GoogleFonts.montserrat(color: kBone, fontSize: 12))).animate().fade(duration: 500.ms, delay: 1550.ms),
+                      style: GoogleFonts.montserrat(color: kBone, fontSize: 12))),
                   const SizedBox(height: 60),
                 ]),
               ),
             ),
           ],
         ),
-        Positioned(top: 0, left: 0, right: 0, child: _buildHeader().animate().fade(duration: 400.ms).slideY(begin: -0.2, end: 0)),
+        Positioned(top: 0, left: 0, right: 0, child: _buildHeader().animate().slideY(begin: -0.2, end: 0)),
       ]),
     );
   }
@@ -345,9 +345,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Container(
                     width: 36, height: 36,
                     decoration: BoxDecoration(
-                      color: kParchment,
+                      color: kCard,
                       shape: BoxShape.circle,
-                      border: Border.all(color: kBone, width: 1),
+                      border: Border.all(color: kBorderLight, width: 1),
                     ),
                     child: const Icon(Icons.arrow_back_rounded, size: 18, color: kInk),
                   ),
@@ -376,15 +376,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _card(List<Widget> children) => Container(
     decoration: BoxDecoration(
-      color: kParchment,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: kBone, width: 1),
-      boxShadow: [BoxShadow(color: kInk.withOpacity(0.09), blurRadius: 28, offset: const Offset(0, 8))],
+      color: kCard,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: kBorderLight, width: 1),
     ),
     child: Column(children: children),
   );
 
-  Widget _divider() => Divider(height: 1, thickness: 1, color: kBone, indent: 56);
+  Widget _divider() => Divider(height: 1, thickness: 1, color: kBorderLight, indent: 48);
 
   Widget _tile({required IconData icon, required String title,
       String? subtitle, Widget? trailing, VoidCallback? onTap, bool isExternal = false}) {
@@ -396,9 +395,7 @@ class _SettingsPageState extends State<SettingsPage> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(children: [
-            Container(width: 36, height: 36,
-                decoration: BoxDecoration(color: kRosePale, shape: BoxShape.circle),
-                child: Icon(icon, color: kRose, size: 18)),
+            Icon(icon, color: kInk, size: 20),
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w500, color: kInk)),
@@ -410,7 +407,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ])),
             if (trailing != null) trailing
             else if (isExternal) Icon(Icons.open_in_new_rounded, color: kBone, size: 18)
-            else if (onTap != null) Icon(Icons.chevron_right_rounded, color: kBone, size: 22),
+            else if (onTap != null) Icon(Icons.chevron_right_rounded, color: kInk, size: 22),
           ]),
         ),
       ),
@@ -433,7 +430,7 @@ class _SettingsPageState extends State<SettingsPage> {
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: kRose, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: kInk, borderRadius: BorderRadius.circular(12)),
       child: Text(label, style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
     ),
   );
@@ -444,10 +441,10 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.symmetric(vertical: 14),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kRose, width: 1.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kInk, width: 1.5),
       ),
-      child: Text(label, style: GoogleFonts.montserrat(color: kRose, fontWeight: FontWeight.w600, fontSize: 15)),
+      child: Text(label, style: GoogleFonts.montserrat(color: kInk, fontWeight: FontWeight.w600, fontSize: 15)),
     ),
   );
 
@@ -487,7 +484,7 @@ class _SettingsPageState extends State<SettingsPage> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 4),
       title: Text(name, style: GoogleFonts.montserrat(
           fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: kInk)),
-      trailing: isSelected ? const Icon(Icons.check_circle, color: kRose) : null,
+      trailing: isSelected ? const Icon(Icons.check_circle, color: kInk) : null,
       onTap: () {
         LanguageService().changeLanguage(code);
         Navigator.pop(context);
@@ -509,25 +506,25 @@ class _SettingsPageState extends State<SettingsPage> {
     child: GestureDetector(
       onTap: () => showDialog(context: context, builder: (ctx) => AlertDialog(
         backgroundColor: kCream,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBone)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBorderLight)),
         title: Text("Log Out?", style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
         content: Text("Are you sure you want to log out?", style: GoogleFonts.montserrat(color: kInkMuted)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx),
               child: Text("Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
           TextButton(onPressed: () { Navigator.pop(ctx); _logout(); },
-              child: Text("Log Out", style: GoogleFonts.montserrat(color: Colors.red.shade400, fontWeight: FontWeight.w600))),
+              child: Text("Log Out", style: GoogleFonts.montserrat(color: kDestructive, fontWeight: FontWeight.w600))),
         ],
       )),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
         decoration: BoxDecoration(
-          color: kParchment,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: kBone, width: 1),
+          color: kCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kBorderLight, width: 1),
         ),
         child: Text("Log Out", style: GoogleFonts.montserrat(
-            color: Colors.red.shade400, fontSize: 15, fontWeight: FontWeight.w600)),
+            color: kDestructive, fontSize: 15, fontWeight: FontWeight.w600)),
       ),
     ),
   );
