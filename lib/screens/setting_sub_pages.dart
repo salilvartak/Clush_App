@@ -1836,7 +1836,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: GoogleFonts.figtree(color: Colors.white)),
-      backgroundColor: isError ? kDestructive : _kInk,
+      backgroundColor: isError ? kDestructive : kAccent,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.all(16),
@@ -1888,8 +1888,8 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                   ),
                   const Spacer(),
                   Row(children: [
-                    Text('Clush', style: GoogleFonts.gabarito(color: _kInk, fontSize: 18, fontWeight: FontWeight.bold)),
-                    Text('+', style: GoogleFonts.gabarito(color: _kGold, fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text('Clush', style: GoogleFonts.gabarito(color: kAccent, fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text('+', style: GoogleFonts.gabarito(color: kAccent, fontSize: 18, fontWeight: FontWeight.bold)),
                   ]),
                   const Spacer(),
                   const SizedBox(width: 36), // balance
@@ -1951,12 +1951,12 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                 right: i == _plans.length - 1 ? 20 : 8,
                               ),
                               decoration: BoxDecoration(
-                                color: selected ? _kInk : _kParchment,
+                                color: selected ? kAccent : _kParchment,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: selected ? _kInk : _kBone, width: 1.5),
+                                  color: selected ? kAccent : _kBone, width: 1.5),
                                 boxShadow: selected
-                                    ? [BoxShadow(color: _kInk.withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 6))]
+                                    ? [BoxShadow(color: kAccent.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))]
                                     : [BoxShadow(color: _kInk.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
                               ),
                               padding: const EdgeInsets.all(18),
@@ -1972,7 +1972,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                           decoration: BoxDecoration(
-                                            color: _kInk,
+                                            color: selected ? Colors.white.withValues(alpha: 0.2) : kAccent,
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text('Popular',
@@ -2043,7 +2043,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                         height: 6,
                         margin: const EdgeInsets.symmetric(horizontal: 3),
                         decoration: BoxDecoration(
-                          color: _selectedPlan == i ? _kInk : _kBone,
+                          color: _selectedPlan == i ? kAccent : _kBone,
                           borderRadius: BorderRadius.circular(3),
                         ),
                       )),
@@ -2070,7 +2070,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
                                 child: Row(children: [
-                                  Icon(f.$1, color: _kInk, size: 18),
+                                  Icon(f.$1, color: kAccent, size: 18),
                                   const SizedBox(width: 14),
                                   Expanded(child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2140,7 +2140,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       decoration: BoxDecoration(
-                        color: _isPurchasing ? _kInk.withValues(alpha: 0.6) : _kInk,
+                        color: _isPurchasing ? kAccent.withValues(alpha: 0.6) : kAccent,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Center(

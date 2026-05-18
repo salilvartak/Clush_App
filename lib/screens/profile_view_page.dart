@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:ui';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:clush/widgets/activity_badge.dart';
+import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/theme/colors.dart';
 
-
-class ProfileViewPage extends StatelessWidget {
+class ProfileViewPage extends StatefulWidget {
   final Map<String, dynamic> profile;
   final bool showBackButton;
   final bool showScaffold;
@@ -17,7 +20,34 @@ class ProfileViewPage extends StatelessWidget {
   });
 
   @override
+  State<ProfileViewPage> createState() => _ProfileViewPageState();
+}
+
+class _ProfileViewPageState extends State<ProfileViewPage> {
+  final ScrollController _scrollController = ScrollController();
+  bool _showFloatingName = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      final show = _scrollController.offset > 120;
+      if (show != _showFloatingName) {
+        setState(() => _showFloatingName = show);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final profile = widget.profile;
+    
     // 1. Extract Data
     final List photoUrls = profile['photo_urls'] ?? [];
     final List prompts = profile['prompts'] ?? [];
@@ -59,81 +89,14 @@ class ProfileViewPage extends StatelessWidget {
       'Politics': profile['political_views'],
     };
 
-    // 2. Prepare Lists for the "Mix" section 
-    List<String> remainingPhotos = [];
-    if (photoUrls.length > 1) {
-      remainingPhotos.addAll(List<String>.from(photoUrls.sublist(1)));
-    }
+    // Prepare content
+    List<String> remainingPhotos = photoUrls.length > 1 ? List<String>.from(photoUrls.sublist(1)) : [];
+    List<Map<String, dynamic>> remainingPrompts = prompts.map((p) => p as Map<String, dynamic>).toList();
 
-    List<Map<String, dynamic>> remainingPrompts = [];
-    if (prompts.isNotEmpty) {
-      for (var p in prompts) {
-        if (p != null) remainingPrompts.add(p as Map<String, dynamic>);
-      }
-    }
-
-    // 3. Build Content List
     List<Widget> contentList = [];
-
-    // Header margin spacer
-    contentList.add(const SizedBox(height: 16));
-
-    // Profile Header (Name, Badge, Active Pill)
-    contentList.add(
-      Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          name,
-                          style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 38,
-                            color: kInk,
-                            letterSpacing: -1.0,
-                            height: 1.0,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (isVerified) ...[
-                        const SizedBox(width: 8),
-                        const Icon(Icons.verified_rounded, color: kGold, size: 22),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ActivityBadge(lastSeenAt: profile['last_seen_at'] as String?),
-            // Thin decorative rule under the name
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Container(width: 32, height: 1, color: kGold),
-                const SizedBox(width: 8),
-                Container(width: 8, height: 1, color: kBone),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-
-    // 1st Image
-    if (photoUrls.isNotEmpty) {
-      contentList.add(_buildPhotoCard(photoUrls[0], isFirst: true));
-    } else {
-      contentList.add(_buildPhotoCard('https://via.placeholder.com/600x800', isFirst: true));
-    }
+    
+    // First Profile Card (Full bleed)
+    contentList.add(_buildFirstProfileCard(profile, allInterests));
 
     // Essentials card
     final customMessage = profile['custom_message'] as String?;
@@ -141,154 +104,226 @@ class ProfileViewPage extends StatelessWidget {
       contentList.add(_buildUnifiedEssentialsCard(allEssentials, customMessage));
     }
 
-    // Interests/Hobbies
-    if (allInterests.isNotEmpty) {
-      contentList.add(
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          padding: const EdgeInsets.all(24),
-          decoration: _cardDecoration(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildCardLabel("Hobbies & Interests"),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: allInterests.map((e) => _buildChip(e.toString())).toList(),
-              ),
-            ],
-          ),
+    // Mix in photos and prompts
+    while (remainingPhotos.isNotEmpty || remainingPrompts.isNotEmpty) {
+      if (remainingPrompts.isNotEmpty) {
+        contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
+      }
+      if (remainingPhotos.isNotEmpty) {
+        contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
+      }
+    }
+
+    contentList.add(const SizedBox(height: 100));
+
+    final mainContent = Stack(
+      children: [
+        SingleChildScrollView(
+          controller: _scrollController,
+          physics: const BouncingScrollPhysics(),
+          child: Column(children: contentList),
         ),
-      );
-    }
-
-    // 1st Prompt
-    if (remainingPrompts.isNotEmpty) {
-      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
-    }
-
-    // 2nd Image
-    if (remainingPhotos.isNotEmpty) {
-      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
-    }
-
-    // 3rd Image
-    if (remainingPhotos.isNotEmpty) {
-      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
-    }
-
-    // 2nd Prompt
-    if (remainingPrompts.isNotEmpty) {
-      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
-    }
-
-    // 4th Image
-    if (remainingPhotos.isNotEmpty) {
-      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
-    }
-
-    // 3rd Prompt
-    if (remainingPrompts.isNotEmpty) {
-      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
-    }
-
-    while (remainingPhotos.isNotEmpty) {
-      contentList.add(_buildPhotoCard(remainingPhotos.removeAt(0)));
-    }
-
-    while (remainingPrompts.isNotEmpty) {
-      contentList.add(_buildPromptCard(remainingPrompts.removeAt(0)));
-    }
-
-    // Bottom spacing
-    contentList.add(const SizedBox(height: 80));
-
-    final mainContent = SafeArea(
-      bottom: false,
-      child: Stack(
-        children: [
-          SingleChildScrollView(
-            padding: EdgeInsets.only(top: showBackButton ? 64 : 20, bottom: 40),
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: contentList,
+        
+        // Floating Header (Pill)
+        if (_showFloatingName)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 0, right: 0,
+            child: Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: kCream.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: kBorderLight.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          name,
+                          style: GoogleFonts.gabarito(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: kInk,
+                          ),
+                        ),
+                        if (isVerified) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.verified_rounded, color: kGold, size: 14),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ).animate().fade(duration: 200.ms).scale(begin: const Offset(0.9, 0.9)),
             ),
           ),
-          if (showBackButton)
-            Positioned(
-              top: 16,
-              left: 16,
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: kCream.withValues(alpha: 0.9),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: kBorderLight, width: 1),
+
+        // Back Button
+        if (widget.showBackButton)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 16,
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: kCream.withValues(alpha: 0.8),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: kBorderLight, width: 0.5),
+                ),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: kInk),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (widget.showScaffold) {
+      return Scaffold(backgroundColor: kCream, body: mainContent);
+    }
+    return mainContent;
+  }
+
+  Widget _buildFirstProfileCard(Map<String, dynamic> profile, List allInterests) {
+    final List photoUrls = profile['photo_urls'] ?? [];
+    final String name = profile['full_name'] ?? 'User';
+    final int age = _calculateAge(profile['birthday']);
+    final bool isVerified = profile['is_verified'] ?? true;
+    final String? jobTitle = profile['job_title'] as String?;
+    final String? location = (() {
+      final loc = profile['location'] as String?;
+      if (loc == null) return null;
+      final idx = loc.indexOf('(');
+      final clean = idx != -1 ? loc.substring(0, idx).trim() : loc;
+      final parts = clean.split(',').map((e) => e.trim()).toList();
+      return parts.length >= 2 ? '${parts[0]}, ${parts[1]}' : clean;
+    })();
+
+    final String photoUrl = photoUrls.isNotEmpty ? photoUrls[0].toString() : '';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: kCard,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kBorderLight, width: 1),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(23),
+        child: Column(
+          children: [
+            Stack(
+              children: [
+                SizedBox(
+                  height: 520,
+                  width: double.infinity,
+                  child: photoUrl.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: photoUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => const Center(child: HeartLoader(size: 40)),
+                          errorWidget: (_, __, ___) => const Icon(Icons.person, size: 80, color: kBone),
+                        )
+                      : Container(color: kParchment),
+                ),
+                Positioned(
+                  bottom: 0, left: 0, right: 0,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Color(0xCC000000), Colors.transparent],
+                      ),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(20, 60, 20, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              '$name, $age',
+                              style: GoogleFonts.gabarito(
+                                color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (isVerified) ...[
+                              const SizedBox(width: 8),
+                              const Icon(Icons.verified_rounded, color: kGold, size: 24),
+                            ],
+                          ],
+                        ),
+                        if (jobTitle != null && jobTitle.isNotEmpty)
+                          Text(
+                            jobTitle,
+                            style: GoogleFonts.figtree(color: Colors.white70, fontSize: 16),
+                          ),
+                        if (location != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.location_on_outlined, color: Colors.white70, size: 14),
+                                const SizedBox(width: 4),
+                                Text(location, style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14)),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                  child: const Icon(Icons.arrow_back_ios_new_rounded, color: kInk, size: 20),
+                ),
+              ],
+            ),
+            if (allInterests.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "INTERESTS",
+                      style: GoogleFonts.figtree(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: kInkMuted,
+                        letterSpacing: 2.0,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: allInterests.take(6).map((e) => _buildChip(e.toString())).toList(),
+                    ),
+                  ],
                 ),
               ),
-            ),
-        ],
-      ),
-    );
-
-    if (showScaffold) {
-      return Scaffold(
-        backgroundColor: kCream,
-        body: mainContent,
-      );
-    } else {
-      return mainContent;
-    }
-  }
-
-  // ================= REUSED WIDGETS =================
-
-  BoxDecoration _cardDecoration() {
-    return BoxDecoration(
-      color: kCard,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: kBorderLight, width: 1),
-    );
-  }
-
-  Widget _buildCardLabel(String label) {
-    return Row(
-      children: [
-        Container(width: 3, height: 16, color: kGold, margin: const EdgeInsets.only(right: 10)),
-        Text(
-          label.toUpperCase(),
-          style: GoogleFonts.figtree(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: kInkMuted,
-            letterSpacing: 1.8,
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildUnifiedEssentialsCard(Map<String, String?> allData, String? customMessage) {
-    final verticalKeys = ['Looking For', 'Religion', 'Ethnicity', 'Star Sign'];
+    const verticalKeys = ['Looking For', 'Religion', 'Ethnicity', 'Star Sign'];
     final Map<String, String> verticalData = {};
     final Map<String, String> horizontalData = {};
 
     allData.forEach((key, value) {
       if (value != null && value.isNotEmpty) {
-        if (verticalKeys.contains(key)) {
-          verticalData[key] = value;
-        } else {
-          horizontalData[key] = value;
-        }
+        if (verticalKeys.contains(key)) verticalData[key] = value;
+        else horizontalData[key] = value;
       }
     });
 
@@ -317,8 +352,12 @@ class ProfileViewPage extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: _cardDecoration(),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: kCard,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kBorderLight),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -337,13 +376,13 @@ class ProfileViewPage extends StatelessWidget {
                 separatorBuilder: (context, index) => VerticalDivider(
                   width: 24,
                   thickness: 1,
-                  color: kBone,
+                  color: kBorderLight,
                   indent: 4,
                   endIndent: 4,
                 ),
                 itemBuilder: (context, index) {
-                  String key = horizontalData.keys.elementAt(index);
-                  String value = horizontalData[key]!;
+                  final key = horizontalData.keys.elementAt(index);
+                  final value = horizontalData[key]!;
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -364,7 +403,7 @@ class ProfileViewPage extends StatelessWidget {
             ),
           ],
           if (horizontalData.isNotEmpty && verticalData.isNotEmpty)
-            Divider(height: 1, thickness: 1, color: kBone),
+            Divider(height: 1, thickness: 1, color: kBorderLight),
           if (verticalData.isNotEmpty)
             Column(
               children: verticalData.entries.map((entry) {
@@ -407,14 +446,14 @@ class ProfileViewPage extends StatelessWidget {
                             style: GoogleFonts.figtree(
                               fontSize: 14,
                               height: 1.4,
-                              color: kInkMuted,
+                              color: kInk.withOpacity(0.8),
                               fontStyle: FontStyle.italic,
                             ),
                           ),
                         ),
                       ),
                     if (entry.key != verticalData.keys.last)
-                      Divider(height: 1, thickness: 1, color: kBone),
+                      Divider(height: 1, thickness: 1, color: kBorderLight),
                   ],
                 );
               }).toList(),
@@ -424,28 +463,22 @@ class ProfileViewPage extends StatelessWidget {
     );
   }
 
-
-
-  Widget _buildPhotoCard(String url, {bool isFirst = false}) {
+  Widget _buildPhotoCard(String url) {
     return Container(
-      height: 520,
+      height: 480,
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kBorderLight, width: 1),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kBorderLight),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(15),
-        child: Image.network(
-          url,
+        borderRadius: BorderRadius.circular(23),
+        child: CachedNetworkImage(
+          imageUrl: url,
           fit: BoxFit.cover,
-          errorBuilder: (c, e, s) => Container(
-            color: kParchment,
-            child: const Center(
-              child: Icon(Icons.person_outline_rounded, color: kBone, size: 64),
-            ),
-          ),
+          placeholder: (_, __) => const Center(child: HeartLoader(size: 40)),
+          errorWidget: (_, __, ___) => const Icon(Icons.person, size: 50, color: kBone),
         ),
       ),
     );
@@ -454,58 +487,46 @@ class ProfileViewPage extends StatelessWidget {
   Widget _buildPromptCard(Map<String, dynamic> prompt) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       padding: const EdgeInsets.all(24),
-      decoration: _cardDecoration(),
+      decoration: BoxDecoration(
+        color: kCard,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kBorderLight),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Opening quote mark
-          Text(
-            "\u201C",
-            style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 48,
-              color: kGold.withValues(alpha: 0.35),
-              height: 0.8,
-            ),
-          ),
-          const SizedBox(height: 4),
           Text(
             prompt['question'] as String,
-            style: GoogleFonts.figtree(
-              color: kInkMuted,
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.0,
-            ),
+            style: GoogleFonts.figtree(color: kInkMuted, fontSize: 14, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
           Text(
             prompt['answer'],
-            style: GoogleFonts.ledger(fontWeight: FontWeight.bold, fontSize: 26,
-              height: 1.3,
-              color: kInk,
-            ),
+            style: GoogleFonts.gabarito(fontSize: 24, fontWeight: FontWeight.bold, color: kInk, height: 1.2),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildCardLabel(String label) {
+    return Text(
+      label.toUpperCase(),
+      style: GoogleFonts.figtree(fontSize: 10, fontWeight: FontWeight.w700, color: kInkMuted, letterSpacing: 2.0),
+    );
+  }
+
   Widget _buildChip(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: kTagBg,
-        borderRadius: BorderRadius.circular(99),
+        color: kParchment,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kBorderLight, width: 0.5),
       ),
-      child: Text(
-        label,
-        style: GoogleFonts.figtree(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: kInk,
-        ),
-      ),
+      child: Text(label, style: GoogleFonts.figtree(fontSize: 13, fontWeight: FontWeight.w500, color: kInk)),
     );
   }
 

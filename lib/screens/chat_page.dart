@@ -1081,7 +1081,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               child: Text(caption,
                   style: GoogleFonts.figtree(
                       fontSize: 14,
-                      color: isMe ? Colors.white : kInk,
+                      color: isMe ? Colors.white : kRose,
                       height: 1.4)),
             ),
         ],
@@ -1091,19 +1091,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } else {
       content = Text(msg['data'] as String,
           style: GoogleFonts.figtree(
-              fontSize: 15, color: isMe ? Colors.white : kInk, height: 1.45));
+              fontSize: 15, color: isMe ? Colors.white : kRose, height: 1.45));
     }
 
     return Container(
       padding: noPadding ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        gradient: (isMe && !isDeleted)
-            ? const LinearGradient(
-                colors: [kRoseLight, kRose],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight)
-            : null,
-        color: (isMe && !isDeleted) ? null : Colors.white,
+        color: (isMe && !isDeleted) ? kRose : Colors.white,
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(20),
           topRight: const Radius.circular(20),

@@ -1,47 +1,46 @@
 import 'package:flutter/material.dart';
 
-// ─── BOUTIQUE CLUB PALETTE ────────────────────────────────────────────────────
+// Clush wine and blush rebrand.
 
 // Screen backgrounds
-const Color kBackground = Color(0xFFFCF9F8); // Warm Cream — all screen backgrounds
-const Color kCream      = kBackground;        // alias
+const Color kBackground = Color(0xFFF9F9F9);
+const Color kCream = kBackground;
 
 // Card / panel backgrounds
-const Color kCard       = Color(0xFFFFFFFF);  // Pure White — profile cards, setting panels
-const Color kParchment  = kCard;              // alias
-const Color kTan        = kCard;              // alias
+const Color kCard = Color(0xFFFFFFFF);
+const Color kParchment = kCard;
+const Color kTan = kCard;
 
-// Deep Emerald — CTA buttons, active heart, accent states
-const Color kAccent   = Color(0xFF1A2C26);
-const Color kPrimary  = kAccent;              // alias
+// Primary brand color: wine
+const Color kAccent = Color(0xFF540F24);
+const Color kPrimary = kAccent;
 
-// Body text / headings (slightly lighter green-grey)
-const Color kInk   = Color(0xFF000000);
-const Color kBlack = kInk;                   // alias
+// Text colors
+const Color kInk = Color(0xFF000000);
+const Color kBlack = kInk;
+const Color kTextOnPrimary = Color(0xFFFFFFFF);
 
-// Premium accent (Champagne Gold) — lightning bolt, verified ticks, selected states
-const Color kGold = Color(0xFFD4AF37);
+// Accent: soft blush
+const Color kGold = Color(0xFFD4A3A5);
+const Color kBlush = kGold;
 
-// Secondary text — subtext, timestamps, unselected tags (Muted Green-Grey)
-const Color kSecondaryText = Color(0xFF424242);
-const Color kInkMuted      = kSecondaryText;  // alias
-const Color kInkSecondary  = kSecondaryText;  // alias
+// Secondary text stays black-adjacent while preserving hierarchy.
+const Color kSecondaryText = Color(0xFF000000);
+const Color kInkMuted = Color(0xFF4A4A4A);
+const Color kInkSecondary = kSecondaryText;
 
-// Borders & separators (1 px everywhere)
-const Color kBorderLight = Color(0xFFE5E7EB);
-const Color kBone        = kBorderLight;      // alias
+// Borders & separators
+const Color kBorderLight = Color(0xFFE8E0DC);
+const Color kBone = kBorderLight;
 
-// Tag / chip background — slightly darker cream
-const Color kTagBg = Color(0xFFF0EDE6);
-
-// Interest chip / discover page background — soft sage mint
-const Color kChipBg = Color(0xFFE5F0EC);
+// Tags / chips
+const Color kTagBg = kBackground;
+const Color kChipBg = Color(0xFFF2DADC);
 
 // Destructive / error
-const Color kDestructive = Color(0xFFA84A4A);
+const Color kDestructive = Color(0xFFA83245);
 
-// ─── LEGACY — kept so untouched files compile ─────────────────────────────────
-// These were the old rose-themed accent colours.  Do NOT use in new/refactored code.
-const Color kRose      = Color(0xFF1A2C26);
-const Color kRoseLight = Color(0xFF1A2C26);
-const Color kRosePale  = Color(0xFFF3E8E3);
+// Legacy aliases kept so untouched files inherit the rebrand.
+const Color kRose = kAccent;
+const Color kRoseLight = kBlush;
+const Color kRosePale = kChipBg;

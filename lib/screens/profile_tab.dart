@@ -20,7 +20,11 @@ class ProfileTab extends StatefulWidget {
   State<ProfileTab> createState() => _ProfileTabState();
 }
 
-class _ProfileTabState extends State<ProfileTab> {
+class _ProfileTabState extends State<ProfileTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   late Future<Map<String, dynamic>?> _profileFuture;
   final MatchingService _matchingService = MatchingService();
 
@@ -31,7 +35,6 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   Future<Map<String, dynamic>?> _fetchProfile() async {
-    final sw = Stopwatch()..start();
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return null;
 
@@ -48,19 +51,18 @@ class _ProfileTabState extends State<ProfileTab> {
     try {
       final wallet = await _matchingService.getWallet();
       if (wallet.isNotEmpty) {
-        result['super_likes_remaining']   = wallet['super_likes_remaining']   ?? 0;
-        result['rewinds_remaining']       = wallet['rewinds_remaining']       ?? 0;
-        result['profile_saves_remaining'] = wallet['profile_saves_remaining'] ?? 0;
+        result['super_likes_remaining']   = (wallet['super_likes_remaining']   as num?)?.toInt() ?? 0;
+        result['rewinds_remaining']       = (wallet['rewinds_remaining']       as num?)?.toInt() ?? 0;
+        result['profile_saves_remaining'] = (wallet['profile_saves_remaining'] as num?)?.toInt() ?? 0;
       }
     } catch (_) {}
 
-    final elapsed = sw.elapsedMilliseconds;
-    if (elapsed < 1200) await Future.delayed(Duration(milliseconds: 1200 - elapsed));
     return result;
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       backgroundColor: kCream,
       body: SafeArea(
@@ -251,9 +253,9 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   Widget _buildFeatureTilesRow(BuildContext context, Map<String, dynamic> profile) {
-    final superLikes = profile['super_likes_remaining'] as int? ?? 0;
-    final rewinds    = profile['rewinds_remaining']     as int? ?? 0;
-    final saves      = profile['profile_saves_remaining'] as int? ?? 0;
+    final superLikes = (profile['super_likes_remaining'] as num?)?.toInt() ?? 0;
+    final rewinds    = (profile['rewinds_remaining']     as num?)?.toInt() ?? 0;
+    final saves      = (profile['profile_saves_remaining'] as num?)?.toInt() ?? 0;
 
     final items = [
       _PurchaseItem(
@@ -421,13 +423,13 @@ class _ProfileTabState extends State<ProfileTab> {
               padding: const EdgeInsets.fromLTRB(16, 14, 14, 12),
               child: Row(
                 children: [
-                  Text('Clush', style: GoogleFonts.gabarito(color: kInk, fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text('+', style: GoogleFonts.gabarito(color: kGold, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('Clush', style: GoogleFonts.gabarito(color: kAccent, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('+', style: GoogleFonts.gabarito(color: kAccent, fontSize: 18, fontWeight: FontWeight.bold)),
                   const Spacer(),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
                     decoration: BoxDecoration(
-                      color: kInk,
+                      color: kAccent,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text('UPGRADE', style: GoogleFonts.figtree(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
@@ -458,8 +460,8 @@ class _ProfileTabState extends State<ProfileTab> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('Clush', style: GoogleFonts.gabarito(color: kInk, fontSize: 12, fontWeight: FontWeight.bold)),
-                          Text('+', style: GoogleFonts.gabarito(color: kGold, fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text('Clush', style: GoogleFonts.gabarito(color: kAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text('+', style: GoogleFonts.gabarito(color: kAccent, fontSize: 12, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),

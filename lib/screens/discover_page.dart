@@ -8,11 +8,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/widgets/match_animation_dialog.dart';
+import 'package:clush/services/cache_service.dart';
 // activity_badge import removed — badge moved into _buildFirstProfileCard overlay;
 
 import 'package:clush/theme/colors.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:clush/screens/setting_sub_pages.dart';
+import 'package:clush/screens/home_page.dart';
+import 'package:clush/screens/chat_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DiscoverPage extends StatefulWidget {
@@ -37,6 +40,7 @@ class _DiscoverPageState extends State<DiscoverPage>
   bool _isPremium = false;
 
   String? _myPhotoUrl;
+  String _myName = 'Me';
 
   // Filter States
   RangeValues _filterAge = const RangeValues(18, 60);
@@ -67,12 +71,20 @@ class _DiscoverPageState extends State<DiscoverPage>
   bool _isSwiping = false;
   bool _isRewinding = false; // Card slide-in from left (rewind)
   String _swipeType = ''; // 'like' | 'dislike' | 'gem'
+  final ValueNotifier<double> _dragNotifier = ValueNotifier(0.0);
+  late AnimationController _snapController;
   String? _pendingTargetId;
   String? _pendingMessage;
+  Map<String, dynamic>? _lastDislikedProfile;
 
   @override
   void initState() {
     super.initState();
+    _snapController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+
     _swipeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 650),
@@ -88,6 +100,9 @@ class _DiscoverPageState extends State<DiscoverPage>
       parent: _swipeController,
       curve: Curves.easeInOutCubic,
     );
+
+    // Initial load from cache for speed
+    _loadCachedFeed();
 
     _scrollController.addListener(() {
       if (_profiles.isEmpty) return;
@@ -164,7 +179,19 @@ class _DiscoverPageState extends State<DiscoverPage>
   @override
   void dispose() {
     _swipeController.dispose();
+    _snapController.dispose();
+    _dragNotifier.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadCachedFeed() async {
+    final cached = await CacheService.instance.getCachedDiscoveryFeed();
+    if (cached != null && cached.isNotEmpty && mounted) {
+      setState(() {
+        _profiles = cached;
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _fetchProfiles() async {
@@ -236,7 +263,7 @@ class _DiscoverPageState extends State<DiscoverPage>
 
       final myProfileResponse = await Supabase.instance.client
           .from('profiles')
-          .select('gender, is_premium, location, intent, photo_urls, blocked_phones')
+          .select('full_name, gender, is_premium, location, intent, photo_urls, blocked_phones')
           .eq('id', myId)
           .maybeSingle();
 
@@ -296,6 +323,7 @@ class _DiscoverPageState extends State<DiscoverPage>
           if (photos is List && photos.isNotEmpty) {
             _myPhotoUrl = photos[0] as String?;
           }
+          _myName = myProfileResponse['full_name'] as String? ?? 'Me';
         });
       }
 
@@ -429,6 +457,8 @@ class _DiscoverPageState extends State<DiscoverPage>
             _isPremium = wallet['is_premium'] ?? false;
           }
         });
+        // Cache the newly fetched feed
+        CacheService.instance.cacheDiscoveryFeed(_profiles);
       }
     } catch (e) {
       if (mounted) {
@@ -484,12 +514,92 @@ class _DiscoverPageState extends State<DiscoverPage>
       _showFloatingName = false;
       if (swipeType == 'like') _likesRemaining--;
       if (swipeType == 'gem') _superLikesRemaining--;
+      if (swipeType == 'dislike') _lastDislikedProfile = droppedProfile;
+      else _lastDislikedProfile = null; // only one rewind level
       _profiles.removeAt(0);
       _pendingTargetId = null;
       _pendingMessage = null;
     });
     _swipeController.reset();
     _recordSwipeInBackground(targetId, swipeType, droppedProfile, message: message);
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (_isSwiping || _isRewinding || _profiles.isEmpty) return;
+    // Cancel any in-progress snap-back so the new drag takes over cleanly.
+    if (_snapController.isAnimating) _snapController.stop();
+    _dragNotifier.value += details.delta.dx;
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    if (_isSwiping || _isRewinding || _profiles.isEmpty) {
+      _snapBack();
+      return;
+    }
+    final vx = details.velocity.pixelsPerSecond.dx;
+    final drag = _dragNotifier.value;
+    final targetId = _profiles.first['id'].toString();
+    final sw = MediaQuery.of(context).size.width;
+
+    if (drag > 80 || vx > 500) {
+      // Seed the swipe animation at the drag position so there is no snap-to-centre frame.
+      _swipeController.value = (drag / (sw * 1.4)).clamp(0.0, 0.4);
+      _dragNotifier.value = 0;
+      _triggerSwipe(targetId, 'like');
+    } else if (drag < -80 || vx < -500) {
+      _swipeController.value = (-drag / (sw * 1.4)).clamp(0.0, 0.4);
+      _dragNotifier.value = 0;
+      _triggerSwipe(targetId, 'dislike');
+    } else {
+      _snapBack();
+    }
+  }
+
+  void _onHorizontalDragCancel() => _snapBack();
+
+  void _snapBack() {
+    if (_dragNotifier.value == 0) return;
+    _snapController.stop();
+    final start = _dragNotifier.value;
+    final snapAnim = Tween<double>(begin: start, end: 0).animate(
+      CurvedAnimation(parent: _snapController, curve: Curves.easeOutCubic),
+    );
+    void listener() => _dragNotifier.value = snapAnim.value;
+    snapAnim.addListener(listener);
+    _snapController
+      ..value = 0
+      ..forward().then((_) {
+        snapAnim.removeListener(listener);
+        _dragNotifier.value = 0;
+        _snapController.reset();
+      });
+  }
+
+  void _saveCurrentProfile() async {
+    if (_profiles.isEmpty) return;
+    final targetId = _profiles.first['id'].toString();
+    setState(() => _profiles.removeAt(0));
+    try {
+      await _matchingService.saveProfile(targetId);
+      if (mounted) _showThemedToast('Profile saved!', isError: false);
+    } catch (e) {
+      debugPrint('Save failed: $e');
+    }
+  }
+
+  void _triggerRewind() {
+    if (_isSwiping || _isRewinding || _lastDislikedProfile == null) return;
+    final profileToRestore = _lastDislikedProfile!;
+    setState(() {
+      _profiles.insert(0, profileToRestore);
+      _lastDislikedProfile = null;
+      _isRewinding = true;
+      _showFloatingName = false;
+    });
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+    _swipeController.value = 1.0;
+    _swipeController.reverse();
+    _matchingService.rewind(profileToRestore['id'].toString());
   }
 
   void _recordSwipeInBackground(
@@ -685,7 +795,27 @@ class _DiscoverPageState extends State<DiscoverPage>
       myPhotoUrl: _myPhotoUrl ?? '',
       matchPhotoUrl: matchPhotoUrl,
       matchName: profile['full_name'] as String? ?? 'them',
-      onMessage: () {},
+      onMessage: () {
+        // 1. Switch HomePage to Matches tab (index 2)
+        homeKey.currentState?.setIndex(2);
+
+        // 2. Navigate to ChatScreen
+        final myId = FirebaseAuth.instance.currentUser?.uid;
+        if (myId != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(
+                myId: myId,
+                matchId: profile['id'] as String,
+                myName: _myName,
+                matchName: profile['full_name'] as String? ?? 'Them',
+                matchPhotoUrl: matchPhotoUrl,
+              ),
+            ),
+          );
+        }
+      },
     );
   }
 
@@ -793,60 +923,126 @@ class _DiscoverPageState extends State<DiscoverPage>
         backgroundColor: kCard,
         child: Stack(
           children: [
-            // 1. SCROLLABLE PROFILE CONTENT — swipe-animated
-            AnimatedBuilder(
-              animation: _swipeProgress,
-              child: _buildProfileContent(profile),
-              builder: (context, currentCard) {
-                final double t  = _swipeProgress.value;
-                final double sw = MediaQuery.of(context).size.width;
+            // 1. SCROLLABLE PROFILE CONTENT — swipe-animated + drag gesture
+            GestureDetector(
+              onHorizontalDragUpdate: _onHorizontalDragUpdate,
+              onHorizontalDragEnd: _onHorizontalDragEnd,
+              onHorizontalDragCancel: _onHorizontalDragCancel,
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_swipeProgress, _dragNotifier]),
+                child: _buildProfileContent(profile),
+                builder: (context, currentCard) {
+                  final double t    = _swipeProgress.value;
+                  final double drag = _dragNotifier.value;
+                  final double sw   = MediaQuery.of(context).size.width;
 
-                // Build transform based on current phase
-                final Matrix4 mat;
-                if (_isRewinding) {
-                  // Slide in from left: at t=1 card is off-screen left; reverse() takes t 1→0
-                  mat = t > 0
-                      ? (Matrix4.translationValues(-sw * 1.2 * t, 30.0 * t, 0)
-                        ..rotateZ(-0.15 * t))
-                      : Matrix4.identity();
-                } else if (_isSwiping) {
-                  if (_swipeType == 'gem') {
-                    // Superlike: fly UP
-                    final double sh = MediaQuery.of(context).size.height;
-                    mat = Matrix4.translationValues(0, -sh * 1.2 * t, 0)
-                      ..scale(1.0 - 0.1 * t);
+                  final Matrix4 mat;
+                  if (_isRewinding) {
+                    mat = t > 0
+                        ? (Matrix4.translationValues(-sw * 1.2 * t, 30.0 * t, 0)
+                          ..rotateZ(-0.15 * t))
+                        : Matrix4.identity();
+                  } else if (_isSwiping) {
+                    if (_swipeType == 'gem') {
+                      final double sh = MediaQuery.of(context).size.height;
+                      final double s = 1.0 - 0.1 * t;
+                      mat = Matrix4.translationValues(0, -sh * 1.2 * t, 0)
+                        ..scaleByDouble(s, s, s, 1.0);
+                    } else {
+                      final bool goLeft = _swipeType == 'dislike';
+                      mat = Matrix4.translationValues(
+                        goLeft ? -sw * 1.4 * t : sw * 1.4 * t,
+                        40.0 * t, 0,
+                      )..rotateZ((goLeft ? -0.2 : 0.2) * t);
+                    }
+                  } else if (drag != 0) {
+                    final double normalizedX = drag / sw;
+                    mat = Matrix4.translationValues(drag, drag.abs() * 0.06, 0)
+                      ..rotateZ(normalizedX * 0.18);
                   } else {
-                    final bool goLeft = _swipeType == 'dislike';
-                    mat = Matrix4.translationValues(
-                      goLeft ? -sw * 1.4 * t : sw * 1.4 * t,
-                      40.0 * t, 0,
-                    )..rotateZ((goLeft ? -0.2 : 0.2) * t);
+                    mat = Matrix4.identity();
                   }
-                } else {
-                  mat = Matrix4.identity();
-                }
 
-                return Stack(
-                  children: [
-                    // Next card — scales up from 0.94 as current flies away (swipe only)
-                    if (_isSwiping && _profiles.length > 1)
-                      Transform.scale(
-                        scale: 0.94 + 0.06 * t,
-                        alignment: Alignment.bottomCenter,
-                        child: Opacity(
-                          opacity: t.clamp(0.0, 1.0),
-                          child: nextCard,
+                  // Indicator opacity — ramps from 0→1 over 40–140 px
+                  final double likeOpacity = ((drag - 40) / 100).clamp(0.0, 1.0);
+                  final double nopeOpacity = ((-drag - 40) / 100).clamp(0.0, 1.0);
+
+                  return Stack(
+                    children: [
+                      if (_isSwiping && _profiles.length > 1)
+                        Transform.scale(
+                          scale: 0.94 + 0.06 * t,
+                          alignment: Alignment.bottomCenter,
+                          child: Opacity(
+                            opacity: t.clamp(0.0, 1.0),
+                            child: nextCard,
+                          ),
                         ),
+                      Transform(
+                        transform: mat,
+                        alignment: Alignment.bottomCenter,
+                        child: currentCard,
                       ),
-                    // Current card — slides off (swipe) or slides in from left (rewind)
-                    Transform(
-                      transform: mat,
-                      alignment: Alignment.bottomCenter,
-                      child: currentCard,
-                    ),
-                  ],
-                );
-              },
+                      // LIKE indicator
+                      if (likeOpacity > 0)
+                        Positioned(
+                          top: 140, left: 28,
+                          child: Opacity(
+                            opacity: likeOpacity,
+                            child: Transform.rotate(
+                              angle: -0.25,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: kAccent.withValues(alpha: 0.9),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: kAccent, width: 2),
+                                ),
+                                child: Text(
+                                  'LIKE',
+                                  style: GoogleFonts.gabarito(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 22,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      // NOPE indicator
+                      if (nopeOpacity > 0)
+                        Positioned(
+                          top: 140, right: 28,
+                          child: Opacity(
+                            opacity: nopeOpacity,
+                            child: Transform.rotate(
+                              angle: 0.25,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: kDestructive.withValues(alpha: 0.9),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: kDestructive, width: 2),
+                                ),
+                                child: Text(
+                                  'NOPE',
+                                  style: GoogleFonts.gabarito(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 22,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
             ),
 
             // 2. Floating Name Pill
@@ -859,10 +1055,10 @@ class _DiscoverPageState extends State<DiscoverPage>
                     .slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
               ),
 
-            // 3. FLOATING ACTION BUTTONS
+            // 4. Bottom action bar — Rewind · Save · Gem
             Positioned(
-              bottom: 40, left: 0, right: 0,
-              child: _buildFloatingButtons(),
+              bottom: 0, left: 0, right: 0,
+              child: _buildBottomActionBar(),
             ),
           ],
         ),
@@ -1396,52 +1592,100 @@ class _DiscoverPageState extends State<DiscoverPage>
     );
   }
 
-  Widget _buildFloatingButtons() {
+  Widget _buildBottomActionBar() {
     if (_profiles.isEmpty) return const SizedBox();
-
     final currentProfileId = _profiles.first['id'].toString();
+    final canRewind = _lastDislikedProfile != null && !_isSwiping && !_isRewinding;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [kCream, kCream.withValues(alpha: 0.95), kCream.withValues(alpha: 0)],
+          stops: const [0.0, 0.65, 1.0],
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 36),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // DISLIKE
-          _actionBtn(
-            size: 64,
-            onTap: () => _triggerSwipe(currentProfileId, 'dislike'),
-            child: const Icon(Icons.close_rounded, color: kInkMuted, size: 28),
+          // ── Rewind ────────────────────────────────────────────
+          _buildBarButton(
+            icon: Icons.replay_rounded,
+            label: 'Rewind',
+            onTap: canRewind ? _triggerRewind : null,
+            iconColor: canRewind ? kAccent : kBorderLight,
+            size: 52,
           ),
+          const SizedBox(width: 20),
 
-          const SizedBox(width: 32),
+          // ── Save for Later ────────────────────────────────────
+          _buildBarButton(
+            icon: Icons.bookmark_border_rounded,
+            label: 'Save',
+            onTap: _saveCurrentProfile,
+            iconColor: kInk,
+            size: 52,
+          ),
+          const SizedBox(width: 20),
 
-          // PULSE (Super Like / Gem)
-          _actionBtn(
-            size: 76,
-            enabled: _superLikesRemaining > 0,
+          // ── Gem ───────────────────────────────────────────────
+          _buildBarButton(
+            icon: Icons.diamond_rounded,
+            label: 'Gem',
             onTap: () {
+              if (_superLikesRemaining <= 0) {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsPage()))
+                    .then((_) => _fetchProfiles());
+                return;
+              }
               final profile = _profiles.first;
               final name = profile['fullName'] ?? profile['full_name'] ?? 'them';
               _showGemDialog(currentProfileId, name);
             },
-            child: Icon(
-              Icons.diamond_rounded,
-              color: _superLikesRemaining > 0 ? kGold : kInkMuted,
-              size: 32,
-            ),
+            iconColor: _superLikesRemaining > 0 ? kGold : kBorderLight,
+            size: 52,
           ),
+        ],
+      ),
+    );
+  }
 
-          const SizedBox(width: 32),
-
-          // LIKE
-          _actionBtn(
-            size: 64,
-            enabled: _likesRemaining > 0,
-            onTap: () => _triggerSwipe(currentProfileId, 'like'),
-            child: Icon(
-              _likesRemaining > 0 ? Icons.favorite_rounded : Icons.lock_rounded,
-              color: _likesRemaining > 0 ? kAccent : kInkMuted,
-              size: 28,
+  Widget _buildBarButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onTap,
+    required Color iconColor,
+    required double size,
+  }) {
+    final enabled = onTap != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: kCard,
+              shape: BoxShape.circle,
+              border: Border.all(color: enabled ? kBorderLight : kBorderLight.withValues(alpha: 0.5), width: 1),
+              boxShadow: enabled
+                  ? [BoxShadow(color: kInk.withValues(alpha: 0.07), blurRadius: 10, offset: const Offset(0, 3))]
+                  : [],
+            ),
+            child: Icon(icon, color: iconColor, size: size * 0.44),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            style: GoogleFonts.figtree(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: enabled ? kInkMuted : kBorderLight,
             ),
           ),
         ],
@@ -1450,28 +1694,6 @@ class _DiscoverPageState extends State<DiscoverPage>
   }
 
   // ================= REUSED WIDGETS =================
-
-  Widget _actionBtn({
-    required double size,
-    required VoidCallback onTap,
-    required Widget child,
-    bool enabled = true,
-  }) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(color: kBorderLight, width: 1),
-        ),
-        alignment: Alignment.center,
-        child: child,
-      ),
-    );
-  }
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
@@ -1849,7 +2071,7 @@ class _DiscoverPageState extends State<DiscoverPage>
           Text(
             prompt['question'] as String,
             style: GoogleFonts.figtree(
-              color: kInkMuted,
+              color: kBlush,
               fontSize: 15,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.0,
@@ -1860,7 +2082,7 @@ class _DiscoverPageState extends State<DiscoverPage>
             prompt['answer'],
             style: GoogleFonts.ledger(fontWeight: FontWeight.bold, fontSize: 26,
               height: 1.3,
-              color: kInk,
+              color: kBlack,
             ),
           ),
         ],

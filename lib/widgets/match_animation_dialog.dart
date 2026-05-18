@@ -43,28 +43,32 @@ class _Confetti {
   final double delay;
 
   const _Confetti({
-    required this.startX, required this.startY,
-    required this.vx, required this.vy, required this.gravity,
-    required this.color, required this.size,
-    required this.initialRotation, required this.rotSpeed,
-    required this.shape, required this.delay,
+    required this.startX,
+    required this.startY,
+    required this.vx,
+    required this.vy,
+    required this.gravity,
+    required this.color,
+    required this.size,
+    required this.initialRotation,
+    required this.rotSpeed,
+    required this.shape,
+    required this.delay,
   });
 }
 
 // Confetti palette — warm, earthy, aligned to kRose / kGold / kCream
 const _colors = [
-  Color(0xFFCD9D8F), // kRose
-  Color(0xFFD4A99F), // kRoseLight
-  Color(0xFFB87C70), // deep rose
-  Color(0xFFE8B4A0), // warm peach
-  Color(0xFFF3E8E3), // kRosePale
-  Color(0xFFD4AF37), // kGold
-  Color(0xFFE8C87A), // light gold
-  Color(0xFFF0D898), // pale gold
-  Color(0xFFE6DFD5), // kBone
-  Color(0xFFFAF8F5), // kTan / white-warm
-  Color(0xFFFFFFFF), // white
-  Color(0xFFC4846C), // terracotta
+  kRose,
+  Color(0xFF7A1B38),
+  Color(0xFF8F2E49),
+  kBlush,
+  Color(0xFFE2BFC1),
+  kRosePale,
+  kCream,
+  kBone,
+  Colors.white,
+  Colors.black,
 ];
 
 List<_Confetti> _makeConfetti() {
@@ -75,56 +79,62 @@ List<_Confetti> _makeConfetti() {
   for (int i = 0; i < 45; i++) {
     final angle = math.pi * (0.05 + rng.nextDouble() * 0.45); // 9°–90°
     final speed = 0.5 + rng.nextDouble() * 0.75;
-    list.add(_Confetti(
-      startX:          -0.02 + rng.nextDouble() * 0.04,
-      startY:          0.35 + rng.nextDouble() * 0.25,
-      vx:               math.cos(angle) * speed,
-      vy:              -math.sin(angle) * speed,
-      gravity:          0.7 + rng.nextDouble() * 0.5,
-      color:           _colors[rng.nextInt(_colors.length)],
-      size:             7 + rng.nextDouble() * 9,
-      initialRotation:  rng.nextDouble() * math.pi * 2,
-      rotSpeed:         (rng.nextDouble() - 0.5) * 14,
-      shape:           _Shape.values[rng.nextInt(_Shape.values.length)],
-      delay:            rng.nextDouble() * 0.12,
-    ));
+    list.add(
+      _Confetti(
+        startX: -0.02 + rng.nextDouble() * 0.04,
+        startY: 0.35 + rng.nextDouble() * 0.25,
+        vx: math.cos(angle) * speed,
+        vy: -math.sin(angle) * speed,
+        gravity: 0.7 + rng.nextDouble() * 0.5,
+        color: _colors[rng.nextInt(_colors.length)],
+        size: 7 + rng.nextDouble() * 9,
+        initialRotation: rng.nextDouble() * math.pi * 2,
+        rotSpeed: (rng.nextDouble() - 0.5) * 14,
+        shape: _Shape.values[rng.nextInt(_Shape.values.length)],
+        delay: rng.nextDouble() * 0.12,
+      ),
+    );
   }
 
   // Right burst — shoot left-upward fan
   for (int i = 0; i < 45; i++) {
     final angle = math.pi * (0.05 + rng.nextDouble() * 0.45);
     final speed = 0.5 + rng.nextDouble() * 0.75;
-    list.add(_Confetti(
-      startX:          1.02 - rng.nextDouble() * 0.04,
-      startY:          0.35 + rng.nextDouble() * 0.25,
-      vx:              -math.cos(angle) * speed,
-      vy:              -math.sin(angle) * speed,
-      gravity:          0.7 + rng.nextDouble() * 0.5,
-      color:           _colors[rng.nextInt(_colors.length)],
-      size:             7 + rng.nextDouble() * 9,
-      initialRotation:  rng.nextDouble() * math.pi * 2,
-      rotSpeed:         (rng.nextDouble() - 0.5) * 14,
-      shape:           _Shape.values[rng.nextInt(_Shape.values.length)],
-      delay:            rng.nextDouble() * 0.12,
-    ));
+    list.add(
+      _Confetti(
+        startX: 1.02 - rng.nextDouble() * 0.04,
+        startY: 0.35 + rng.nextDouble() * 0.25,
+        vx: -math.cos(angle) * speed,
+        vy: -math.sin(angle) * speed,
+        gravity: 0.7 + rng.nextDouble() * 0.5,
+        color: _colors[rng.nextInt(_colors.length)],
+        size: 7 + rng.nextDouble() * 9,
+        initialRotation: rng.nextDouble() * math.pi * 2,
+        rotSpeed: (rng.nextDouble() - 0.5) * 14,
+        shape: _Shape.values[rng.nextInt(_Shape.values.length)],
+        delay: rng.nextDouble() * 0.12,
+      ),
+    );
   }
 
   // Top-centre shower — rains down
   for (int i = 0; i < 20; i++) {
     final speed = 0.2 + rng.nextDouble() * 0.35;
-    list.add(_Confetti(
-      startX:          0.2 + rng.nextDouble() * 0.6,
-      startY:          -0.02,
-      vx:              (rng.nextDouble() - 0.5) * 0.3,
-      vy:               speed,
-      gravity:          0.4 + rng.nextDouble() * 0.3,
-      color:           _colors[rng.nextInt(_colors.length)],
-      size:             6 + rng.nextDouble() * 8,
-      initialRotation:  rng.nextDouble() * math.pi * 2,
-      rotSpeed:         (rng.nextDouble() - 0.5) * 10,
-      shape:           _Shape.values[rng.nextInt(_Shape.values.length)],
-      delay:            0.08 + rng.nextDouble() * 0.25,
-    ));
+    list.add(
+      _Confetti(
+        startX: 0.2 + rng.nextDouble() * 0.6,
+        startY: -0.02,
+        vx: (rng.nextDouble() - 0.5) * 0.3,
+        vy: speed,
+        gravity: 0.4 + rng.nextDouble() * 0.3,
+        color: _colors[rng.nextInt(_colors.length)],
+        size: 6 + rng.nextDouble() * 8,
+        initialRotation: rng.nextDouble() * math.pi * 2,
+        rotSpeed: (rng.nextDouble() - 0.5) * 10,
+        shape: _Shape.values[rng.nextInt(_Shape.values.length)],
+        delay: 0.08 + rng.nextDouble() * 0.25,
+      ),
+    );
   }
 
   return list;
@@ -134,18 +144,27 @@ List<_Confetti> _makeConfetti() {
 
 class _Particle {
   final double x, size, speed, drift, delay;
-  const _Particle({required this.x, required this.size, required this.speed, required this.drift, required this.delay});
+  const _Particle({
+    required this.x,
+    required this.size,
+    required this.speed,
+    required this.drift,
+    required this.delay,
+  });
 }
 
 List<_Particle> _makeParticles(int n) {
   final rng = math.Random(42);
-  return List.generate(n, (_) => _Particle(
-    x:     0.15 + rng.nextDouble() * 0.70,
-    size:  7 + rng.nextDouble() * 10,
-    speed: 0.5 + rng.nextDouble() * 0.7,
-    drift: (rng.nextDouble() - 0.5) * 2,
-    delay: rng.nextDouble() * 0.4,
-  ));
+  return List.generate(
+    n,
+    (_) => _Particle(
+      x: 0.15 + rng.nextDouble() * 0.70,
+      size: 7 + rng.nextDouble() * 10,
+      speed: 0.5 + rng.nextDouble() * 0.7,
+      drift: (rng.nextDouble() - 0.5) * 2,
+      delay: rng.nextDouble() * 0.4,
+    ),
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -155,8 +174,10 @@ class _MatchPage extends StatefulWidget {
   final VoidCallback onMessage;
 
   const _MatchPage({
-    required this.myPhotoUrl, required this.matchPhotoUrl,
-    required this.matchName,  required this.onMessage,
+    required this.myPhotoUrl,
+    required this.matchPhotoUrl,
+    required this.matchName,
+    required this.onMessage,
   });
 
   @override
@@ -164,7 +185,6 @@ class _MatchPage extends StatefulWidget {
 }
 
 class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
-
   late final AnimationController _bg;
   late final AnimationController _slide;
   late final AnimationController _pulse;
@@ -178,29 +198,47 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
   late final Animation<double> _textFade;
   late final Animation<double> _btnSlide;
 
-  final _pieces    = _makeConfetti();
+  final _pieces = _makeConfetti();
   final _particles = _makeParticles(14);
 
   @override
   void initState() {
     super.initState();
 
-    _bg       = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
-    _slide    = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
-    _pulse    = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _confetti = AnimationController(vsync: this, duration: const Duration(milliseconds: 2200));
-    _text     = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
-    _hearts   = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
+    _bg = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _slide = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _confetti = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
+    _text = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _hearts = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    );
 
-    _bgOpacity   = CurvedAnimation(parent: _bg,    curve: Curves.easeOut);
-    _slideL      = CurvedAnimation(parent: _slide, curve: Curves.easeOutBack);
-    _slideR      = CurvedAnimation(parent: _slide, curve: Curves.easeOutBack);
+    _bgOpacity = CurvedAnimation(parent: _bg, curve: Curves.easeOut);
+    _slideL = CurvedAnimation(parent: _slide, curve: Curves.easeOutBack);
+    _slideR = CurvedAnimation(parent: _slide, curve: Curves.easeOutBack);
     _avatarScale = TweenSequence([
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.12), weight: 40),
-      TweenSequenceItem(tween: Tween(begin: 1.12, end: 1.0),  weight: 60),
+      TweenSequenceItem(tween: Tween(begin: 1.12, end: 1.0), weight: 60),
     ]).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut));
-    _textFade  = CurvedAnimation(parent: _text, curve: Curves.easeOut);
-    _btnSlide  = CurvedAnimation(parent: _text, curve: Curves.easeOutCubic);
+    _textFade = CurvedAnimation(parent: _text, curve: Curves.easeOut);
+    _btnSlide = CurvedAnimation(parent: _text, curve: Curves.easeOutCubic);
 
     _bg.forward().then((_) {
       _slide.forward().then((_) {
@@ -214,8 +252,12 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _bg.dispose(); _slide.dispose(); _pulse.dispose();
-    _confetti.dispose(); _text.dispose(); _hearts.dispose();
+    _bg.dispose();
+    _slide.dispose();
+    _pulse.dispose();
+    _confetti.dispose();
+    _text.dispose();
+    _hearts.dispose();
     super.dispose();
   }
 
@@ -226,11 +268,18 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
     final size = MediaQuery.of(context).size;
 
     return AnimatedBuilder(
-      animation: Listenable.merge([_bg, _slide, _pulse, _confetti, _text, _hearts]),
+      animation: Listenable.merge([
+        _bg,
+        _slide,
+        _pulse,
+        _confetti,
+        _text,
+        _hearts,
+      ]),
       builder: (_, child) {
         return Material(
           // Warm cream background — matches app kTan
-          color: Color.lerp(Colors.transparent, const Color(0xFFFAF8F5), _bgOpacity.value),
+          color: Color.lerp(Colors.transparent, kCream, _bgOpacity.value),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -243,7 +292,10 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
               // ── Confetti ───────────────────────────────────────────────
               CustomPaint(
                 size: size,
-                painter: _ConfettiPainter(pieces: _pieces, progress: _confetti.value),
+                painter: _ConfettiPainter(
+                  pieces: _pieces,
+                  progress: _confetti.value,
+                ),
               ),
 
               // ── Floating hearts ────────────────────────────────────────
@@ -254,7 +306,6 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-
                     // Header
                     Opacity(
                       opacity: _textFade.value,
@@ -281,7 +332,10 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
                               offset: Offset(220 * (1 - _slideR.value), 0),
                               child: Transform.scale(
                                 scale: _avatarScale.value,
-                                child: _Avatar(url: widget.matchPhotoUrl, ring: kRosePale),
+                                child: _Avatar(
+                                  url: widget.matchPhotoUrl,
+                                  ring: kRosePale,
+                                ),
                               ),
                             ),
                           ),
@@ -292,7 +346,10 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
                               offset: Offset(-220 * (1 - _slideL.value), 0),
                               child: Transform.scale(
                                 scale: _avatarScale.value,
-                                child: _Avatar(url: widget.myPhotoUrl, ring: Colors.white),
+                                child: _Avatar(
+                                  url: widget.myPhotoUrl,
+                                  ring: Colors.white,
+                                ),
                               ),
                             ),
                           ),
@@ -329,24 +386,29 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
                         offset: Offset(0, 28 * (1 - _btnSlide.value)),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 36),
-                          child: Column(children: [
-                            _PrimaryBtn(
-                              label: 'Send a Message',
-                              onTap: () { _dismiss(); widget.onMessage(); },
-                            ),
-                            const SizedBox(height: 16),
-                            GestureDetector(
-                              onTap: _dismiss,
-                              child: Text(
-                                'Keep Discovering',
-                                style: GoogleFonts.figtree(
-                                  color: kInkMuted,
-                                  fontSize: 14,
-                                  letterSpacing: 0.2,
+                          child: Column(
+                            children: [
+                              _PrimaryBtn(
+                                label: 'Send a Message',
+                                onTap: () {
+                                  _dismiss();
+                                  widget.onMessage();
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              GestureDetector(
+                                onTap: _dismiss,
+                                child: Text(
+                                  'Keep Discovering',
+                                  style: GoogleFonts.figtree(
+                                    color: kInkMuted,
+                                    fontSize: 14,
+                                    letterSpacing: 0.2,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ]),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -361,27 +423,28 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
   }
 
   Widget _buildHeader() {
-    return Column(children: [
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        decoration: BoxDecoration(
-          color: kRose.withAlpha(18),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: kRose.withAlpha(60), width: 1),
-        ),
-        child: Text(
-          'IT\'S A MATCH',
-          style: GoogleFonts.figtree(
-            color: kRose,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 3.5,
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          decoration: BoxDecoration(
+            color: kRose.withAlpha(18),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: kRose.withAlpha(60), width: 1),
+          ),
+          child: Text(
+            'IT\'S A MATCH',
+            style: GoogleFonts.figtree(
+              color: kRose,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 3.5,
+            ),
           ),
         ),
-      ),
-      const SizedBox(height: 12),
-      
-    ]);
+        const SizedBox(height: 12),
+      ],
+    );
   }
 
   List<Widget> _buildHearts(Size screen) {
@@ -391,10 +454,14 @@ class _MatchPageState extends State<_MatchPage> with TickerProviderStateMixin {
       if (localT <= 0) return const SizedBox.shrink();
       final x = p.x * screen.width + p.drift * 28 * localT;
       final y = screen.height * 0.6 - localT * screen.height * 0.5 * p.speed;
-      final opacity = (localT < 0.2 ? localT / 0.2 : 1 - (localT - 0.55).clamp(0.0, 1.0) / 0.45).clamp(0.0, 1.0);
+      final opacity =
+          (localT < 0.2
+                  ? localT / 0.2
+                  : 1 - (localT - 0.55).clamp(0.0, 1.0) / 0.45)
+              .clamp(0.0, 1.0);
       return Positioned(
         left: x - p.size / 2,
-        top:  y - p.size / 2,
+        top: y - p.size / 2,
         child: Opacity(
           opacity: opacity * 0.6,
           child: Icon(Icons.favorite_rounded, color: kRose, size: p.size),
@@ -438,7 +505,11 @@ class _ConfettiPainter extends CustomPainter {
         case _Shape.rect:
           canvas.drawRRect(
             RRect.fromRectAndRadius(
-              Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size * 0.45),
+              Rect.fromCenter(
+                center: Offset.zero,
+                width: p.size,
+                height: p.size * 0.45,
+              ),
               const Radius.circular(2),
             ),
             paint,
@@ -474,10 +545,16 @@ class _GlowPainter extends CustomPainter {
       Offset(cx, cy),
       size.width * 0.75,
       Paint()
-        ..shader = RadialGradient(
-          colors: [kRose.withAlpha(28), Colors.transparent],
-          radius: 0.6,
-        ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: size.width * 0.75)),
+        ..shader =
+            RadialGradient(
+              colors: [kRose.withAlpha(28), Colors.transparent],
+              radius: 0.6,
+            ).createShader(
+              Rect.fromCircle(
+                center: Offset(cx, cy),
+                radius: size.width * 0.75,
+              ),
+            ),
     );
   }
 
@@ -501,8 +578,16 @@ class _Avatar extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: ring, width: 4),
         boxShadow: [
-          BoxShadow(color: kRose.withAlpha(70), blurRadius: 18, spreadRadius: 2),
-          BoxShadow(color: Colors.black.withAlpha(18), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: kRose.withAlpha(70),
+            blurRadius: 18,
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.black.withAlpha(18),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: ClipOval(
@@ -512,7 +597,12 @@ class _Avatar extends StatelessWidget {
                 fit: BoxFit.cover,
                 placeholder: (context, url) => Container(
                   color: kRosePale,
-                  child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: kRose)),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: kRose,
+                    ),
+                  ),
                 ),
                 errorWidget: (context, url, error) => _placeholder(),
               )
@@ -543,13 +633,17 @@ class _PrimaryBtn extends StatelessWidget {
         height: 56,
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFFD4A99F), kRose, Color(0xFFB87C70)],
+            colors: [kBlush, kRose, Color(0xFF7A1B38)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
-            BoxShadow(color: kRose.withAlpha(90), blurRadius: 18, offset: const Offset(0, 7)),
+            BoxShadow(
+              color: kRose.withAlpha(90),
+              blurRadius: 18,
+              offset: const Offset(0, 7),
+            ),
           ],
         ),
         alignment: Alignment.center,

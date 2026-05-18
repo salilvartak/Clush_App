@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:clush/services/cache_service.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/widgets/match_animation_dialog.dart';
 import 'package:clush/widgets/heart_loader.dart';
@@ -19,7 +20,10 @@ class LikesPage extends StatefulWidget {
   State<LikesPage> createState() => _LikesPageState();
 }
 
-class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMixin {
+class _LikesPageState extends State<LikesPage>
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   final MatchingService _matchingService = MatchingService();
   final _supabase = Supabase.instance.client;
   late TabController _tabController;
@@ -36,8 +40,21 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _initData();
+    _loadFromCacheThenFetch();
     _setupRealtime();
+  }
+
+  Future<void> _loadFromCacheThenFetch() async {
+    final cachedLikes = await CacheService.instance.getCachedLikes();
+    final cachedSaved = await CacheService.instance.getCachedSaved();
+    if (mounted && (cachedLikes != null || cachedSaved != null)) {
+      setState(() {
+        if (cachedLikes != null) _likedByUsers = cachedLikes;
+        if (cachedSaved != null) _savedUsers = cachedSaved;
+        _isLoading = false;
+      });
+    }
+    _initData();
   }
 
   void _setupRealtime() {
@@ -121,23 +138,18 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
   }
 
   Future<void> _fetchLikes() async {
-    final sw = Stopwatch()..start();
     final users = await _matchingService.fetchWhoLikedMe();
-    
-    // Sort Pulse to top
     users.sort((a, b) {
       if (a['like_type'] == 'pulse' && b['like_type'] != 'pulse') return -1;
       if (a['like_type'] != 'pulse' && b['like_type'] == 'pulse') return 1;
       return 0;
     });
-
     if (mounted) {
-      final elapsed = sw.elapsedMilliseconds;
-      if (elapsed < 1000) await Future.delayed(Duration(milliseconds: 1000 - elapsed));
       setState(() {
         _likedByUsers = users;
         _isLoading = false;
       });
+      CacheService.instance.cacheLikes(users);
     }
   }
 
@@ -145,6 +157,7 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
     final users = await _matchingService.fetchSavedProfiles();
     if (mounted) {
       setState(() => _savedUsers = users);
+      CacheService.instance.cacheSaved(users);
     }
   }
 
@@ -236,6 +249,7 @@ class _LikesPageState extends State<LikesPage> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       backgroundColor: kCream,
       appBar: AppBar(

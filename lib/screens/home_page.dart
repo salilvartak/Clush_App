@@ -11,22 +11,49 @@ import 'package:clush/screens/profile_tab.dart';
 import 'package:clush/screens/setting_sub_pages.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/services/stream_service.dart';
-import 'package:clush/theme/colors.dart'; 
-import 'package:clush/widgets/heart_loader.dart'; 
-import 'package:google_fonts/google_fonts.dart'; 
+import 'package:clush/services/cache_service.dart';
+import 'package:clush/theme/colors.dart';
+import 'package:clush/widgets/heart_loader.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:clush/l10n/app_localizations.dart';
 
+final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
+
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.initialIndex = 0});
+  final int initialIndex;
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<HomePage> createState() => HomePageState();
 }
+class HomePageState extends State<HomePage> {
+  static int _selectedIndex = 0;
+  late final PageController _pageController;
 
-class _HomePageState extends State<HomePage> {
-  int _selectedIndex = 0; 
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _selectedIndex);
+    _loadVerificationStatus();
+    _fetchUnreadCount();
+    _listenForUnreadMessages();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _unreadSubscription?.cancel();
+    super.dispose();
+  }
+
+  void setIndex(int index) {
+    if (mounted) {
+      setState(() => _selectedIndex = index);
+      _pageController.jumpToPage(index);
+    }
+  }
   bool _isVerified = false;
-  bool _isLoading = true;
+  bool _isLoading = false; // Never block render; use cached value immediately.
   int _unreadCount = 0;
   final MatchingService _matchingService = MatchingService();
   StreamSubscription<Event>? _unreadSubscription;
@@ -38,32 +65,14 @@ class _HomePageState extends State<HomePage> {
     const ProfileTab(),
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    _checkVerificationStatus();
-    _fetchUnreadCount();
-    _listenForUnreadMessages();
-  }
-
-  @override
-  void dispose() {
-    _unreadSubscription?.cancel();
-    super.dispose();
-  }
-
   Future<void> _fetchUnreadCount() async {
-    // We try to get the count from Stream first as it's our primary chat provider
     final streamClient = StreamService.instance.client;
     int count = 0;
-    
     if (streamClient.state.totalUnreadCount > 0) {
       count = streamClient.state.totalUnreadCount;
     } else {
-      // Fallback to Supabase matching service if Stream count is 0 or unavailable
       count = await _matchingService.getTotalUnreadCount();
     }
-
     if (mounted) {
       setState(() => _unreadCount = count);
     }
@@ -81,26 +90,30 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _loadVerificationStatus() async {
+    // 1. Show cached value instantly — no blocking spinner.
+    final cached = await CacheService.instance.getCachedIsVerified();
+    if (cached != null && mounted) {
+      setState(() => _isVerified = cached);
+    }
+    // 2. Refresh from network in the background.
+    _checkVerificationStatus();
+  }
+
   Future<void> _checkVerificationStatus() async {
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) return;
-
       final data = await Supabase.instance.client
           .from('profile_discovery')
           .select('is_verified')
           .eq('id', userId)
           .maybeSingle();
-
-      if (mounted) {
-        setState(() {
-          _isVerified = data?['is_verified'] ?? false;
-          _isLoading = false;
-        });
-      }
+      final verified = data?['is_verified'] ?? false;
+      await CacheService.instance.cacheIsVerified(verified);
+      if (mounted) setState(() => _isVerified = verified);
     } catch (e) {
-      debugPrint("Error checking verification: $e");
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint('Error checking verification: $e');
     }
   }
 
@@ -123,8 +136,15 @@ class _HomePageState extends State<HomePage> {
     }
 
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (idx) {
+          setState(() {
+            _selectedIndex = idx;
+          });
+          _fetchUnreadCount();
+        },
+        physics: const BouncingScrollPhysics(),
         children: _pages.asMap().entries.map((entry) {
           final i = entry.key;
           final page = entry.value;
@@ -141,11 +161,15 @@ class _HomePageState extends State<HomePage> {
           border: Border(top: BorderSide(color: kBone, width: 1)),
         ),
         child: BottomNavigationBar(
+          key: const ValueKey('bottom_nav'),
           currentIndex: _selectedIndex,
           onTap: (idx) {
             if (idx != _selectedIndex) {
-              setState(() => _selectedIndex = idx);
-              _fetchUnreadCount();
+              _pageController.animateToPage(
+                idx,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOutQuart,
+              );
             }
           },
           type: BottomNavigationBarType.fixed,

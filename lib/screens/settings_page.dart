@@ -1,192 +1,130 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:clush/services/notification_service.dart';
-import 'package:clush/screens/setting_sub_pages.dart';
-import 'package:clush/screens/edit_profile_page.dart';
-
 import 'package:clush/theme/colors.dart';
 import 'package:clush/widgets/heart_loader.dart';
-import 'package:clush/services/language_service.dart';
 import 'package:clush/l10n/app_localizations.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:clush/services/language_service.dart';
+import 'package:clush/screens/setting_sub_pages.dart';
+import 'package:clush/screens/edit_profile_page.dart';
+import 'package:clush/main.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
+
+  String? _userPhone;
+  String? _userEmail;
+  Map<String, dynamic>? _userLocation;
+  Map<String, dynamic>? _fullProfileData;
+  bool _isLoadingProfile = true;
+
   bool activityStatus = true;
   bool notificationsEnabled = true;
-  bool emailUpdates = true;
-  bool _isLoadingProfile = false;
-  String? _userEmail, _userPhone, _userLocation;
+  bool emailUpdates = false;
 
   @override
-  void initState() { super.initState(); _loadSettings(); }
-
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final user = FirebaseAuth.instance.currentUser;
-    String? fetchedLocation, fetchedPhone = user?.phoneNumber;
-    if (user != null) {
-      try {
-        final data = await Supabase.instance.client
-            .from('profiles').select('location, phone').eq('id', user.uid).maybeSingle();
-        fetchedLocation = data?['location'];
-        if (fetchedPhone == null || fetchedPhone.isEmpty) fetchedPhone = data?['phone'];
-      } catch (_) {}
-    }
-    setState(() {
-      notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
-      _userEmail = user?.email;
-      _userPhone = fetchedPhone;
-      _userLocation = fetchedLocation;
-    });
+  void initState() {
+    super.initState();
+    _loadUserProfile();
   }
 
-  Future<void> _toggleNotifications(bool value) async {
-    setState(() => notificationsEnabled = value);
-    await NotificationService().toggleNotifications(value);
-  }
+  Future<void> _loadUserProfile() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
 
-  Future<void> _logout() async {
     try {
-      await GoogleSignIn().signOut();
-      await FirebaseAuth.instance.signOut();
-      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
-    } catch (e) { if (mounted) _toast("Error: $e", err: true); }
-  }
+      final data = await _supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.uid)
+          .maybeSingle();
 
-  Future<void> _handleEditProfile() async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
-    setState(() => _isLoadingProfile = true);
-    try {
-      final data = await Supabase.instance.client
-          .from('profiles').select().eq('id', userId).maybeSingle();
-      if (data == null) throw Exception('Profile not found');
-      if (!mounted) return;
-      await Navigator.push(context,
-          MaterialPageRoute(builder: (_) => EditProfilePage(currentData: data)));
-    } catch (e) { _toast("Error loading profile: $e", err: true); }
-    finally { if (mounted) setState(() => _isLoadingProfile = false); }
-  }
-
-  Future<void> _claimPremium() async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
-    try {
-      await Supabase.instance.client.from('profiles').update({
-        'is_premium': true,
-        'premium_expiry': DateTime.now().add(const Duration(days: 7)).toIso8601String()
-      }).eq('id', userId);
-      if (mounted) _toast("1 Week Premium Claimed!");
-    } catch (e) { if (mounted) _toast("Error: $e", err: true); }
-  }
-
-  void _showRetentionDialog() {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: kCream,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBorderLight)),
-      title: Text(AppLocalizations.of(context)?.leavingSoSoon ?? "Leaving so soon?", textAlign: TextAlign.center,
-          style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
-      content: Text(AppLocalizations.of(context)?.deleteRetentionMessage ?? "Delete your account?\n\nStay and get 1 WEEK OF PREMIUM FREE!", textAlign: TextAlign.center,
-          style: GoogleFonts.montserrat(color: kInkMuted, height: 1.5)),
-      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-      actionsPadding: const EdgeInsets.all(16),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _solidBtn(AppLocalizations.of(context)?.claimPremium ?? "Claim 1 Week Premium", () { Navigator.pop(ctx); _claimPremium(); }),
-        const SizedBox(height: 10),
-        _outlineBtn(AppLocalizations.of(context)?.putOnHold ?? "Put Account on Hold", () { Navigator.pop(ctx); _navTo(const PauseAccountPage()); }),
-        TextButton(onPressed: () { Navigator.pop(ctx); _confirmFinalDeletion(); },
-            child: Text(AppLocalizations.of(context)?.deleteAnyway ?? "Delete Anyway", style: GoogleFonts.montserrat(color: kDestructive))),
-        TextButton(onPressed: () => Navigator.pop(ctx),
-            child: Text(AppLocalizations.of(context)?.cancel ?? "Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
-      ])],
-    ));
-  }
-
-  void _confirmFinalDeletion() {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: kCream,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBorderLight)),
-      title: Text(AppLocalizations.of(context)?.areYouSure ?? "Are you sure?", style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
-      content: Text(AppLocalizations.of(context)?.deleteWarning ?? "This is permanent. All data, matches and messages will be lost.",
-          style: GoogleFonts.montserrat(color: kInkMuted, height: 1.5)),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx),
-            child: Text(AppLocalizations.of(context)?.cancel ?? "Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
-        TextButton(onPressed: () async { Navigator.pop(ctx); await _deleteAccount(); },
-            child: Text(AppLocalizations.of(context)?.yesDelete ?? "Yes, Delete", style: GoogleFonts.montserrat(color: kDestructive, fontWeight: FontWeight.w600))),
-      ],
-    ));
-  }
-
-  Future<void> _deleteAccount() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await Supabase.instance.client.from('profiles').delete().eq('id', user.uid);
-        await user.delete();
+      if (data != null && mounted) {
+        setState(() {
+          _fullProfileData = data;
+          _userPhone = data['phone'];
+          _userEmail = data['email'];
+          _userLocation = data['location'];
+          _isLoadingProfile = false;
+        });
+      } else if (mounted) {
+        setState(() => _isLoadingProfile = false);
       }
-      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
-    } catch (e) { if (mounted) _toast("Error: $e", err: true); }
+    } catch (e) {
+      debugPrint("Error loading profile: $e");
+      if (mounted) setState(() => _isLoadingProfile = false);
+    }
   }
 
-  Future<void> _navTo(Widget page) async {
-    await Navigator.push(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => page,
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          const begin = Offset(1.0, 0.0);
-          const end = Offset.zero;
-          const curve = Curves.easeInOutQuart;
-          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-          return SlideTransition(
-            position: animation.drive(tween),
-            child: child,
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 500),
+  void _navTo(Widget page) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => page))
+        .then((_) => _loadUserProfile());
+  }
+
+  void _showLanguageSelector() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: kCream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      builder: (context) => const LanguageSelectorSheet(),
     );
-    _loadSettings();
+  }
+
+  String _getLanguageName(String code) {
+    switch (code) {
+      case 'en': return 'English';
+      case 'es': return 'Español';
+      case 'hi': return 'हिन्दी';
+      default: return 'English';
+    }
   }
 
   Future<void> _launchUrl(String url) async {
     final uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      _toast('Could not open link', err: true);
+      debugPrint("Could not launch $url");
     }
   }
 
-  void _toast(String msg, {bool err = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w500)),
-      backgroundColor: err ? kDestructive : kInk,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      margin: const EdgeInsets.all(16),
-    ));
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(AppLocalizations.of(context)?.logOut ?? "Logout"),
+        content: Text(AppLocalizations.of(context)?.logOutConfirm ?? "Are you sure you want to logout?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(AppLocalizations.of(context)?.cancel ?? "Cancel")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(AppLocalizations.of(context)?.logOut ?? "Logout", style: const TextStyle(color: kDestructive))),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _auth.signOut();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AuraApp()),
+          (route) => false,
+        );
+      }
+    }
   }
 
-  String _formatLocation(String? loc) {
-    if (loc == null || loc.isEmpty) return "Not set";
-    int parenIndex = loc.indexOf('(');
-    if (parenIndex != -1) loc = loc.substring(0, parenIndex).trim();
-    List<String> parts = loc.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-    if (parts.length >= 2) return '${parts[0]}, ${parts[1]}';
-    return loc;
+  Future<void> _toggleNotifications(bool value) async {
+    setState(() => notificationsEnabled = value);
+    // Logic to update on server would go here
   }
 
   @override
@@ -202,15 +140,17 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _sectionLabel(AppLocalizations.of(context)?.account ?? "Account")
-                      .animate().slideX(begin: 0.1, end: 0),
+                  _sectionLabel(AppLocalizations.of(context)?.account ?? "Account"),
                   _card([
                     _tile(icon: Icons.edit_outlined, title: AppLocalizations.of(context)?.editProfile ?? "Edit Profile",
                         trailing: _isLoadingProfile
-                            ? SizedBox(width: 18, height: 18,
-                                child: const HeartLoader(size: 20))
+                            ? const SizedBox(width: 18, height: 18, child: HeartLoader(size: 20))
                             : null,
-                        onTap: _isLoadingProfile ? null : _handleEditProfile),
+                        onTap: _isLoadingProfile ? null : () {
+                          if (_fullProfileData != null) {
+                            _navTo(EditProfilePage(currentData: _fullProfileData!));
+                          }
+                        }),
                     _divider(),
                     _tile(icon: Icons.phone_outlined, title: AppLocalizations.of(context)?.phoneNumber ?? "Phone Number",
                         subtitle: (_userPhone?.isNotEmpty == true) ? _userPhone : (AppLocalizations.of(context)?.notProvided ?? "Not provided"),
@@ -222,21 +162,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     _divider(),
                     _tile(icon: Icons.pause_circle_outline, title: AppLocalizations.of(context)?.pauseAccount ?? "Pause Account",
                         onTap: () => _navTo(const PauseAccountPage())),
-                  ]).animate().slideY(begin: 0.05, end: 0),
+                  ]),
 
-                  _sectionLabel(AppLocalizations.of(context)?.discovery ?? "Discovery")
-                      .animate().slideX(begin: 0.1, end: 0),
+                  _sectionLabel(AppLocalizations.of(context)?.discovery ?? "Discovery"),
                   _card([
                     _tile(icon: Icons.location_on_outlined, title: AppLocalizations.of(context)?.location ?? "Location",
                         subtitle: _userLocation != null ? _formatLocation(_userLocation) : (AppLocalizations.of(context)?.notSet ?? "Not set"),
                         onTap: () => _navTo(const CurrentLocationPage())),
-                  ]).animate().slideY(begin: 0.05, end: 0),
+                  ]),
 
-                  _sectionLabel(AppLocalizations.of(context)?.privacyAndSafety ?? "Privacy & Safety")
-                      .animate().slideX(begin: 0.1, end: 0),
+                  _sectionLabel(AppLocalizations.of(context)?.privacyAndSafety ?? "Privacy & Safety"),
                   _card([
                     _tile(icon: Icons.access_time_rounded, title: AppLocalizations.of(context)?.activityStatus ?? "Activity Status",
-                        trailing: Switch.adaptive(value: activityStatus, activeColor: kInk,
+                        trailing: Switch.adaptive(value: activityStatus, activeColor: kRose,
                             onChanged: (v) => setState(() => activityStatus = v))),
                     _divider(),
                     _tile(icon: Icons.verified_user_outlined, title: AppLocalizations.of(context)?.verification ?? "Verification",
@@ -245,22 +183,20 @@ class _SettingsPageState extends State<SettingsPage> {
                     _divider(),
                     _tile(icon: Icons.block_outlined, title: AppLocalizations.of(context)?.blockedUsers ?? "Blocked Users",
                         onTap: () => _navTo(const BlockListPage())),
-                  ]).animate().slideY(begin: 0.05, end: 0),
+                  ]),
 
-                  _sectionLabel(AppLocalizations.of(context)?.notifications ?? "Notifications")
-                      .animate().slideX(begin: 0.1, end: 0),
+                  _sectionLabel(AppLocalizations.of(context)?.notifications ?? "Notifications"),
                   _card([
                     _tile(icon: Icons.notifications_none_rounded, title: AppLocalizations.of(context)?.pushNotifications ?? "Push Notifications",
-                        trailing: Switch.adaptive(value: notificationsEnabled, activeColor: kInk,
+                        trailing: Switch.adaptive(value: notificationsEnabled, activeColor: kRose,
                             onChanged: _toggleNotifications)),
                     _divider(),
                     _tile(icon: Icons.mail_outline_rounded, title: AppLocalizations.of(context)?.emailUpdates ?? "Email Updates",
-                        trailing: Switch.adaptive(value: emailUpdates, activeColor: kInk,
+                        trailing: Switch.adaptive(value: emailUpdates, activeColor: kRose,
                             onChanged: (v) => setState(() => emailUpdates = v))),
-                  ]).animate().slideY(begin: 0.05, end: 0),
+                  ]),
 
-                  _sectionLabel(AppLocalizations.of(context)?.appSettings ?? "App Settings")
-                      .animate().slideX(begin: 0.1, end: 0),
+                  _sectionLabel(AppLocalizations.of(context)?.appSettings ?? "App Settings"),
                   _card([
                     _tile(
                       icon: Icons.language_rounded, 
@@ -268,26 +204,23 @@ class _SettingsPageState extends State<SettingsPage> {
                       subtitle: _getLanguageName(LanguageService().localeNotifier.value.languageCode),
                       onTap: _showLanguageSelector,
                     ),
-                  ]).animate().slideY(begin: 0.05, end: 0),
+                  ]),
 
-                  _sectionLabel("Subscriptions")
-                      .animate().slideX(begin: 0.1, end: 0),
+                  _sectionLabel("Subscriptions"),
                   _card([
                     _tile(icon: Icons.star_rounded, title: "Subscriptions",
                         subtitle: "Upgrade to Gold or Platinum",
                         onTap: () => _navTo(const SubscriptionsPage())),
-                  ]).animate().slideY(begin: 0.05, end: 0),
+                  ]),
 
-                  _sectionLabel("Privacy & Data")
-                      .animate().slideX(begin: 0.1, end: 0),
+                  _sectionLabel("Privacy & Data"),
                   _card([
                     _tile(icon: Icons.download_outlined, title: "Download My Data",
                         subtitle: "Export a copy of your data",
                         onTap: () => _navTo(const DownloadMyDataPage())),
-                  ]).animate().slideY(begin: 0.05, end: 0),
+                  ]),
 
-                  _sectionLabel(AppLocalizations.of(context)?.legal ?? "Legal")
-                      .animate().slideX(begin: 0.1, end: 0),
+                  _sectionLabel(AppLocalizations.of(context)?.legal ?? "Legal"),
                   _card([
                     _tile(icon: Icons.privacy_tip_outlined, title: AppLocalizations.of(context)?.privacyPolicy ?? "Privacy Policy",
                         isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/privacy')),
@@ -300,232 +233,145 @@ class _SettingsPageState extends State<SettingsPage> {
                     _divider(),
                     _tile(icon: Icons.favorite_border_rounded, title: AppLocalizations.of(context)?.safeDating ?? "Safe Dating",
                         isExternal: true, onTap: () => _launchUrl('https://clush-web.vercel.app/legal/safe-dating')),
-                  ]).animate().slideY(begin: 0.05, end: 0),
+                  ]),
 
                   const SizedBox(height: 48),
                   _buildLogoutButton(),
                   const SizedBox(height: 12),
                   Center(child: TextButton(
-                    onPressed: _showRetentionDialog,
-                    child: Text("Delete Account", style: GoogleFonts.montserrat(
-                        color: kInkMuted, fontSize: 14,
-                        decoration: TextDecoration.underline, decorationColor: kInkMuted)),
+                    onPressed: () {}, // Delete account logic
+                    child: Text("Delete Account", style: GoogleFonts.figtree(color: kBlack, fontSize: 13)),
                   )),
-                  const SizedBox(height: 20),
-                  Center(child: Text("Version 1.0.0 (Build 24)",
-                      style: GoogleFonts.montserrat(color: kBone, fontSize: 12))),
                   const SizedBox(height: 60),
                 ]),
               ),
             ),
           ],
         ),
-        Positioned(top: 0, left: 0, right: 0, child: _buildHeader().animate().slideY(begin: -0.2, end: 0)),
+        Positioned(top: 0, left: 0, right: 0, child: _buildHeader()),
       ]),
     );
   }
 
   Widget _buildHeader() {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          height: 108,
-          decoration: BoxDecoration(
-            color: kCream.withOpacity(0.88),
-            border: Border(bottom: BorderSide(color: kBone, width: 0.5)),
+    return Container(
+      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 10, bottom: 15, left: 20, right: 20),
+      decoration: BoxDecoration(
+        color: kCream.withOpacity(0.9),
+        border: const Border(bottom: BorderSide(color: kBone)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: kRose, size: 20),
+            onPressed: () => Navigator.pop(context),
           ),
-          padding: const EdgeInsets.fromLTRB(16, 52, 24, 12),
-          child: Align(
-            alignment: Alignment.bottomLeft,
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    width: 36, height: 36,
-                    decoration: BoxDecoration(
-                      color: kCard,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: kBorderLight, width: 1),
-                    ),
-                    child: const Icon(Icons.arrow_back_rounded, size: 18, color: kInk),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text("Settings", style: GoogleFonts.montserrat(
-                    color: kInk, fontSize: 30, fontWeight: FontWeight.w400, letterSpacing: -0.5)),
-              ],
-            ),
-          ),
-        ),
+          const SizedBox(width: 8),
+          Text(AppLocalizations.of(context)?.settings ?? "Settings",
+              style: GoogleFonts.gabarito(fontSize: 24, fontWeight: FontWeight.bold, color: kRose)),
+        ],
       ),
     );
   }
 
   Widget _sectionLabel(String label) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, top: 28, bottom: 10),
-      child: Row(children: [
-        Container(width: 3, height: 14, color: kGold, margin: const EdgeInsets.only(right: 9)),
-        Text(label.toUpperCase(), style: GoogleFonts.montserrat(
-            fontSize: 11, fontWeight: FontWeight.w700, color: kInkMuted, letterSpacing: 1.8)),
-      ]),
+      padding: const EdgeInsets.only(top: 32, bottom: 12, left: 4),
+      child: Text(label.toUpperCase(),
+          style: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.bold, color: kRose, letterSpacing: 1.2)),
     );
   }
 
-  Widget _card(List<Widget> children) => Container(
-    decoration: BoxDecoration(
-      color: kCard,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: kBorderLight, width: 1),
-    ),
-    child: Column(children: children),
-  );
-
-  Widget _divider() => Divider(height: 1, thickness: 1, color: kBorderLight, indent: 48);
-
-  Widget _tile({required IconData icon, required String title,
-      String? subtitle, Widget? trailing, VoidCallback? onTap, bool isExternal = false}) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(children: [
-            Icon(icon, color: kInk, size: 20),
-            const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w500, color: kInk)),
-              if (subtitle != null) ...[
-                const SizedBox(height: 2),
-                Text(subtitle, style: GoogleFonts.montserrat(fontSize: 13, color: kInkMuted),
-                    overflow: TextOverflow.ellipsis),
-              ],
-            ])),
-            if (trailing != null) trailing
-            else if (isExternal) Icon(Icons.open_in_new_rounded, color: kBone, size: 18)
-            else if (onTap != null) Icon(Icons.chevron_right_rounded, color: kInk, size: 22),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _premiumBadge() => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-    decoration: BoxDecoration(
-      color: kGold.withOpacity(0.12),
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: kGold.withOpacity(0.4)),
-    ),
-    child: Text("PREMIUM", style: GoogleFonts.montserrat(
-        color: kGold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
-  );
-
-  Widget _solidBtn(String label, VoidCallback onTap) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: kInk, borderRadius: BorderRadius.circular(12)),
-      child: Text(label, style: GoogleFonts.montserrat(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-    ),
-  );
-
-  Widget _outlineBtn(String label, VoidCallback onTap) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      alignment: Alignment.center,
+  Widget _card(List<Widget> children) {
+    return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kInk, width: 1.5),
+        color: kCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kBorderLight),
       ),
-      child: Text(label, style: GoogleFonts.montserrat(color: kInk, fontWeight: FontWeight.w600, fontSize: 15)),
-    ),
-  );
+      child: Column(children: children),
+    );
+  }
 
-  void _showLanguageSelector() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: kCream,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              AppLocalizations.of(context)?.selectLanguage ?? "Select Language",
-              style: GoogleFonts.montserrat(fontSize: 18, fontWeight: FontWeight.bold, color: kInk),
-            ),
-            const SizedBox(height: 20),
-            _languageTile("en", "English", "English"),
-            _divider(),
-            _languageTile("hi", "Hindi", "हिंदी"),
-            _divider(),
-            _languageTile("mr", "Marathi", "मराठी"),
-            const SizedBox(height: 12),
-          ],
+  Widget _tile({required IconData icon, required String title, String? subtitle, Widget? trailing, VoidCallback? onTap, bool isExternal = false}) {
+    return ListTile(
+      leading: Icon(icon, color: kRose, size: 22),
+      title: Text(title, style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.w500, color: kRose)),
+      subtitle: subtitle != null ? Text(subtitle, style: GoogleFonts.figtree(fontSize: 13, color: kBlack)) : null,
+      trailing: trailing ?? (isExternal ? const Icon(Icons.open_in_new_rounded, size: 16, color: kRose) : const Icon(Icons.chevron_right_rounded, color: kRose)),
+      onTap: onTap,
+    );
+  }
+
+  Widget _divider() => const Divider(height: 1, indent: 56, color: kBorderLight);
+
+  Widget _buildLogoutButton() {
+    return Container(
+      width: double.infinity,
+      height: 56,
+      decoration: BoxDecoration(
+        color: kCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kBorderLight),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _handleLogout,
+          borderRadius: BorderRadius.circular(16),
+          child: Center(
+            child: Text(AppLocalizations.of(context)?.logOut ?? "Logout",
+                style: GoogleFonts.figtree(color: kDestructive, fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
         ),
       ),
     );
   }
 
-  Widget _languageTile(String code, String name, String nativeName) {
-    bool isSelected = LanguageService().localeNotifier.value.languageCode == code;
+  String _formatLocation(Map<String, dynamic>? loc) {
+    if (loc == null) return "";
+    final city = loc['city'];
+    final state = loc['state'];
+    if (city != null && state != null) return "$city, $state";
+    return loc['address'] ?? "";
+  }
+
+  void _handleEditProfile() {
+    // This is already handled by _navTo(const EditProfilePage()) in the build method
+  }
+}
+
+class LanguageSelectorSheet extends StatelessWidget {
+  const LanguageSelectorSheet({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final languageService = LanguageService();
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(AppLocalizations.of(context)?.selectLanguage ?? "Select Language",
+              style: GoogleFonts.gabarito(fontSize: 20, fontWeight: FontWeight.bold, color: kRose)),
+          const SizedBox(height: 24),
+          _langTile(context, 'English', 'en', languageService),
+          _langTile(context, 'Español', 'es', languageService),
+          _langTile(context, 'हिन्दी', 'hi', languageService),
+        ],
+      ),
+    );
+  }
+
+  Widget _langTile(BuildContext context, String name, String code, LanguageService service) {
+    final isSelected = service.localeNotifier.value.languageCode == code;
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 4),
-      title: Text(name, style: GoogleFonts.montserrat(
-          fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: kInk)),
-      trailing: isSelected ? const Icon(Icons.check_circle, color: kInk) : null,
+      title: Text(name, style: GoogleFonts.figtree(fontSize: 16, color: kRose, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+      trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: kRose) : null,
       onTap: () {
-        LanguageService().changeLanguage(code);
+        service.changeLanguage(code);
         Navigator.pop(context);
-        setState(() {}); // Refresh settings page
       },
     );
   }
-
-  String _getLanguageName(String code) {
-    switch (code) {
-      case 'en': return 'English';
-      case 'hi': return 'हिंदी (Hindi)';
-      case 'mr': return 'मराठी (Marathi)';
-      default: return code;
-    }
-  }
-
-  Widget _buildLogoutButton() => Center(
-    child: GestureDetector(
-      onTap: () => showDialog(context: context, builder: (ctx) => AlertDialog(
-        backgroundColor: kCream,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: kBorderLight)),
-        title: Text("Log Out?", style: GoogleFonts.montserrat(fontSize: 22, color: kInk)),
-        content: Text("Are you sure you want to log out?", style: GoogleFonts.montserrat(color: kInkMuted)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx),
-              child: Text("Cancel", style: GoogleFonts.montserrat(color: kInkMuted))),
-          TextButton(onPressed: () { Navigator.pop(ctx); _logout(); },
-              child: Text("Log Out", style: GoogleFonts.montserrat(color: kDestructive, fontWeight: FontWeight.w600))),
-        ],
-      )),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-        decoration: BoxDecoration(
-          color: kCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: kBorderLight, width: 1),
-        ),
-        child: Text("Log Out", style: GoogleFonts.montserrat(
-            color: kDestructive, fontSize: 15, fontWeight: FontWeight.w600)),
-      ),
-    ),
-  );
 }
