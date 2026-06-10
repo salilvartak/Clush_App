@@ -3,86 +3,41 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 
+import 'package:clush/providers/matches_provider.dart';
+import 'package:clush/providers/profile_provider.dart';
 import 'package:clush/screens/chat_page.dart';
+import 'package:clush/screens/chat_settings_page.dart';
+import 'package:clush/screens/setting_sub_pages.dart';
 import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart';
-import 'package:clush/screens/chat_settings_page.dart';
-import 'package:clush/services/cache_service.dart';
 import 'package:clush/widgets/activity_badge.dart';
 import 'package:clush/widgets/heart_loader.dart';
 
-class MatchesPage extends StatefulWidget {
+class MatchesPage extends ConsumerStatefulWidget {
   const MatchesPage({super.key});
 
   @override
-  State<MatchesPage> createState() => _MatchesPageState();
+  ConsumerState<MatchesPage> createState() => _MatchesPageState();
 }
 
-class _MatchesPageState extends State<MatchesPage>
+class _MatchesPageState extends ConsumerState<MatchesPage>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  final _supabase = Supabase.instance.client;
 
-  List<Map<String, dynamic>> matches = [];
-  String? _myDisplayName;
-  String? _myId;
-  bool isLoading = true;
-
-  // Stream Chat live-event subscription for new messages
+  final String? _myId = FirebaseAuth.instance.currentUser?.uid;
   StreamSubscription<Event>? _streamEventSub;
+  RealtimeChannel? _matchesChannel;
 
   @override
   void initState() {
     super.initState();
-    _myId = FirebaseAuth.instance.currentUser?.uid;
-    _loadFromCacheThenFetch();
-    _setupRealtime();
-  }
-
-  Future<void> _loadFromCacheThenFetch() async {
-    final cached = await CacheService.instance.getCachedMatches();
-    if (cached != null && cached.isNotEmpty && mounted) {
-      setState(() {
-        matches = cached;
-        isLoading = false;
-      });
-    }
-    _fetchData();
-  }
-
-  RealtimeChannel? _matchesChannel;
-
-  void _setupRealtime() {
-    _matchesChannel = _supabase
-        .channel('matches_updates')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'matches',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_a',
-            value: _myId,
-          ),
-          callback: (payload) => _fetchData(),
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'matches',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_b',
-            value: _myId,
-          ),
-          callback: (payload) => _fetchData(),
-        )
-        .subscribe();
+    _setupRealtimeSubscriptions();
   }
 
   @override
@@ -92,169 +47,70 @@ class _MatchesPageState extends State<MatchesPage>
     super.dispose();
   }
 
-  /// Subscribe to new-message events so unread badges update in real time.
-  void _subscribeStreamEvents() {
+  void _setupRealtimeSubscriptions() {
     final myId = _myId;
     if (myId == null) return;
+
+    // Supabase real-time: refresh provider when matches table changes.
+    _matchesChannel = Supabase.instance.client
+        .channel('matches_updates_$myId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matches',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_a',
+            value: myId,
+          ),
+          callback: (_) => ref.read(matchesProvider.notifier).refresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matches',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_b',
+            value: myId,
+          ),
+          callback: (_) => ref.read(matchesProvider.notifier).refresh(),
+        )
+        .subscribe();
+
+    // Stream Chat: apply new-message events directly to provider state.
     _streamEventSub = StreamService.instance.client
         .on(EventType.messageNew)
         .listen((event) {
-      // cid format: "messaging:<channelId>"
       final channelId = event.cid?.split(':').lastOrNull;
       final sender = event.message?.user?.id;
-      final messageText = event.message?.text;
-      final createdAt = event.message?.createdAt;
-
       if (channelId == null || sender == null) return;
 
-      final idx = matches.indexWhere((m) {
-        final otherId = m['match_uuid'] as String;
-        return _getRoomId(myId, otherId) == channelId;
-      });
-
-      if (idx >= 0 && mounted) {
-        setState(() {
-          if (sender != myId) {
-            matches[idx]['unread_count'] = (matches[idx]['unread_count'] as int) + 1;
-          }
-          matches[idx]['last_message'] = messageText;
-          matches[idx]['last_message_at'] = createdAt;
-          
-          // Re-sort matches to put latest message on top
-          matches.sort((a, b) {
-            final dateA = a['last_message_at'] as DateTime?;
-            final dateB = b['last_message_at'] as DateTime?;
-            if (dateA == null && dateB == null) return 0;
-            if (dateA == null) return 1;
-            if (dateB == null) return -1;
-            return dateB.compareTo(dateA);
-          });
-        });
+      // Format the preview text so image/audio messages show correctly.
+      final msg = event.message;
+      final String? preview;
+      if (msg != null) {
+        final mt = msg.extraData['mt'] as String?;
+        if (mt == 'image') {
+          final vt = (msg.extraData['vt'] as num?)?.toInt() ?? 0;
+          preview = vt == 1 ? '📷 View once' : vt == 2 ? '📷 View twice' : '📷 Photo';
+        } else if (mt == 'audio') {
+          preview = '🎤 Voice message';
+        } else {
+          preview = msg.text;
+        }
+      } else {
+        preview = null;
       }
+
+      ref.read(matchesProvider.notifier).applyMessageEvent(
+            channelId: channelId,
+            myId: myId,
+            senderId: sender,
+            text: preview,
+            createdAt: event.message?.createdAt,
+          );
     });
-  }
-
-  /// Fetch unread counts and last message info for all matches via a single Stream queryChannels call.
-  Future<void> _loadStreamUnreadCounts() async {
-    final myId = _myId;
-    if (myId == null) return;
-    try {
-      final channelList = await StreamService.instance.client
-          .queryChannels(
-            filter: Filter.in_('members', [myId]),
-            state: true,
-            watch: false,
-          )
-          .first;
-
-      for (final ch in channelList) {
-        final channelId = ch.id;
-        if (channelId == null) continue;
-        final unread = ch.state?.unreadCount ?? 0;
-        final lastMsg = ch.state?.lastMessage;
-        
-        final idx = matches.indexWhere((m) {
-          final otherId = m['match_uuid'] as String;
-          return _getRoomId(myId, otherId) == channelId;
-        });
-
-        if (idx >= 0) {
-          matches[idx]['unread_count'] = unread;
-          if (lastMsg != null) {
-            matches[idx]['last_message'] = lastMsg.text;
-            matches[idx]['last_message_at'] = lastMsg.createdAt;
-          }
-        }
-      }
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint('Stream unread counts: $e');
-    }
-  }
-
-  Future<void> _fetchData() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-      final myId = user.uid;
-
-      // 1. Fetch my name
-      try {
-        final myProfile = await _supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', myId)
-            .maybeSingle();
-        _myDisplayName = myProfile?['full_name'];
-      } catch (_) {
-        _myDisplayName = 'Me';
-      }
-
-      // 2. Fetch blocked users
-      final List<String> blockedIds = [];
-      try {
-        final blocksData = await _supabase
-            .from('blocks')
-            .select('blocker_id, blocked_id')
-            .or('blocker_id.eq.$myId,blocked_id.eq.$myId');
-        for (final b in blocksData) {
-          final b1 = b['blocker_id'].toString();
-          final b2 = b['blocked_id'].toString();
-          blockedIds.add(b1 == myId ? b2 : b1);
-        }
-      } catch (_) {}
-
-      // 3. Fetch matches with joined profiles
-      final data = await _supabase.from('matches').select('''
-            *,
-            profile_a:profiles!user_a(id, full_name, photo_urls, last_seen_at, is_verified),
-            profile_b:profiles!user_b(id, full_name, photo_urls, last_seen_at, is_verified)
-          ''').or('user_a.eq.$myId,user_b.eq.$myId');
-
-      final List<Map<String, dynamic>> loadedMatches = [];
-
-      for (final match in data) {
-        final isUserAMe = match['user_a'] == myId;
-        final otherProfile = isUserAMe ? match['profile_b'] : match['profile_a'];
-        if (otherProfile == null) continue;
-        final otherId = otherProfile['id'] as String;
-        if (blockedIds.contains(otherId)) continue;
-
-        final photoUrls = otherProfile['photo_urls'];
-        final photoUrl = (photoUrls is List && photoUrls.isNotEmpty)
-            ? photoUrls[0] as String?
-            : null;
-
-        loadedMatches.add({
-          'match_uuid': otherId,
-          'display_name': otherProfile['full_name'],
-          'photo_url': photoUrl,
-          'unread_count': 0, // populated below via Stream
-          'last_seen_at': otherProfile['last_seen_at'],
-          'is_verified': otherProfile['is_verified'] ?? false,
-          'last_message': null,
-          'last_message_at': null,
-        });
-      }
-
-      if (mounted) {
-        setState(() {
-          matches = loadedMatches;
-          isLoading = false;
-        });
-        CacheService.instance.cacheMatches(loadedMatches);
-        _loadStreamUnreadCounts();
-        _subscribeStreamEvents();
-      }
-    } catch (e) {
-      debugPrint('❌ Error fetching matches: $e');
-      if (mounted) setState(() => isLoading = false);
-    }
-  }
-
-  String _getRoomId(String id1, String id2) {
-    final ids = [id1, id2]..sort();
-    return '${ids[0]}_${ids[1]}';
   }
 
   String _formatTime(DateTime? time) {
@@ -272,13 +128,23 @@ class _MatchesPageState extends State<MatchesPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    final matchesAsync = ref.watch(matchesProvider);
+    final myName = ref.watch(myProfileProvider).value?['full_name'] as String? ?? 'Me';
+    final matches = matchesAsync.value ?? [];
+    final isLoading = matchesAsync.isLoading && matches.isEmpty;
+
     return Scaffold(
       backgroundColor: kBackground,
       appBar: AppBar(
         title: Text(
           'Chats',
           style: GoogleFonts.gabarito(
-              fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5),
+            fontWeight: FontWeight.bold,
+            fontSize: 26,
+            color: kBlack,
+            letterSpacing: -0.5,
+          ),
         ),
         backgroundColor: kBackground,
         elevation: 0,
@@ -286,21 +152,22 @@ class _MatchesPageState extends State<MatchesPage>
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined, color: kBlack),
-            onPressed: () => Navigator.push(
+            onPressed: () => Navigator.push<void>(
               context,
-              MaterialPageRoute(builder: (_) => const ChatSettingsPage()),
+              MaterialPageRoute<void>(builder: (_) => const ChatSettingsPage()),
             ),
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _fetchData,
+        onRefresh: () => ref.read(matchesProvider.notifier).refresh(),
         color: kAccent,
         backgroundColor: kCard,
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 400),
           switchInCurve: Curves.easeOutQuad,
-          transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+          transitionBuilder: (child, animation) =>
+              FadeTransition(opacity: animation, child: child),
           child: isLoading
               ? const Center(key: ValueKey('loading'), child: HeartLoader())
               : matches.isEmpty
@@ -308,34 +175,77 @@ class _MatchesPageState extends State<MatchesPage>
                       key: const ValueKey('empty'),
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: [
-                        SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+                        SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.04),
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 36),
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 36),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                "No chats yet",
-                                style: GoogleFonts.gabarito(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.bold,
-                                    color: kBlack),
+                                'No chats yet',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.dmSerifDisplay(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 22,
+                                  color: kAccent,
+                                ),
                               ),
-                              const SizedBox(height: 12),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 48),
-                                child: Text(
-                                  "The best things happen when you least expect them. Keep swiping!",
-                                  textAlign: TextAlign.center,
-                                  style: GoogleFonts.figtree(
-                                      fontSize: 16, color: kInkMuted, height: 1.5),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Keep swiping to start\na conversation',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.figtree(
+                                  fontWeight: FontWeight.normal,
+                                  fontSize: 14,
+                                  color: kAccent,
+                                ),
+                              ),
+                              Image.asset(
+                                'assets/images/no_chat.jpeg',
+                                width: 300,
+                              ),
+                              const SizedBox(height: 16),
+                              GestureDetector(
+                                onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const SubscriptionsPage())),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 28, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    color: kAccent,
+                                    borderRadius: BorderRadius.circular(100),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                    children: [
+                                      Text('Get Clush',
+                                          style: GoogleFonts.gabarito(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold)),
+                                      Text('+',
+                                          style: GoogleFonts.gabarito(
+                                              color: kGold,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
                           )
                               .animate()
-                              .fade(duration: 600.ms)
-                              .slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
+                              .slideY(
+                                  begin: 0.1,
+                                  end: 0,
+                                  curve: Curves.easeOutQuad),
                         ),
                       ],
                     )
@@ -344,7 +254,7 @@ class _MatchesPageState extends State<MatchesPage>
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       itemCount: matches.length,
-                      separatorBuilder: (context, index) => const Divider(
+                      separatorBuilder: (_, __) => const Divider(
                         height: 1,
                         indent: 86,
                         endIndent: 16,
@@ -352,28 +262,32 @@ class _MatchesPageState extends State<MatchesPage>
                       ),
                       itemBuilder: (context, index) {
                         final match = matches[index];
-                        final unread = (match['unread_count'] as int? ?? 0);
+                        final unread = match['unread_count'] as int? ?? 0;
                         final hasUnread = unread > 0;
-                        final isVerified = match['is_verified'] as bool? ?? false;
+                        final isVerified =
+                            match['is_verified'] as bool? ?? false;
                         final lastMsg = match['last_message'] as String?;
-                        final lastMsgAt = match['last_message_at'] as DateTime?;
+                        final lastMsgAt =
+                            match['last_message_at'] as DateTime?;
 
                         return InkWell(
                           onTap: () async {
-                            setState(() => matches[index]['unread_count'] = 0);
-                            await Navigator.push(
+                            await Navigator.push<void>(
                               context,
-                              MaterialPageRoute(
+                              MaterialPageRoute<void>(
                                 builder: (_) => ChatScreen(
-                                  myId: FirebaseAuth.instance.currentUser!.uid,
+                                  myId: _myId!,
                                   matchId: match['match_uuid'] as String,
                                   matchName: match['display_name'] as String,
-                                  myName: _myDisplayName ?? 'Me',
-                                  matchPhotoUrl: match['photo_url'] as String?,
+                                  myName: myName,
+                                  matchPhotoUrl:
+                                      match['photo_url'] as String?,
                                 ),
                               ),
                             );
-                            _loadStreamUnreadCounts();
+                            if (mounted) {
+                              ref.read(matchesProvider.notifier).refresh();
+                            }
                           },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

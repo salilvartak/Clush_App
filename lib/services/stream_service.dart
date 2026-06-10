@@ -152,4 +152,18 @@ class StreamService {
       print('StreamService: Error deleting channel: $e');
     }
   }
+
+  Future<void> deleteAllChats(String myId) async {
+    try {
+      final channelsStream = client.queryChannels(
+        filter: Filter.in_('members', [myId]),
+      );
+      final channels = await channelsStream.first;
+      for (final channel in channels) {
+        await channel.delete();
+      }
+    } catch (e) {
+      print('StreamService: Error deleting all chats: $e');
+    }
+  }
 }

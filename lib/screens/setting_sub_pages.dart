@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:ui';
@@ -17,6 +18,7 @@ import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:flutter_animate/flutter_animate.dart';
 
+import 'package:clush/main.dart';
 import 'package:clush/theme/colors.dart';
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/screens/permission_request_page.dart';
@@ -325,12 +327,91 @@ class CurrentLocationPage extends StatefulWidget {
 class _CurrentLocationPageState extends State<CurrentLocationPage> {
   final _ctrl = TextEditingController();
   final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
   final _mapController = MapController();
   LatLng _currentMapCenter = const LatLng(40.7128, -74.0060); // Default NY
   bool _isLoading = true, _isSaving = false, _isMapLoading = false;
+  Timer? _geocodeDebounce;
+  Timer? _suggestDebounce;
+  List<Map<String, dynamic>> _placeSuggestions = [];
+  bool _isSuggesting = false;
 
   @override
-  void initState() { super.initState(); _fetchLocation(); }
+  void initState() {
+    super.initState();
+    _fetchLocation();
+    _searchCtrl.addListener(_onSearchChanged);
+    _searchFocus.addListener(() {
+      if (!_searchFocus.hasFocus) setState(() => _placeSuggestions = []);
+    });
+  }
+
+  @override
+  void dispose() {
+    _geocodeDebounce?.cancel();
+    _suggestDebounce?.cancel();
+    _searchCtrl.removeListener(_onSearchChanged);
+    _searchCtrl.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  // Debounce reverse-geocoding so it only fires once the map settles.
+  void _scheduleReverseGeocode() {
+    _geocodeDebounce?.cancel();
+    _geocodeDebounce = Timer(const Duration(milliseconds: 600), _confirmMapLocation);
+  }
+
+  void _onSearchChanged() {
+    final query = _searchCtrl.text.trim();
+    _suggestDebounce?.cancel();
+    if (query.length < 3) {
+      setState(() => _placeSuggestions = []);
+      return;
+    }
+    _suggestDebounce = Timer(const Duration(milliseconds: 400), () => _fetchPlaceSuggestions(query));
+  }
+
+  Future<void> _fetchPlaceSuggestions(String query) async {
+    setState(() => _isSuggesting = true);
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'q': query,
+        'format': 'json',
+        'addressdetails': '1',
+        'limit': '5',
+      });
+      final response = await http.get(uri, headers: {'User-Agent': 'com.clush.app'});
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final List<dynamic> results = jsonDecode(response.body);
+        setState(() {
+          _placeSuggestions = results.cast<Map<String, dynamic>>();
+          _isSuggesting = false;
+        });
+      } else {
+        setState(() => _isSuggesting = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isSuggesting = false);
+      debugPrint("Place Suggestion Error: $e");
+    }
+  }
+
+  void _selectPlaceSuggestion(Map<String, dynamic> suggestion) {
+    final lat = double.tryParse(suggestion['lat']?.toString() ?? '');
+    final lon = double.tryParse(suggestion['lon']?.toString() ?? '');
+    if (lat == null || lon == null) return;
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _placeSuggestions = [];
+      _searchCtrl.text = suggestion['display_name']?.toString() ?? '';
+      _currentMapCenter = LatLng(lat, lon);
+    });
+    _mapController.move(_currentMapCenter, 13.0);
+    _scheduleReverseGeocode();
+  }
 
   Future<void> _fetchLocation() async {
     try {
@@ -352,7 +433,12 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
           } catch (_) {}
         }
       }
-    } catch (_) {} finally { if (mounted) setState(() => _isLoading = false); }
+    } catch (_) {} finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        if (_ctrl.text.isEmpty) _confirmMapLocation();
+      }
+    }
   }
 
   Future<void> _fetchCurrentLocation() async {
@@ -374,40 +460,44 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
       setState(() => _currentMapCenter = LatLng(position.latitude, position.longitude));
       _mapController.move(_currentMapCenter, 13.0);
+      _scheduleReverseGeocode();
     } catch (e) {
       debugPrint("Location Error: $e");
     }
   }
 
   Future<void> _confirmMapLocation() async {
+    final target = _currentMapCenter;
     setState(() => _isMapLoading = true);
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(_currentMapCenter.latitude, _currentMapCenter.longitude);
+      List<Placemark> placemarks = await placemarkFromCoordinates(target.latitude, target.longitude);
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
         String area = place.subLocality ?? place.thoroughfare ?? "";
         String city = place.locality ?? place.subAdministrativeArea ?? "";
         String state = place.administrativeArea ?? "";
-        
+
         List<String> displayParts = [];
         if (area.isNotEmpty) displayParts.add(area);
         if (city.isNotEmpty && city != area) displayParts.add(city);
         if (displayParts.isEmpty && state.isNotEmpty) displayParts.add(state);
-        
+
         String displayString = displayParts.join(", ");
         if (displayString.isEmpty) displayString = "Selected Location";
-        
-        String exactLocation = "$displayString, $state(${_currentMapCenter.latitude},${_currentMapCenter.longitude})";
-        setState(() {
-          _ctrl.text = exactLocation;
-          _isMapLoading = false;
-        });
-        FocusManager.instance.primaryFocus?.unfocus();
-      } else {
+
+        String exactLocation = "$displayString, $state(${target.latitude},${target.longitude})";
+        if (mounted) {
+          setState(() {
+            _ctrl.text = exactLocation;
+            _isMapLoading = false;
+          });
+        }
+      } else if (mounted) {
         setState(() => _isMapLoading = false);
       }
     } catch (e) {
-      setState(() => _isMapLoading = false);
+      if (mounted) setState(() => _isMapLoading = false);
+      debugPrint("Reverse Geocode Error: $e");
     }
   }
 
@@ -420,6 +510,7 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
         final loc = locations.first;
         setState(() => _currentMapCenter = LatLng(loc.latitude, loc.longitude));
         _mapController.move(_currentMapCenter, 13.0);
+        _scheduleReverseGeocode();
       }
     } catch (_) {}
   }
@@ -449,17 +540,61 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
     body: _isLoading
         ? const Center(child: HeartLoader())
         : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Search Bar
-            TextField(
-              controller: _searchCtrl,
-              style: GoogleFonts.montserrat(color: _kInk, fontSize: 15),
-              onSubmitted: _searchMapLocation,
-              decoration: _inputDecor("Search a city...", icon: Icons.search).copyWith(
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.search, color: _kRose, size: 20),
-                  onPressed: () => _searchMapLocation(_searchCtrl.text),
+            // Search Bar with autocomplete suggestions
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                TextField(
+                  controller: _searchCtrl,
+                  focusNode: _searchFocus,
+                  style: GoogleFonts.montserrat(color: _kInk, fontSize: 15),
+                  onSubmitted: _searchMapLocation,
+                  decoration: _inputDecor("Search a city...", icon: Icons.search).copyWith(
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.search, color: _kRose, size: 20),
+                      onPressed: () => _searchMapLocation(_searchCtrl.text),
+                    ),
+                  ),
                 ),
-              ),
+                if (_searchFocus.hasFocus && (_isSuggesting || _placeSuggestions.isNotEmpty))
+                  Positioned(
+                    top: 56,
+                    left: 0,
+                    right: 0,
+                    child: Material(
+                      elevation: 6,
+                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.white,
+                      child: _isSuggesting
+                          ? const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Center(child: HeartLoader(size: 22)),
+                            )
+                          : ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 240),
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                padding: EdgeInsets.zero,
+                                itemCount: _placeSuggestions.length,
+                                separatorBuilder: (_, __) => const Divider(height: 1),
+                                itemBuilder: (context, i) {
+                                  final s = _placeSuggestions[i];
+                                  return ListTile(
+                                    leading: const Icon(Icons.place_outlined, color: _kRose, size: 20),
+                                    title: Text(
+                                      s['display_name']?.toString() ?? '',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.montserrat(color: _kInk, fontSize: 14, fontWeight: FontWeight.w500),
+                                    ),
+                                    onTap: () => _selectPlaceSuggestion(s),
+                                  );
+                                },
+                              ),
+                            ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 16),
             // Map
@@ -479,12 +614,14 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
                       onPositionChanged: (position, hasGesture) {
                         if (hasGesture && position.center != null) {
                           _currentMapCenter = position.center!;
+                          _scheduleReverseGeocode();
                         }
                       },
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                        subdomains: const ['a', 'b', 'c', 'd'],
                         userAgentPackageName: 'com.clush.app',
                       ),
                       RichAttributionWidget(
@@ -492,6 +629,10 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
                           TextSourceAttribution(
                             'OpenStreetMap contributors',
                             onTap: () => launchUrl(Uri.parse('https://openstreetmap.org/copyright')),
+                          ),
+                          TextSourceAttribution(
+                            'CARTO',
+                            onTap: () => launchUrl(Uri.parse('https://carto.com/attributions')),
                           ),
                         ],
                       ),
@@ -507,30 +648,32 @@ class _CurrentLocationPageState extends State<CurrentLocationPage> {
                 ]),
               ),
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity, height: 48,
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: _kRose, width: 1),
-                  backgroundColor: _kCream,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                ),
-                onPressed: _isMapLoading ? null : _confirmMapLocation,
-                child: _isMapLoading 
-                  ? const HeartLoader(size: 18)
-                  : Text("Confirm Pin Location", style: GoogleFonts.montserrat(color: _kRose, fontSize: 14, fontWeight: FontWeight.w600)),
-              ),
-            ),
             const SizedBox(height: 24),
             Text("Your Location", style: GoogleFonts.montserrat(fontSize: 20, color: _kInk)),
             const SizedBox(height: 6),
-            Text("This helps us show you people nearby. Tap map or type above.",
+            Text("This helps us show you people nearby. Move the map or search to update.",
                 style: GoogleFonts.montserrat(fontSize: 13, color: _kInkMuted)),
-            const SizedBox(height: 20),
-            TextField(controller: _ctrl, readOnly: true,
-                style: GoogleFonts.montserrat(color: _kInk, fontSize: 15),
-                decoration: _inputDecor("Confirm location above", icon: Icons.location_on_outlined)),
+            const SizedBox(height: 16),
+            // Live detected location — updates automatically as the pin moves
+            Row(
+              children: [
+                if (_isMapLoading) ...[
+                  const HeartLoader(size: 18),
+                  const SizedBox(width: 10),
+                ] else
+                  const Icon(Icons.location_on_rounded, color: _kRose, size: 18),
+                if (!_isMapLoading) const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _isMapLoading
+                        ? "Detecting location..."
+                        : (_ctrl.text.isNotEmpty ? _getDisplayLocation(_ctrl.text) : "Move the map to set your location"),
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.montserrat(color: _kInk, fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 20),
             _saveButton("Save Location", _isSaving, _save),
           ]),
@@ -546,7 +689,7 @@ class VerificationPage extends StatefulWidget {
 }
 
 class _VerificationPageState extends State<VerificationPage> {
-  String? _profileImageUrl;
+  List<String> _profileImageUrls = [];
   File? _videoFile;
   File? _videoFrame;
   bool _isLoading = false, _isFetchingProfile = true, _isVerified = false;
@@ -560,14 +703,24 @@ class _VerificationPageState extends State<VerificationPage> {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) return;
       final data = await Supabase.instance.client
-          .from('profiles').select('photo_urls, is_verified').eq('id', userId).maybeSingle();
-      final List photos = data?['photo_urls'] ?? [];
+          .from('profiles').select('photo_urls, verification_status').eq('id', userId).maybeSingle();
+      debugPrint('📷 Verification profile data: $data');
+      final rawPhotos = data?['photo_urls'];
+      List<String> photos = [];
+      if (rawPhotos is List) {
+        photos = rawPhotos.whereType<String>().where((s) => s.isNotEmpty).toList();
+      }
+      debugPrint('📷 Parsed photo_urls: $photos');
+      final status = data?['verification_status'] as String?;
       setState(() {
-        _isVerified = data?['is_verified'] ?? false;
-        if (photos.isNotEmpty) _profileImageUrl = photos[0];
+        _isVerified = status == 'verified' || status == 'approved';
+        _profileImageUrls = photos.take(2).toList();
         _isFetchingProfile = false;
       });
-    } catch (_) { setState(() => _isFetchingProfile = false); }
+    } catch (e, st) {
+      debugPrint('❌ _checkVerificationStatus error: $e\n$st');
+      if (mounted) setState(() => _isFetchingProfile = false);
+    }
   }
 
   Future<void> _recordVideo() async {
@@ -736,16 +889,22 @@ class _VerificationPageState extends State<VerificationPage> {
   }
 
   Future<void> _submitVerification() async {
-    if (_profileImageUrl == null || _videoFile == null) return;
+    if (_profileImageUrls.isEmpty || _videoFile == null) return;
     setState(() => _isLoading = true);
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
-      final imageResponse = await http.get(Uri.parse(_profileImageUrl!));
+      final imageResponse = await http.get(Uri.parse(_profileImageUrls[0]));
       if (imageResponse.statusCode != 200) throw Exception("Failed to download profile photo");
       var request = http.MultipartRequest('POST',
           Uri.parse('https://nonterminable-ideologically-meagan.ngrok-free.dev/verify'));
       request.fields['user_id'] = userId;
       request.files.add(http.MultipartFile.fromBytes('profile_image', imageResponse.bodyBytes, filename: 'profile.jpg'));
+      if (_profileImageUrls.length > 1) {
+        final image2Response = await http.get(Uri.parse(_profileImageUrls[1]));
+        if (image2Response.statusCode == 200) {
+          request.files.add(http.MultipartFile.fromBytes('profile_image_2', image2Response.bodyBytes, filename: 'profile2.jpg'));
+        }
+      }
       request.files.add(await http.MultipartFile.fromPath('video', _videoFile!.path));
       if (_videoFrame != null) {
         request.files.add(await http.MultipartFile.fromPath('video_frame', _videoFrame!.path, filename: 'frame.jpg'));
@@ -759,10 +918,15 @@ class _VerificationPageState extends State<VerificationPage> {
       double score = (data['score'] is num) ? (data['score'] as num).toDouble() : 0.0;
       debugPrint("🔍 Verification — match: $isMatch  |  confidence: ${score.toStringAsFixed(4)}");
       if (isMatch) {
-        await Supabase.instance.client.from('profiles').update({'is_verified': true}).eq('id', userId);
-        setState(() => _isVerified = true);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("✅ Verified! You now have a verified badge.")));
+        await Supabase.instance.client.from('profiles').update({'verification_status': 'pending'}).eq('id', userId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("✅ Face matched! Your profile is under review.")));
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const AuthWrapper()),
+            (route) => false,
+          );
+        }
       } else {
         if (mounted) _showFailDialog(score);
       }
@@ -835,17 +999,50 @@ class _VerificationPageState extends State<VerificationPage> {
           padding: const EdgeInsets.all(16),
           decoration: _cardDecor(),
           child: Row(children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: _kBone,
-              backgroundImage: _profileImageUrl != null ? NetworkImage(_profileImageUrl!) : null,
-              child: _profileImageUrl == null
-                  ? const Icon(Icons.person_outline_rounded, color: _kInkMuted) : null,
+            // Show up to 2 profile photos
+            SizedBox(
+              width: 72, height: 56,
+              child: Stack(
+                children: [
+                  // Second image (behind, offset right)
+                  if (_profileImageUrls.length > 1)
+                    Positioned(
+                      right: 0,
+                      child: CircleAvatar(
+                        radius: 24,
+                        backgroundColor: _kBone,
+                        backgroundImage: NetworkImage(_profileImageUrls[1]),
+                      ),
+                    ),
+                  // First image (in front, left)
+                  Positioned(
+                    left: 0,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _kCream, width: 2),
+                      ),
+                      child: CircleAvatar(
+                        radius: 24,
+                        backgroundColor: _kBone,
+                        backgroundImage: _profileImageUrls.isNotEmpty
+                            ? NetworkImage(_profileImageUrls[0]) : null,
+                        child: _profileImageUrls.isEmpty
+                            ? const Icon(Icons.person_outline_rounded, color: _kInkMuted) : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text("Step 1", style: GoogleFonts.montserrat(fontSize: 11, color: _kInkMuted, letterSpacing: 1)),
-              Text("Profile Photo", style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w600, color: _kInk)),
+              Text("Profile Photos", style: GoogleFonts.montserrat(fontSize: 15, fontWeight: FontWeight.w600, color: _kInk)),
+              Text(
+                _profileImageUrls.length >= 2 ? "2 photos ready" : "${_profileImageUrls.length} photo ready",
+                style: GoogleFonts.montserrat(fontSize: 12, color: _kInkMuted),
+              ),
             ])),
             Container(
               width: 28, height: 28,
@@ -898,7 +1095,7 @@ class _VerificationPageState extends State<VerificationPage> {
         ),
         const SizedBox(height: 32),
         _saveButton("Verify Me", _isLoading,
-            (_isLoading || _profileImageUrl == null || _videoFile == null) ? null : _submitVerification),
+            (_isLoading || _profileImageUrls.isEmpty || _videoFile == null) ? null : _submitVerification),
       ]),
     );
   }
@@ -1774,13 +1971,13 @@ class SubscriptionsPage extends StatefulWidget {
 }
 
 class _SubscriptionsPageState extends State<SubscriptionsPage> {
-  int _selectedPlan = 0;
+  int _selectedPlan = 1;
   late final PageController _pageController;
   bool _isPurchasing = false;
 
   static const _plans = [
-    _Plan(label: '1 month',  price: '₹165',   perUnit: '₹165/mo · incl. taxes',  isPopular: true,  strikePrice: null,    discount: null,       productId: PurchaseIds.monthly),
-    _Plan(label: '3 months', price: '₹449',   perUnit: '₹149.67/mo · incl. taxes', isPopular: false, strikePrice: null,    discount: '~9% off',  productId: PurchaseIds.quarter),
+    _Plan(label: '1 month',  price: '₹165',   perUnit: '₹165/mo · incl. taxes',  isPopular: false, strikePrice: null,    discount: null,       productId: PurchaseIds.monthly),
+    _Plan(label: '3 months', price: '₹449',   perUnit: '₹149.67/mo · incl. taxes', isPopular: true,  strikePrice: null,    discount: '~9% off',  productId: PurchaseIds.quarter),
     _Plan(label: '6 months', price: '₹699',   perUnit: '₹116.50/mo · incl. taxes', isPopular: false, strikePrice: null,    discount: '~30% off', productId: PurchaseIds.half),
     _Plan(label: '12 months',price: '₹1,199', perUnit: '₹99.92/mo · incl. taxes',  isPopular: false, strikePrice: null,    discount: '~40% off', productId: PurchaseIds.annual),
   ];
@@ -1800,7 +1997,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(viewportFraction: 0.72, initialPage: 0);
+    _pageController = PageController(viewportFraction: 0.72, initialPage: 1);
 
     // Register purchase callbacks
     PurchaseService.instance.onPurchaseSuccess = (productId) {

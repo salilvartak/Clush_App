@@ -138,38 +138,35 @@ class PurchaseService {
 
   // ─── Grant Premium ────────────────────────────────────────────────────────
 
+  /// Hands the purchase off to the `verify-purchase` Edge Function, which
+  /// validates the receipt server-side (Google Play Developer API / App Store
+  /// Server API) and — only if genuine — writes `is_premium`/`premium_expiry`
+  /// to `profiles`. We never write entitlement fields directly from the
+  /// client: a modified APK could otherwise fabricate a `PurchaseDetails` and
+  /// grant itself premium for free.
   Future<void> _grantPremium(PurchaseDetails purchase) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
-    // Calculate expiry based on which product was purchased
-    final Duration duration;
-    switch (purchase.productID) {
-      case PurchaseIds.monthly:
-        duration = const Duration(days: 30);
-        break;
-      case PurchaseIds.quarter:
-        duration = const Duration(days: 90);
-        break;
-      case PurchaseIds.half:
-        duration = const Duration(days: 180);
-        break;
-      case PurchaseIds.annual:
-        duration = const Duration(days: 365);
-        break;
-      default:
-        duration = const Duration(days: 30);
-    }
-
     try {
-      await Supabase.instance.client.from('profiles').update({
-        'is_premium': true,
-        'premium_expiry': DateTime.now().add(duration).toIso8601String(),
-        'purchase_token': purchase.purchaseID,
-      }).eq('id', userId);
-      debugPrint('[PurchaseService] Premium granted until ${DateTime.now().add(duration)}');
+      final response = await Supabase.instance.client.functions.invoke(
+        'verify-purchase',
+        body: {
+          'user_id': userId,
+          'product_id': purchase.productID,
+          'purchase_token': purchase.verificationData.serverVerificationData,
+          'platform': defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android',
+        },
+      );
+
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
+        debugPrint('[PurchaseService] Premium granted until ${data['expiry']}');
+      } else {
+        debugPrint('[PurchaseService] Purchase verification failed: ${data is Map ? data['error'] : data}');
+      }
     } catch (e) {
-      debugPrint('[PurchaseService] Error updating premium status: $e');
+      debugPrint('[PurchaseService] Error verifying purchase: $e');
     }
   }
 

@@ -1,27 +1,30 @@
 import 'dart:ui' show ImageFilter;
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
+import 'package:video_player/video_player.dart';
+
 import 'package:clush/firebase_options.dart';
+import 'package:clush/l10n/app_localizations.dart';
 import 'package:clush/screens/basics_page.dart';
 import 'package:clush/screens/home_page.dart';
+import 'package:clush/screens/get_verified_screen.dart';
+import 'package:clush/screens/pending_screen.dart';
+import 'package:clush/screens/rejected_screen.dart';
 import 'package:clush/services/cache_service.dart';
-import 'package:clush/theme/colors.dart';
-
-import 'package:google_fonts/google_fonts.dart'; // <-- Added for typography
-import 'package:flutter_animate/flutter_animate.dart'; // <-- Added for animations
-
-// Import the notification service
-import 'package:clush/services/notification_service.dart';
 import 'package:clush/services/language_service.dart';
+import 'package:clush/services/notification_service.dart';
 import 'package:clush/services/presence_service.dart';
-import 'package:clush/services/stream_service.dart';
 import 'package:clush/services/purchase_service.dart';
+import 'package:clush/services/stream_service.dart';
+import 'package:clush/theme/colors.dart';
 import 'package:clush/widgets/heart_loader.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:clush/l10n/app_localizations.dart';
 
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
@@ -58,7 +61,7 @@ void main() async {
   // 6. Initialize In-App Purchase Service
   await PurchaseService.instance.init();
 
-  runApp(const AuraApp());
+  runApp(const ProviderScope(child: AuraApp()));
 }
 
 class AuraApp extends StatelessWidget {
@@ -131,7 +134,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   // Cache the profile-check future so that auth token refreshes (which cause
   // StreamBuilder to rebuild) do NOT restart FutureBuilder and reset HomePageState.
   String? _cachedUid;
-  Future<bool>? _profileCheckFuture;
+  Future<String>? _profileCheckFuture;
 
   @override
   void initState() {
@@ -173,9 +176,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
           // Only create a new Future when the signed-in user actually changes
           if (uid != _cachedUid) {
             _cachedUid = uid;
-            _profileCheckFuture = _checkProfileExists(uid);
+            _profileCheckFuture = _checkProfileStatus(uid);
           }
-          return FutureBuilder<bool>(
+          return FutureBuilder<String>(
             future: _profileCheckFuture,
             builder: (context, profileSnapshot) {
               if (profileSnapshot.connectionState == ConnectionState.waiting) {
@@ -196,12 +199,19 @@ class _AuthWrapperState extends State<AuthWrapper> {
                 );
               }
 
-              final bool profileExists = profileSnapshot.data ?? false;
+              final String status = profileSnapshot.data ?? 'not_found';
 
-              if (profileExists) {
+              if (status == 'verified' || status == 'approved') {
                 CacheService.instance.prefetchAndCache();
                 return HomePage(key: homeKey);
+              } else if (status == 'pending') {
+                return const PendingScreen();
+              } else if (status == 'rejected') {
+                return const RejectedScreen();
+              } else if (status == 'not_verified') {
+                return const GetVerifiedScreen();
               } else {
+                // 'not_found' — no profile yet, go through onboarding
                 return const BasicsPage(currentStep: 1, totalSteps: 6);
               }
             },
@@ -216,25 +226,26 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
-  Future<bool> _checkProfileExists(String userId) async {
+  Future<String> _checkProfileStatus(String userId) async {
     final sw = Stopwatch()..start();
     try {
       final data = await Supabase.instance.client
-          .from('profile_discovery')
-          .select('id')
+          .from('profiles')
+          .select('verification_status')
           .eq('id', userId)
           .maybeSingle();
       final elapsed = sw.elapsedMilliseconds;
       if (elapsed < 2200) {
         await Future.delayed(Duration(milliseconds: 2200 - elapsed));
       }
-      return data != null;
+      if (data == null) return 'not_found';
+      return data['verification_status'] as String? ?? 'not_verified';
     } catch (e) {
       final elapsed = sw.elapsedMilliseconds;
       if (elapsed < 2200) {
         await Future.delayed(Duration(milliseconds: 2200 - elapsed));
       }
-      return false;
+      return 'not_found';
     }
   }
 }
@@ -250,44 +261,75 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
+  late final VideoPlayerController _bgVideoController;
 
   String? _verificationId;
   bool _isLoading = false;
+
+  // Country code picker state
+  String _dialCode = '+91';
+  String _countryFlag = '🇮🇳';
+
+  static const List<(String, String, String)> _countries = [
+    ('🇮🇳', '+91',  'India'),
+    ('🇺🇸', '+1',   'United States'),
+    ('🇨🇦', '+1',   'Canada'),
+    ('🇬🇧', '+44',  'United Kingdom'),
+    ('🇦🇺', '+61',  'Australia'),
+    ('🇦🇪', '+971', 'UAE'),
+    ('🇸🇬', '+65',  'Singapore'),
+    ('🇳🇿', '+64',  'New Zealand'),
+    ('🇿🇦', '+27',  'South Africa'),
+    ('🇩🇪', '+49',  'Germany'),
+    ('🇫🇷', '+33',  'France'),
+    ('🇮🇹', '+39',  'Italy'),
+    ('🇳🇱', '+31',  'Netherlands'),
+    ('🇸🇪', '+46',  'Sweden'),
+    ('🇧🇷', '+55',  'Brazil'),
+    ('🇲🇽', '+52',  'Mexico'),
+    ('🇯🇵', '+81',  'Japan'),
+    ('🇨🇳', '+86',  'China'),
+    ('🇰🇷', '+82',  'South Korea'),
+    ('🇵🇭', '+63',  'Philippines'),
+    ('🇲🇾', '+60',  'Malaysia'),
+    ('🇮🇩', '+62',  'Indonesia'),
+    ('🇧🇩', '+880', 'Bangladesh'),
+    ('🇵🇰', '+92',  'Pakistan'),
+    ('🇳🇬', '+234', 'Nigeria'),
+    ('🇰🇪', '+254', 'Kenya'),
+    ('🇬🇭', '+233', 'Ghana'),
+    ('🇸🇦', '+966', 'Saudi Arabia'),
+    ('🇶🇦', '+974', 'Qatar'),
+    ('🇧🇭', '+973', 'Bahrain'),
+    ('🇴🇲', '+968', 'Oman'),
+    ('🇮🇱', '+972', 'Israel'),
+    ('🇬🇷', '+30',  'Greece'),
+    ('🇵🇱', '+48',  'Poland'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _bgVideoController = VideoPlayerController.asset('assets/images/login.mp4')
+      ..setLooping(true)
+      ..setVolume(0)
+      ..initialize().then((_) {
+        if (mounted) {
+          setState(() {});
+          _bgVideoController.play();
+        }
+      });
+  }
 
   @override
   void dispose() {
     _phoneController.dispose();
     _otpController.dispose();
+    _bgVideoController.dispose();
     super.dispose();
   }
 
-  Future<User?> _signInWithGoogle(BuildContext context) async {
-    setState(() => _isLoading = true);
-    try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) {
-        setState(() => _isLoading = false);
-        return null;
-      }
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-      final OAuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-      return await FirebaseAuth.instance
-          .signInWithCredential(credential)
-          .then((cred) => cred.user);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Sign in failed: $e')));
-      }
-      setState(() => _isLoading = false);
-      return null;
-    }
-  }
+
 
   Future<void> _verifyPhoneNumber() async {
     final phone = _phoneController.text.trim();
@@ -302,7 +344,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phone.startsWith('+') ? phone : '+91$phone',
+        phoneNumber: '$_dialCode${phone.replaceAll(RegExp(r'^\+'), '')}',
         verificationCompleted: (PhoneAuthCredential credential) async {
           await FirebaseAuth.instance.signInWithCredential(credential);
         },
@@ -340,7 +382,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _signInWithOTP() async {
     final otp = _otpController.text.trim();
-    if (otp.isEmpty || _verificationId == null) return;
+    if (otp.isEmpty || _verificationId == null || _isLoading) return;
 
     setState(() => _isLoading = true);
 
@@ -349,10 +391,19 @@ class _LoginScreenState extends State<LoginScreen> {
         verificationId: _verificationId!,
         smsCode: otp,
       );
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      final result = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = result.user;
+      if (user != null) {
+        final fullPhone = '$_dialCode${_phoneController.text.trim().replaceAll(RegExp(r'^\+'), '')}';
+        await Supabase.instance.client.from('profiles').upsert(
+          {'id': user.uid, 'phone': fullPhone},
+          onConflict: 'id',
+          ignoreDuplicates: false,
+        );
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Invalid OTP. Please try again.')),
         );
@@ -363,40 +414,72 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kCream,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 28.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const SizedBox(height: 50),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Background video (looping, muted)
+          if (_bgVideoController.value.isInitialized)
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _bgVideoController.value.size.width,
+                height: _bgVideoController.value.size.height,
+                child: VideoPlayer(_bgVideoController),
+              ),
+            )
+          else
+            Image.asset(
+              'assets/images/bg.png',
+              fit: BoxFit.cover,
+            ),
+          // Gradient overlay so the logo and text stay readable over the video
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.55),
+                  Colors.black.withValues(alpha: 0.35),
+                  Colors.black.withValues(alpha: 0.65),
+                ],
+                stops: const [0.0, 0.45, 1.0],
+              ),
+            ),
+          ),
+          // Content
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 28.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const SizedBox(height: 50),
 
-                        Hero(
-                          tag: 'app_logo',
-                          child: Image.asset(
-                            "assets/images/logo.png",
-                            height: 100,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                        const SizedBox(height: 40),
+                            Hero(
+                              tag: 'app_logo',
+                              child: Image.asset(
+                                "assets/images/bg_removed.png",
+                                height: 200,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            const SizedBox(height: 40),
 
-                        const Spacer(),
+                            const Spacer(),
 
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 400),
-                          switchInCurve: Curves.easeOutQuart,
-                          switchOutCurve: Curves.easeInQuart,
-                          transitionBuilder:
-                              (Widget child, Animation<double> animation) {
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 400),
+                              switchInCurve: Curves.easeOutQuart,
+                              switchOutCurve: Curves.easeInQuart,
+                              transitionBuilder: (Widget child, Animation<double> animation) {
                                 return FadeTransition(
                                   opacity: animation,
                                   child: SlideTransition(
@@ -408,21 +491,103 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 );
                               },
-                          child: _verificationId == null
-                              ? _buildPhoneInputState()
-                              : _buildOTPInputState(),
-                        ),
+                              child: _verificationId == null
+                                  ? _buildPhoneInputState()
+                                  : _buildOTPInputState(),
+                            ),
 
-                        const SizedBox(height: 40),
-                      ],
+                            const SizedBox(height: 40),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCountryPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kCream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      isScrollControlled: true,
+      builder: (_) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.85,
+          expand: false,
+          builder: (ctx, scrollController) {
+            return Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: kBone,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Text(
+                  'Select country',
+                  style: GoogleFonts.gabarito(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    color: kBlack,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: _countries.length,
+                    itemBuilder: (_, i) {
+                      final (flag, code, name) = _countries[i];
+                      final selected = code == _dialCode && flag == _countryFlag;
+                      return ListTile(
+                        leading: Text(flag, style: const TextStyle(fontSize: 26)),
+                        title: Text(
+                          name,
+                          style: GoogleFonts.figtree(
+                            color: kBlack,
+                            fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                          ),
+                        ),
+                        trailing: Text(
+                          code,
+                          style: GoogleFonts.figtree(
+                            color: selected ? kRose : kInkMuted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        tileColor: selected ? kRose.withValues(alpha: 0.06) : null,
+                        onTap: () {
+                          setState(() {
+                            _dialCode = code;
+                            _countryFlag = flag;
+                          });
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
             );
           },
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -433,36 +598,69 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         Container(
           decoration: BoxDecoration(
-            color: kParchment,
+            color: Colors.white.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: kInk.withOpacity(0.04),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              // Country code picker (no flag)
+              GestureDetector(
+                onTap: _showCountryPicker,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _dialCode,
+                        style: GoogleFonts.figtree(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.white70),
+                    ],
+                  ),
+                ),
+              ),
+              // Number field
+              Expanded(
+                child: TextField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  style: GoogleFonts.figtree(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Phone number',
+                    hintStyle: GoogleFonts.figtree(
+                      color: Colors.white54,
+                      fontSize: 15,
+                    ),
+                    filled: true,
+                    fillColor: Colors.transparent,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
               ),
             ],
-          ),
-          child: TextField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-            decoration: InputDecoration(
-              hintText: "Phone Number (e.g., +91...)",
-              hintStyle: const TextStyle(color: kInkMuted, fontSize: 16),
-              prefixIcon: const Icon(Icons.phone_outlined, color: kRose),
-              filled: true,
-              fillColor:
-                  Colors.transparent, // Let the container drive the color
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 24.0,
-                vertical: 20.0,
-              ),
-            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -505,61 +703,6 @@ class _LoginScreenState extends State<LoginScreen> {
             )
             .animate()
             .fade(duration: 400.ms, delay: 200.ms)
-            .slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
-
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 32.0),
-          child: Row(
-            children: [
-              Expanded(child: Divider(color: kBone)),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(
-                  "OR",
-                  style: TextStyle(
-                    color: kInkMuted,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-              Expanded(child: Divider(color: kBone)),
-            ],
-          ),
-        ),
-
-        SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: OutlinedButton.icon(
-                onPressed: _isLoading ? null : () => _signInWithGoogle(context),
-                icon: Image.network(
-                  "https://cdn-icons-png.flaticon.com/512/2991/2991148.png",
-                  height: 26,
-                ),
-                label: const Text(
-                  "Continue with Google",
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: kInk,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: kCream,
-                  elevation: 4,
-                  shadowColor: kInk.withOpacity(0.05),
-                  side: const BorderSide(color: Colors.transparent),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-              ),
-            )
-            .animate()
-            .fade(duration: 400.ms, delay: 300.ms)
-            .slideY(begin: 0.1, end: 0, curve: Curves.easeOutQuad),
       ],
     );
   }
@@ -569,43 +712,40 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       key: const ValueKey('otp_state'),
       children: [
-        Container(
-          decoration: BoxDecoration(
-            color: kParchment,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: kInk.withOpacity(0.04),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: TextField(
-            controller: _otpController,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            maxLength: 6,
-            style: const TextStyle(
-              fontSize: 28,
-              letterSpacing: 14.0,
-              fontWeight: FontWeight.bold,
-              color: kBlack,
+        AutofillGroup(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
             ),
-            decoration: InputDecoration(
-              counterText: "",
-              hintText: "------",
-              hintStyle: const TextStyle(letterSpacing: 14.0, color: kBone),
-              filled: true,
-              fillColor: Colors.transparent,
-              prefixIcon: const Icon(Icons.lock_outline, color: kRose),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-                borderSide: BorderSide.none,
+            child: TextField(
+              controller: _otpController,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              maxLength: 6,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              style: const TextStyle(
+                fontSize: 26,
+                letterSpacing: 14.0,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20.0,
-                vertical: 24.0,
+              decoration: InputDecoration(
+                counterText: "",
+                hintText: "------",
+                hintStyle: const TextStyle(letterSpacing: 14.0, color: Colors.white38),
+                filled: true,
+                fillColor: Colors.transparent,
+                prefixIcon: const Icon(Icons.lock_outline, color: Colors.white70),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20.0,
+                  vertical: 12.0,
+                ),
               ),
             ),
           ),
@@ -660,7 +800,7 @@ class _LoginScreenState extends State<LoginScreen> {
             });
           },
           style: TextButton.styleFrom(
-            foregroundColor: kInkMuted,
+            foregroundColor: Colors.white70,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
           child: const Text(

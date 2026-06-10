@@ -6,6 +6,18 @@ class MatchingService {
   final SupabaseClient _client = Supabase.instance.client;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  /// Mirrors the public columns exposed by `profile_discovery`, minus its
+  /// `is_paused` filter — used when displaying existing relationships
+  /// (likes received, saved profiles) where a paused account should still
+  /// be visible.
+  static const _profileColumns = '''
+    id, full_name, birthday, gender, intent, interests, foods, places,
+    photo_urls, prompts, created_at, sexual_orientation, pronouns,
+    ethnicity, height, religion, education, job_title, languages,
+    political_views, kids, star_sign, pets, drink, smoke, weed, location,
+    exercise, public_key, last_seen_at, custom_message
+  ''';
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  WALLET / INVENTORY
   // ═══════════════════════════════════════════════════════════════════════════
@@ -44,7 +56,7 @@ class MatchingService {
   }
 
   Future<Map<String, dynamic>> swipeLeft(String targetUserId) async {
-    return await _handleSwipeV2(targetUserId, 'pass');
+    return await _handleSwipeV2(targetUserId, 'dislike');
   }
 
   Future<Map<String, dynamic>> superLike(String targetUserId) async {
@@ -132,6 +144,11 @@ class MatchingService {
       });
 
       if (feedRows.isEmpty) return [];
+
+      // Sentinel: server signals CURATING_BATCH when < 3 candidates exist
+      if (feedRows.length == 1 && feedRows[0]['profile_id'] == null) {
+        return [{'__status': 'CURATING_BATCH'}];
+      }
 
       final List<String> orderedIds = feedRows
           .map((row) => row['profile_id'].toString())
@@ -262,10 +279,12 @@ class MatchingService {
 
       if (userIds.isEmpty) return [];
 
-      // 4. Get their profile details via the secure discovery view
+      // 4. Get their profile details. Use `profiles` directly (not
+      // `profile_discovery`) since a liker may be paused — pause status
+      // should hide them from the swiping feed, not from your inbox.
       final List<dynamic> profilesData = await _client
-          .from('profile_discovery')
-          .select()
+          .from('profiles')
+          .select(_profileColumns)
           .inFilter('id', userIds);
 
       // 5. Merge like type/message with profile data
@@ -333,15 +352,17 @@ class MatchingService {
       if (savedUserIds.isEmpty) return [];
 
       final profilesData = await _client
-          .from('profile_discovery')
-          .select()
+          .from('profiles')
+          .select(_profileColumns)
           .inFilter('id', savedUserIds);
 
-      // filter out ones we matched/liked since saving
+      // filter out ones we liked/disliked/super-liked since saving — but not
+      // the 'save' interaction itself, which is what got them onto this list.
       final interactedData = await _client
           .from('likes')
-          .select('target_user_id')
-          .eq('user_id', myId);
+          .select('target_user_id, type')
+          .eq('user_id', myId)
+          .neq('type', 'save');
       final interactedIds = (interactedData as List).map((e) => e['target_user_id'].toString()).toSet();
 
       final Map<String, dynamic> profilesMap = {

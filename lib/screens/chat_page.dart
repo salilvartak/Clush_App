@@ -21,6 +21,23 @@ import 'package:clush/services/stream_service.dart';
 import 'package:clush/theme/colors.dart';
 import 'package:clush/screens/profile_view_page.dart';
 
+// ─── Window-secure helper (Android only via MainActivity MethodChannel) ────────
+abstract final class _WindowSecure {
+  static const _channel = MethodChannel('com.clush.app/window_secure');
+
+  static Future<void> enable() async {
+    try {
+      await _channel.invokeMethod<void>('setSecure', {'secure': true});
+    } catch (_) {}
+  }
+
+  static Future<void> disable() async {
+    try {
+      await _channel.invokeMethod<void>('setSecure', {'secure': false});
+    } catch (_) {}
+  }
+}
+
 // ─── ChatCache — no-op stub kept for MatchesPage compatibility ────────────────
 class ChatCache {
   ChatCache._();
@@ -110,6 +127,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _WindowSecure.enable();
     WidgetsBinding.instance.addObserver(this);
     _roomId = _buildRoomId(widget.myId, widget.matchId);
     // Restore any saved draft
@@ -134,6 +152,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _drafts.remove(_roomId);
     }
 
+    _WindowSecure.disable();
     WidgetsBinding.instance.removeObserver(this);
     _msgSub?.cancel();
     _typingStartSub?.cancel();
@@ -376,8 +395,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'isMe': isMe,
       'isDeleted': isDeleted,
       'reply_to': message.quotedMessageId,
-      'vt': message.extraData['vt'] as int? ?? 0,
-      'view_count': message.ownReactions?.where((r) => r.type == 'viewed').length ?? 0,
+      'vt': (message.extraData['vt'] as num?)?.toInt() ?? 0,
+      // Total views across all users — reactionGroups is the authoritative count.
+      'view_count': message.reactionGroups?['viewed']?.count ?? 0,
     };
   }
 
@@ -1074,7 +1094,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildImageBubble(msg['data'] as String),
+          _buildImageBubble(msg['data'] as String, isMe),
           if (caption.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
@@ -1116,90 +1136,118 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildImageBubble(String storagePath) {
+  Widget _buildImageBubble(String storagePath, bool isMe) {
     _imageFutures[storagePath] ??= _downloadAndDecryptImage(storagePath);
     return FutureBuilder<Uint8List?>(
       future: _imageFutures[storagePath],
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return SizedBox(
-              width: 220,
-              height: 160,
-              child: Center(child: HeartLoader(size: 28)));
+          return const SizedBox(
+            width: 220,
+            height: 160,
+            child: Center(child: HeartLoader(size: 28)),
+          );
         }
         if (snap.data == null) {
           return const SizedBox(
-              width: 220,
-              height: 80,
-              child: Center(child: Icon(Icons.broken_image_rounded, color: kInkMuted)));
+            width: 220,
+            height: 80,
+            child: Center(child: Icon(Icons.broken_image_rounded, color: kInkMuted)),
+          );
         }
 
-        final msgId = _messages.firstWhere((m) => m['data'] == storagePath, orElse: () => {})['id'] as String?;
-        final vt = _messages.firstWhere((m) => m['id'] == msgId, orElse: () => {})['vt'] as int? ?? 0;
-        final views = _messages.firstWhere((m) => m['id'] == msgId, orElse: () => {})['view_count'] as int? ?? 0;
+        // Single pass — avoids triple iteration and possible index mismatch.
+        final msgData = _messages.firstWhere(
+          (m) => m['data'] == storagePath,
+          orElse: () => {},
+        );
+        final msgId = msgData['id'] as String?;
+        final vt = (msgData['vt'] as num?)?.toInt() ?? 0;
+        final views = (msgData['view_count'] as num?)?.toInt() ?? 0;
         final isExpired = vt > 0 && views >= vt;
 
+        // Colours adapt to bubble background: sender = wine → white text,
+        // receiver = white → kRose/kInkMuted text.
+        final labelColor     = isMe ? Colors.white : kInk;
+        final subColor       = isMe ? Colors.white.withValues(alpha: 0.65) : kInkMuted;
+        final ringColor      = isMe ? Colors.white : kRose;
+        final ringBackground = isMe ? Colors.white.withValues(alpha: 0.25) : kBone;
+
+        // Expired: compact inline row — same visual weight as the un-viewed state.
         if (isExpired) {
-          return Container(
-            width: 220,
-            height: 160,
-            decoration: BoxDecoration(
-              color: kBone,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.visibility_off_rounded, color: kInkMuted, size: 32),
-                const SizedBox(height: 8),
-                Text('Image expired', style: GoogleFonts.figtree(color: kInkMuted, fontSize: 13)),
+                Icon(Icons.visibility_off_rounded, color: subColor, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Photo expired',
+                  style: GoogleFonts.figtree(
+                    color: subColor,
+                    fontSize: 14,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
               ],
             ),
           );
         }
 
-        // View-once / view-twice: show compact "Photo" row instead of the image
+        // View-once / view-twice: compact tap-to-view row (never shows image inline).
         if (vt > 0) {
+          final viewsLeft = vt - views;
           return GestureDetector(
-            onTap: () => _openFullImage(snap.data!, msgId, vt),
+            onTap: () {
+              if (msgId != null) _openFullImage(snap.data!, msgId, vt);
+            },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Circular timer badge
                   SizedBox(
                     width: 36,
                     height: 36,
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: CircularProgressIndicator(
-                            value: 1.0,
-                            strokeWidth: 2.5,
-                            color: kInkMuted,
-                          ),
+                        CircularProgressIndicator(
+                          value: viewsLeft / vt,
+                          strokeWidth: 2.5,
+                          color: ringColor,
+                          backgroundColor: ringBackground,
                         ),
                         Text(
-                          vt == 1 ? '1' : '${vt - views}',
+                          '$viewsLeft',
                           style: GoogleFonts.figtree(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
+                            color: labelColor,
                           ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(
-                    'Photo',
-                    style: GoogleFonts.figtree(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Photo',
+                        style: GoogleFonts.figtree(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: labelColor,
+                        ),
+                      ),
+                      Text(
+                        vt == 1 ? 'View once' : 'View $vt times',
+                        style: GoogleFonts.figtree(fontSize: 11, color: subColor),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1207,6 +1255,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           );
         }
 
+        // Normal image — full display.
         return GestureDetector(
           onTap: () => _openFullImage(snap.data!, msgId, vt),
           child: ClipRRect(
@@ -1216,7 +1265,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               width: 220,
               height: 220,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
+              errorBuilder: (_, __, ___) => Container(
                 width: 220,
                 height: 220,
                 color: kBone,

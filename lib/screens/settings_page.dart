@@ -9,7 +9,6 @@ import 'package:clush/l10n/app_localizations.dart';
 import 'package:clush/services/language_service.dart';
 import 'package:clush/screens/setting_sub_pages.dart';
 import 'package:clush/screens/edit_profile_page.dart';
-import 'package:clush/main.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -24,7 +23,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String? _userPhone;
   String? _userEmail;
-  Map<String, dynamic>? _userLocation;
+  String? _userLocation;
   Map<String, dynamic>? _fullProfileData;
   bool _isLoadingProfile = true;
 
@@ -114,10 +113,9 @@ class _SettingsPageState extends State<SettingsPage> {
     if (confirmed == true) {
       await _auth.signOut();
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const AuraApp()),
-          (route) => false,
-        );
+        // AuthWrapper listens to authStateChanges() and will rebuild into
+        // LoginScreen automatically — just pop back to the root so it's visible.
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     }
   }
@@ -268,7 +266,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(width: 8),
           Text(AppLocalizations.of(context)?.settings ?? "Settings",
-              style: GoogleFonts.gabarito(fontSize: 24, fontWeight: FontWeight.bold, color: kRose)),
+              style: GoogleFonts.gabarito(fontSize: 24, fontWeight: FontWeight.bold, color: kBlack)),
         ],
       ),
     );
@@ -278,7 +276,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Padding(
       padding: const EdgeInsets.only(top: 32, bottom: 12, left: 4),
       child: Text(label.toUpperCase(),
-          style: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.bold, color: kRose, letterSpacing: 1.2)),
+          style: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.bold, color: kAccent, letterSpacing: 1.2)),
     );
   }
 
@@ -295,10 +293,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _tile({required IconData icon, required String title, String? subtitle, Widget? trailing, VoidCallback? onTap, bool isExternal = false}) {
     return ListTile(
-      leading: Icon(icon, color: kRose, size: 22),
-      title: Text(title, style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.w500, color: kRose)),
-      subtitle: subtitle != null ? Text(subtitle, style: GoogleFonts.figtree(fontSize: 13, color: kBlack)) : null,
-      trailing: trailing ?? (isExternal ? const Icon(Icons.open_in_new_rounded, size: 16, color: kRose) : const Icon(Icons.chevron_right_rounded, color: kRose)),
+      leading: Icon(icon, color: kAccent, size: 22),
+      title: Text(title, style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.w500, color: kBlack)),
+      subtitle: subtitle != null ? Text(subtitle, style: GoogleFonts.figtree(fontSize: 13, color: kInkMuted)) : null,
+      trailing: trailing ?? (isExternal ? const Icon(Icons.open_in_new_rounded, size: 16, color: kInkMuted) : const Icon(Icons.chevron_right_rounded, color: kInkMuted)),
       onTap: onTap,
     );
   }
@@ -328,12 +326,13 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  String _formatLocation(Map<String, dynamic>? loc) {
-    if (loc == null) return "";
-    final city = loc['city'];
-    final state = loc['state'];
-    if (city != null && state != null) return "$city, $state";
-    return loc['address'] ?? "";
+  String _formatLocation(String? loc) {
+    if (loc == null || loc.isEmpty) return "";
+    if (loc.contains("(")) {
+      final address = loc.split("(")[0].trim();
+      return address.split(',').take(2).join(',').trim();
+    }
+    return loc;
   }
 
   void _handleEditProfile() {

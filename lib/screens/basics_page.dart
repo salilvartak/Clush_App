@@ -1,5 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -10,7 +13,7 @@ import 'package:clush/services/profile_store.dart';
 import 'package:clush/services/image_validation_service.dart';
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/services/content_moderator.dart';
-import 'package:clush/screens/success_screen.dart';
+import 'package:clush/main.dart';
 import 'package:clush/screens/permission_request_page.dart';
 import 'package:clush/services/notification_service.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
@@ -47,7 +50,7 @@ class _BasicsPageState extends State<BasicsPage> {
   final ImageValidationService _validationService = ImageValidationService();
   
   // Total steps
-  final int _totalQuestionScreens = 26;
+  final int _totalQuestionScreens = 27;
 
   // --- Controllers (Text) ---
   final TextEditingController nameController = TextEditingController();
@@ -58,6 +61,47 @@ class _BasicsPageState extends State<BasicsPage> {
 
   // Whether the user authenticated via phone (true) or email (false)
   bool _loggedInWithPhone = false;
+
+  // Country code for the phone recovery field
+  String _contactDialCode = '+91';
+  String _contactCountryFlag = '🇮🇳';
+
+  static const List<(String, String, String)> _countries = [
+    ('🇮🇳', '+91',  'India'),
+    ('🇺🇸', '+1',   'United States'),
+    ('🇨🇦', '+1',   'Canada'),
+    ('🇬🇧', '+44',  'United Kingdom'),
+    ('🇦🇺', '+61',  'Australia'),
+    ('🇦🇪', '+971', 'UAE'),
+    ('🇸🇬', '+65',  'Singapore'),
+    ('🇳🇿', '+64',  'New Zealand'),
+    ('🇿🇦', '+27',  'South Africa'),
+    ('🇩🇪', '+49',  'Germany'),
+    ('🇫🇷', '+33',  'France'),
+    ('🇮🇹', '+39',  'Italy'),
+    ('🇳🇱', '+31',  'Netherlands'),
+    ('🇸🇪', '+46',  'Sweden'),
+    ('🇧🇷', '+55',  'Brazil'),
+    ('🇲🇽', '+52',  'Mexico'),
+    ('🇯🇵', '+81',  'Japan'),
+    ('🇨🇳', '+86',  'China'),
+    ('🇰🇷', '+82',  'South Korea'),
+    ('🇵🇭', '+63',  'Philippines'),
+    ('🇲🇾', '+60',  'Malaysia'),
+    ('🇮🇩', '+62',  'Indonesia'),
+    ('🇧🇩', '+880', 'Bangladesh'),
+    ('🇵🇰', '+92',  'Pakistan'),
+    ('🇳🇬', '+234', 'Nigeria'),
+    ('🇰🇪', '+254', 'Kenya'),
+    ('🇬🇭', '+233', 'Ghana'),
+    ('🇸🇦', '+966', 'Saudi Arabia'),
+    ('🇶🇦', '+974', 'Qatar'),
+    ('🇧🇭', '+973', 'Bahrain'),
+    ('🇴🇲', '+968', 'Oman'),
+    ('🇮🇱', '+972', 'Israel'),
+    ('🇬🇷', '+30',  'Greece'),
+    ('🇵🇱', '+48',  'Poland'),
+  ];
 
   // --- State Variables (Basics) ---
   int? selectedAge; 
@@ -88,7 +132,12 @@ class _BasicsPageState extends State<BasicsPage> {
   final MapController _mapController = MapController();
   LatLng _currentMapCenter = const LatLng(40.7128, -74.0060); // Default to NY
   bool _isMapLoading = false;
+  Timer? _geocodeDebounce;
   final TextEditingController _mapSearchController = TextEditingController();
+  final FocusNode _mapSearchFocus = FocusNode();
+  Timer? _suggestDebounce;
+  List<Map<String, dynamic>> _placeSuggestions = [];
+  bool _isSuggesting = false;
 
   // --- State Variables (New Sections) ---
   String? selectedIntent;
@@ -151,12 +200,75 @@ class _BasicsPageState extends State<BasicsPage> {
     _validationService.initialize();
     final user = FirebaseAuth.instance.currentUser;
     _loggedInWithPhone = user?.phoneNumber != null && user!.phoneNumber!.isNotEmpty;
+    if (location == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reverseGeocodeCenter());
+    }
+    _mapSearchController.addListener(_onMapSearchChanged);
+    _mapSearchFocus.addListener(() {
+      if (!_mapSearchFocus.hasFocus) setState(() => _placeSuggestions = []);
+    });
   }
 
   @override
   void dispose() {
+    _geocodeDebounce?.cancel();
+    _suggestDebounce?.cancel();
+    _mapSearchController.removeListener(_onMapSearchChanged);
+    _mapSearchController.dispose();
+    _mapSearchFocus.dispose();
     _validationService.dispose();
     super.dispose();
+  }
+
+  void _onMapSearchChanged() {
+    final query = _mapSearchController.text.trim();
+    _suggestDebounce?.cancel();
+    if (query.length < 3) {
+      setState(() => _placeSuggestions = []);
+      return;
+    }
+    _suggestDebounce = Timer(const Duration(milliseconds: 400), () => _fetchPlaceSuggestions(query));
+  }
+
+  Future<void> _fetchPlaceSuggestions(String query) async {
+    setState(() => _isSuggesting = true);
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'q': query,
+        'format': 'json',
+        'addressdetails': '1',
+        'limit': '5',
+      });
+      final response = await http.get(uri, headers: {'User-Agent': 'com.clush.app'});
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final List<dynamic> results = jsonDecode(response.body);
+        setState(() {
+          _placeSuggestions = results.cast<Map<String, dynamic>>();
+          _isSuggesting = false;
+        });
+      } else {
+        setState(() => _isSuggesting = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isSuggesting = false);
+      debugPrint("Place Suggestion Error: $e");
+    }
+  }
+
+  void _selectPlaceSuggestion(Map<String, dynamic> suggestion) {
+    final lat = double.tryParse(suggestion['lat']?.toString() ?? '');
+    final lon = double.tryParse(suggestion['lon']?.toString() ?? '');
+    if (lat == null || lon == null) return;
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _placeSuggestions = [];
+      _mapSearchController.text = suggestion['display_name']?.toString() ?? '';
+      _currentMapCenter = LatLng(lat, lon);
+    });
+    _mapController.move(_currentMapCenter, 13.0);
+    _scheduleReverseGeocode();
   }
 
   void _generateHeightOptions() {
@@ -223,6 +335,12 @@ class _BasicsPageState extends State<BasicsPage> {
     smokeStatus = store.smoke;
     weedStatus = store.weed;
     location = store.location;
+    if (location != null && location!.contains('(') && location!.contains(',')) {
+      try {
+        final coords = location!.split('(')[1].split(')')[0].split(',');
+        _currentMapCenter = LatLng(double.parse(coords[0]), double.parse(coords[1]));
+      } catch (_) {}
+    }
     selectedIntent = store.intent;
     if (store.customMessage != null) {
       _customMessageController.text = store.customMessage!;
@@ -292,21 +410,12 @@ class _BasicsPageState extends State<BasicsPage> {
       case 1:
         final val = _contactController.text.trim();
         if (val.isEmpty) {
-          _showNotification(_loggedInWithPhone ? 'Please enter your email address' : 'Please enter your phone number');
+          _showNotification('Please enter your email address');
           return false;
         }
-        if (_loggedInWithPhone) {
-          // asking for email — basic format check
-          if (!val.contains('@') || !val.contains('.')) {
-            _showNotification('Please enter a valid email address');
-            return false;
-          }
-        } else {
-          // asking for phone — must be digits only, 7–15 chars
-          if (!RegExp(r'^\+?[\d\s\-]{7,15}$').hasMatch(val)) {
-            _showNotification('Please enter a valid phone number');
-            return false;
-          }
+        if (!val.contains('@') || !val.contains('.')) {
+          _showNotification('Please enter a valid email address');
+          return false;
         }
         return true;
       case 2: return selectedAge != null;
@@ -333,11 +442,22 @@ class _BasicsPageState extends State<BasicsPage> {
       case 17: return true;
       case 18: return true;
       case 19: return selectedIntent != null;
-      case 20: return selectedInterests.isNotEmpty;
-      case 21: return selectedFoods.isNotEmpty;
-      case 22: return selectedPlaces.isNotEmpty;
-      case 23: return _photos.where((p) => p != null).length >= 2;
+      case 20: return true; // Personal message optional
+      case 21: return selectedInterests.isNotEmpty;
+      case 22: return selectedFoods.isNotEmpty;
+      case 23: return selectedPlaces.isNotEmpty;
       case 24:
+        final photoCount = _photos.where((p) => p != null).length;
+        if (photoCount < 2) {
+          _showNotification(
+            photoCount == 0
+                ? 'Please add at least 2 photos to continue.'
+                : 'You have $photoCount photo. Please add at least 1 more to continue.',
+          );
+          return false;
+        }
+        return true;
+      case 25:
         for (var slot in _promptSlots) {
           if (slot != null) {
             final promptError = ContentModerator.validatePromptText(slot['answer']);
@@ -345,7 +465,7 @@ class _BasicsPageState extends State<BasicsPage> {
           }
         }
         return _promptSlots.every((slot) => slot != null);
-      case 25: return true; // Permissions step
+      case 26: return true; // Permissions step
     }
     return true;
   }
@@ -469,18 +589,20 @@ class _BasicsPageState extends State<BasicsPage> {
         'places': store.places,
         'photo_urls': photoUrls,
         'prompts': _promptSlots,
-        'is_verified': false,
+        'verification_status': null,
+        'verification_score': 0,
         'created_at': DateTime.now().toIso8601String(),
         if (_contactController.text.trim().isNotEmpty)
-          (_loggedInWithPhone ? 'email' : 'phone'): _contactController.text.trim(),
+          'email': _contactController.text.trim(),
       };
 
       await supabase.from('profiles').upsert(profileData);
 
       if (mounted) {
         store.clear();
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const SuccessScreen()), 
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AuthWrapper()),
+          (route) => false,
         );
       }
     } catch (e) {
@@ -650,51 +772,56 @@ class _BasicsPageState extends State<BasicsPage> {
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
       _currentMapCenter = LatLng(position.latitude, position.longitude);
       _mapController.move(_currentMapCenter, 13.0);
+      _scheduleReverseGeocode();
     } catch (e) {
       debugPrint("Location Error: $e");
       _showNotification("Could not fetch location.");
     }
   }
 
-  Future<void> _confirmMapLocation() async {
+  // Debounce reverse-geocoding so it only fires once the map settles.
+  void _scheduleReverseGeocode() {
+    _geocodeDebounce?.cancel();
+    _geocodeDebounce = Timer(const Duration(milliseconds: 600), _reverseGeocodeCenter);
+  }
+
+  Future<void> _reverseGeocodeCenter() async {
+    final target = _currentMapCenter;
     setState(() => _isMapLoading = true);
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(_currentMapCenter.latitude, _currentMapCenter.longitude);
-      
+      List<Placemark> placemarks = await placemarkFromCoordinates(target.latitude, target.longitude);
+
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
         // Format: "Locality, City, State(Lat,Lng)"
         String area = place.subLocality ?? place.thoroughfare ?? "";
         String city = place.locality ?? place.subAdministrativeArea ?? "";
         String state = place.administrativeArea ?? "";
-        
+
         // Construct visual portion (Area, City)
         List<String> displayParts = [];
         if (area.isNotEmpty) displayParts.add(area);
         if (city.isNotEmpty && city != area) displayParts.add(city);
         if (displayParts.isEmpty && state.isNotEmpty) displayParts.add(state);
-        
+
         String displayString = displayParts.join(", ");
         if (displayString.isEmpty) displayString = "Selected Location";
-        
+
         // Exact location format representing "displayString, state(lat,lng)"
-        String exactLocation = "$displayString, $state(${_currentMapCenter.latitude},${_currentMapCenter.longitude})";
-        
-        setState(() {
-          location = exactLocation;
-          _isMapLoading = false;
-        });
-        
-        // Just unfocus keyboard, user must press continue
-        FocusManager.instance.primaryFocus?.unfocus();
-      } else {
+        String exactLocation = "$displayString, $state(${target.latitude},${target.longitude})";
+
+        if (mounted) {
+          setState(() {
+            location = exactLocation;
+            _isMapLoading = false;
+          });
+        }
+      } else if (mounted) {
         setState(() => _isMapLoading = false);
-        _showNotification("Could not identify location name.");
       }
     } catch (e) {
-      setState(() => _isMapLoading = false);
-      debugPrint("Confirm Location Error: $e");
-      _showNotification("Failed to lock location.");
+      if (mounted) setState(() => _isMapLoading = false);
+      debugPrint("Reverse Geocode Error: $e");
     }
   }
 
@@ -709,6 +836,7 @@ class _BasicsPageState extends State<BasicsPage> {
           _currentMapCenter = LatLng(loc.latitude, loc.longitude);
         });
         _mapController.move(_currentMapCenter, 13.0);
+        _scheduleReverseGeocode();
       } else {
         _showNotification("Location not found.");
       }
@@ -725,10 +853,7 @@ class _BasicsPageState extends State<BasicsPage> {
     return loc;
   }
 
-  // --- Discovery Tracking & Custom Data ---
-  int _getTotalDiscoverySelections() {
-    return selectedInterests.length + selectedFoods.length + selectedPlaces.length;
-  }
+  static const int _kDiscoveryLimit = 5;
 
   void _showAddCustomOptionDialog(String title, List<String> currentSelections, Function(String) onAdded) {
     TextEditingController customCtrl = TextEditingController();
@@ -832,6 +957,7 @@ class _BasicsPageState extends State<BasicsPage> {
                   _buildChipStep("Do you exercise?", exerciseOptions, selectedExercise, (val) => setState(() => selectedExercise = val)),
                   _buildSocialHabitsStep(),
                   _buildIntentStep(),
+                  _buildPersonalMessageStep(),
                   _buildDiscoveryStep("Interests & Hobbies", interestOptions, selectedInterests),
                   _buildDiscoveryStep("Favorite Foods", foodOptions, selectedFoods),
                   _buildDiscoveryStep("Favorite Places", placeOptions, selectedPlaces),
@@ -863,7 +989,7 @@ class _BasicsPageState extends State<BasicsPage> {
                     ),
                   ),
                   // Optional Skip Button for specific screens
-                  if ([9, 10, 11, 12, 13, 14, 15, 16, 17, 18].contains(_currentQuestionIndex)) ...[
+                  if ([9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20].contains(_currentQuestionIndex)) ...[
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: () {
@@ -878,6 +1004,7 @@ class _BasicsPageState extends State<BasicsPage> {
                         else if (_currentQuestionIndex == 16) { selectedPets = null; }
                         else if (_currentQuestionIndex == 17) { selectedExercise = null; }
                         else if (_currentQuestionIndex == 18) { drinkStatus = null; smokeStatus = null; weedStatus = null; }
+                        else if (_currentQuestionIndex == 20) { _customMessageController.clear(); customMessage = null; }
                         });
                         // Skip validation and force next page
                         if (_currentQuestionIndex < _totalQuestionScreens - 1) {
@@ -917,6 +1044,75 @@ class _BasicsPageState extends State<BasicsPage> {
     );
   }
 
+  void _showContactCountryPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kCream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (ctx, scrollController) => Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(color: kBone, borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Select country',
+              style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 20, color: kBlack),
+            ),
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: _countries.length,
+                itemBuilder: (_, i) {
+                  final (flag, code, name) = _countries[i];
+                  final selected = code == _contactDialCode && flag == _contactCountryFlag;
+                  return ListTile(
+                    leading: Text(flag, style: const TextStyle(fontSize: 26)),
+                    title: Text(
+                      name,
+                      style: GoogleFonts.figtree(
+                        color: kBlack,
+                        fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                      ),
+                    ),
+                    trailing: Text(
+                      code,
+                      style: GoogleFonts.figtree(
+                        color: selected ? kRose : kInkMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tileColor: selected ? kRose.withValues(alpha: 0.06) : null,
+                    onTap: () {
+                      setState(() {
+                        _contactDialCode = code;
+                        _contactCountryFlag = flag;
+                      });
+                      Navigator.pop(ctx);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildContactStep() {
     final isPhone = _loggedInWithPhone;
     return _buildStepContainer(
@@ -931,22 +1127,94 @@ class _BasicsPageState extends State<BasicsPage> {
             style: GoogleFonts.figtree(fontSize: 15, color: kInkMuted, height: 1.5),
           ),
           const SizedBox(height: 20),
-          TextField(
-            controller: _contactController,
-            keyboardType: isPhone ? TextInputType.emailAddress : TextInputType.phone,
-            style: GoogleFonts.figtree(fontSize: 20, color: kBlack),
-            decoration: InputDecoration(
-              hintText: isPhone ? "your@email.com" : "+1 234 567 8900",
-              prefixIcon: Icon(
-                isPhone ? Icons.email_outlined : Icons.phone_outlined,
-                color: kRose,
+          if (isPhone)
+            // Email field — unchanged
+            TextField(
+              controller: _contactController,
+              keyboardType: TextInputType.emailAddress,
+              style: GoogleFonts.figtree(fontSize: 20, color: kBlack),
+              decoration: InputDecoration(
+                hintText: 'your@email.com',
+                hintStyle: GoogleFonts.figtree(
+                  color: kInkMuted.withValues(alpha: 0.4),
+                  fontSize: 16,
+                ),
+                prefixIcon: const Icon(Icons.email_outlined, color: kRose),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.all(20),
               ),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.all(20),
+            )
+          else
+            // Phone field with country code picker
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: kInk.withValues(alpha: 0.04),
+                    blurRadius: 20,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: _showContactCountryPicker,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                      decoration: BoxDecoration(
+                        border: Border(right: BorderSide(color: kBone)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_contactCountryFlag, style: const TextStyle(fontSize: 22)),
+                          const SizedBox(width: 6),
+                          Text(
+                            _contactDialCode,
+                            style: GoogleFonts.figtree(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: kBlack,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: kInkMuted),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _contactController,
+                      keyboardType: TextInputType.phone,
+                      style: GoogleFonts.figtree(fontSize: 17, fontWeight: FontWeight.w500, color: kBlack),
+                      decoration: InputDecoration(
+                        hintText: 'Phone number',
+                        hintStyle: GoogleFonts.figtree(
+                          color: kInkMuted.withValues(alpha: 0.4),
+                          fontSize: 16,
+                        ),
+                        filled: true,
+                        fillColor: Colors.transparent,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -999,7 +1267,7 @@ class _BasicsPageState extends State<BasicsPage> {
                     fontSize: 16,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.w500
                   ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: kRose.withValues(alpha: isSelected ? 1.0 : 0.28), width: isSelected ? 1.5 : 1.0)),
                   onSelected: (val) => setState(() => selectedEducationLevel = level),
                 );
               }).toList(),
@@ -1147,7 +1415,7 @@ class _BasicsPageState extends State<BasicsPage> {
               showCheckmark: false,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               labelStyle: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: kRose.withValues(alpha: isSelected ? 1.0 : 0.28), width: isSelected ? 1.5 : 1.0)),
               onSelected: (selected) { if (selected) onSelect(option); },
             );
           }).toList(),
@@ -1174,7 +1442,7 @@ class _BasicsPageState extends State<BasicsPage> {
                 showCheckmark: false,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 labelStyle: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: kRose.withValues(alpha: isSelected ? 1.0 : 0.28), width: isSelected ? 1.5 : 1.0)),
                 onSelected: (_) => onToggle(option),
               );
             }),
@@ -1205,23 +1473,67 @@ class _BasicsPageState extends State<BasicsPage> {
       title: "Where are you located?",
       child: Column(
         children: [
-          // Search Bar
-          TextField(
-            controller: _mapSearchController,
-            style: GoogleFonts.figtree(color: kBlack),
-            onSubmitted: _searchMapLocation,
-            decoration: InputDecoration(
-              hintText: "Search a city...",
-              hintStyle: GoogleFonts.figtree(color: kInkMuted),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.search, color: kRose),
-                onPressed: () => _searchMapLocation(_mapSearchController.text),
+          // Search Bar with autocomplete suggestions
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              TextField(
+                controller: _mapSearchController,
+                focusNode: _mapSearchFocus,
+                style: GoogleFonts.figtree(color: kBlack),
+                onSubmitted: _searchMapLocation,
+                decoration: InputDecoration(
+                  hintText: "Search a city...",
+                  hintStyle: GoogleFonts.figtree(color: kInkMuted),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.search, color: kRose),
+                    onPressed: () => _searchMapLocation(_mapSearchController.text),
+                  ),
+                ),
               ),
-            ),
+              if (_mapSearchFocus.hasFocus && (_isSuggesting || _placeSuggestions.isNotEmpty))
+                Positioned(
+                  top: 56,
+                  left: 0,
+                  right: 0,
+                  child: Material(
+                    elevation: 6,
+                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.white,
+                    child: _isSuggesting
+                        ? const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(child: HeartLoader(size: 22)),
+                          )
+                        : ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 240),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: _placeSuggestions.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (context, i) {
+                                final s = _placeSuggestions[i];
+                                return ListTile(
+                                  leading: const Icon(Icons.place_outlined, color: kRose, size: 20),
+                                  title: Text(
+                                    s['display_name']?.toString() ?? '',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.figtree(color: kBlack, fontSize: 14, fontWeight: FontWeight.w500),
+                                  ),
+                                  onTap: () => _selectPlaceSuggestion(s),
+                                );
+                              },
+                            ),
+                          ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 16),
           // Interactive Map Area
@@ -1239,12 +1551,14 @@ class _BasicsPageState extends State<BasicsPage> {
                       onPositionChanged: (position, hasGesture) {
                         if (hasGesture) {
                           _currentMapCenter = position.center;
+                          _scheduleReverseGeocode();
                         }
                       },
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                        subdomains: const ['a', 'b', 'c', 'd'],
                         userAgentPackageName: 'com.clush.app',
                       ),
                       RichAttributionWidget(
@@ -1252,6 +1566,10 @@ class _BasicsPageState extends State<BasicsPage> {
                           TextSourceAttribution(
                             'OpenStreetMap contributors',
                             onTap: () => launchUrl(Uri.parse('https://openstreetmap.org/copyright')),
+                          ),
+                          TextSourceAttribution(
+                            'CARTO',
+                            onTap: () => launchUrl(Uri.parse('https://carto.com/attributions')),
                           ),
                         ],
                       ),
@@ -1278,26 +1596,28 @@ class _BasicsPageState extends State<BasicsPage> {
             ),
           ),
           const SizedBox(height: 16),
-          // Confirm Pin Button
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: kRose, width: 2),
-                backgroundColor: kCream,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          // Live detected location — updates automatically as the pin moves
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_isMapLoading) ...[
+                const HeartLoader(size: 18),
+                const SizedBox(width: 10),
+              ] else
+                const Icon(Icons.location_on, color: kRose, size: 18),
+              if (!_isMapLoading) const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  _isMapLoading
+                      ? "Detecting location..."
+                      : (location != null ? _getDisplayLocation(location!) : "Move the map to set your location"),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.figtree(color: kInkMuted, fontSize: 14, fontWeight: FontWeight.w600),
+                ),
               ),
-              onPressed: _isMapLoading ? null : _confirmMapLocation,
-              child: _isMapLoading 
-                ? const HeartLoader(size: 24)
-                : Text("Confirm Pin Location", style: GoogleFonts.figtree(color: kRose, fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
+            ],
           ),
-          if (location != null) ...[
-             const SizedBox(height: 16),
-             Text("Currently: ${_getDisplayLocation(location!)}", style: GoogleFonts.figtree(color: kInkMuted, fontSize: 14)),
-          ]
         ],
       ),
     );
@@ -1315,7 +1635,7 @@ class _BasicsPageState extends State<BasicsPage> {
             const SizedBox(height: 24),
             _buildHabitRow("Do you smoke?", smokeStatus, (val) => setState(() => smokeStatus = val)),
             const SizedBox(height: 24),
-            _buildHabitRow("Weed?", weedStatus, (val) => setState(() => weedStatus = val)),
+            _buildHabitRow("Cannabis?", weedStatus, (val) => setState(() => weedStatus = val)),
           ],
         ),
       ),
@@ -1338,7 +1658,7 @@ class _BasicsPageState extends State<BasicsPage> {
             showCheckmark: false,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             labelStyle: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: kRose.withValues(alpha: isSelected ? 1.0 : 0.28), width: isSelected ? 1.5 : 1.0)),
             onSelected: (val) => onSelect(opt),
           );
         }).toList()),
@@ -1346,86 +1666,110 @@ class _BasicsPageState extends State<BasicsPage> {
     );
   }
 
-  // --- Intent & Discovery (Kept Same) ---
+  // --- Intent ---
   Widget _buildIntentStep() {
     return _buildStepContainer(
       title: "What are you looking for?",
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView.separated(
-              itemCount: intentOptions.length,
-              separatorBuilder: (c, i) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final item = intentOptions[index];
-                final title = item['title']!;
-                final isSelected = selectedIntent == title;
-                return GestureDetector(
-                  onTap: () => setState(() => selectedIntent = title),
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: isSelected ? kRose : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: isSelected ? kRose : Colors.transparent),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(title, style: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontWeight: FontWeight.bold, fontSize: 16)),
-                              Text(item['subtitle']!, style: GoogleFonts.figtree(color: isSelected ? Colors.white70 : kInkMuted)),
-                            ],
-                          ),
-                        ),
-                      ],
+      child: GridView.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.15,
+        ),
+        itemCount: intentOptions.length,
+        itemBuilder: (context, index) {
+          final item = intentOptions[index];
+          final title = item['title']!;
+          final isSelected = selectedIntent == title;
+          return GestureDetector(
+            onTap: () => setState(() => selectedIntent = title),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isSelected ? kRose : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected ? kRose : kBone,
+                  width: isSelected ? 1.5 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [BoxShadow(color: kRose.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))]
+                    : [],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.figtree(
+                      color: isSelected ? Colors.white : kBlack,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      height: 1.2,
                     ),
                   ),
-                );
-              },
+                  const SizedBox(height: 6),
+                  Text(
+                    item['subtitle']!,
+                    style: GoogleFonts.figtree(
+                      color: isSelected ? Colors.white.withValues(alpha: 0.75) : kInkMuted,
+                      fontSize: 12,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
             ),
+          );
+        },
+      ),
+    );
+  }
+
+  // --- Personal Message (full screen) ---
+  Widget _buildPersonalMessageStep() {
+    return _buildStepContainer(
+      title: "In your own words,\nwhat are you looking for?",
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Optional — this appears on your profile and gives matches a glimpse of your intentions.",
+            style: GoogleFonts.figtree(fontSize: 15, color: kInkMuted, height: 1.5),
           ),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Add a personal message",
-                  style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.bold, color: kBlack),
+          const SizedBox(height: 24),
+          Expanded(
+            child: TextField(
+              controller: _customMessageController,
+              maxLines: null,
+              expands: true,
+              maxLength: 300,
+              textAlignVertical: TextAlignVertical.top,
+              style: GoogleFonts.figtree(fontSize: 16, color: kBlack, height: 1.6),
+              decoration: InputDecoration(
+                hintText: "e.g. I'm looking for someone I can grow with, someone who values deep connection and isn't afraid to be vulnerable...",
+                hintStyle: GoogleFonts.figtree(color: kInkMuted.withValues(alpha: 0.6), fontSize: 15, height: 1.6),
+                filled: true,
+                fillColor: Colors.white,
+                counterStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 12),
+                contentPadding: const EdgeInsets.all(20),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide(color: kBone),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  "Write a short intro about yourself — optional.",
-                  style: GoogleFonts.figtree(fontSize: 14, color: kInkMuted),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide(color: kBone),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _customMessageController,
-                  maxLines: 3,
-                  maxLength: 200,
-                  style: GoogleFonts.figtree(fontSize: 15, color: kBlack),
-                  decoration: InputDecoration(
-                    hintText: "e.g. I love hiking and deep conversations...",
-                    hintStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 14),
-                    filled: true,
-                    fillColor: Colors.white,
-                    counterStyle: GoogleFonts.figtree(color: kInkMuted, fontSize: 11),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: BorderSide(color: kBone),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: BorderSide(color: kBone),
-                    ),
-                  ),
-                  onChanged: (v) => setState(() => customMessage = v.trim().isEmpty ? null : v.trim()),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide(color: kRose.withValues(alpha: 0.5), width: 1.5),
                 ),
-              ],
+              ),
+              onChanged: (v) => setState(() => customMessage = v.trim().isEmpty ? null : v.trim()),
             ),
           ),
         ],
@@ -1434,109 +1778,272 @@ class _BasicsPageState extends State<BasicsPage> {
   }
 
   Widget _buildDiscoveryStep(String title, List<String> options, List<String> selectionList) {
+    final count = selectionList.length;
+    final atLimit = count >= _kDiscoveryLimit;
     return _buildStepContainer(
       title: title,
-      child: SingleChildScrollView(
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 10,
-          children: [
-            ...options.map((option) {
-              final isSelected = selectionList.contains(option);
-              return FilterChip(
-                label: Text(option),
-                selected: isSelected,
-                selectedColor: kRose,
-                backgroundColor: kCream,
-                showCheckmark: false,
-                labelStyle: GoogleFonts.figtree(color: isSelected ? Colors.white : kBlack, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: isSelected ? kRose : Colors.transparent)),
-                onSelected: (_) {
-                  setState(() {
-                    if (isSelected) {
-                      selectionList.remove(option);
-                    } else {
-                      if (_getTotalDiscoverySelections() >= 15) {
-                        _showNotification("You can choose up to 15 combined discovery traits.");
-                      } else {
-                        selectionList.add(option);
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Pick up to $_kDiscoveryLimit",
+                style: GoogleFonts.figtree(fontSize: 14, color: kInkMuted),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: atLimit ? kRose : kParchment,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: atLimit ? kRose : kBone),
+                ),
+                child: Text(
+                  "$count/$_kDiscoveryLimit",
+                  style: GoogleFonts.figtree(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: atLimit ? Colors.white : kInkMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 10,
+                children: [
+                  ...options.map((option) {
+                    final isSelected = selectionList.contains(option);
+                    final disabled = !isSelected && atLimit;
+                    return FilterChip(
+                      label: Text(option),
+                      selected: isSelected,
+                      selectedColor: kRose,
+                      backgroundColor: kCream,
+                      showCheckmark: false,
+                      labelStyle: GoogleFonts.figtree(
+                        color: disabled ? kInkMuted.withValues(alpha: 0.4) : (isSelected ? Colors.white : kBlack),
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        side: BorderSide(
+                          color: disabled
+                              ? kBone
+                              : kRose.withValues(alpha: isSelected ? 1.0 : 0.28),
+                          width: isSelected ? 1.5 : 1.0,
+                        ),
+                      ),
+                      onSelected: (_) {
+                        setState(() {
+                          if (isSelected) {
+                            selectionList.remove(option);
+                          } else if (!atLimit) {
+                            selectionList.add(option);
+                          } else {
+                            _showNotification("You can only pick $_kDiscoveryLimit in this category.");
+                          }
+                        });
+                      },
+                    );
+                  }),
+                  ActionChip(
+                    label: const Text("+ Add your own"),
+                    backgroundColor: kBone,
+                    labelStyle: GoogleFonts.figtree(color: kInkMuted, fontWeight: FontWeight.bold),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: kBone)),
+                    onPressed: () {
+                      if (atLimit) {
+                        _showNotification("You can only pick $_kDiscoveryLimit in this category.");
+                        return;
                       }
-                    }
-                  });
-                },
-              );
-            }),
-            ActionChip(
-              label: Text("+ Add your own"),
-              backgroundColor: kBone,
-              labelStyle: GoogleFonts.figtree(color: kInkMuted, fontWeight: FontWeight.bold),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30), side: BorderSide(color: kBone)),
-              onPressed: () {
-                if (_getTotalDiscoverySelections() >= 15) {
-                   _showNotification("You can choose up to 15 combined discovery traits.");
-                   return;
-                }
-                _showAddCustomOptionDialog(title, selectionList, (newVal) {
-                  setState(() {
-                    if (!options.contains(newVal)) options.add(newVal);
-                    if (!selectionList.contains(newVal)) selectionList.add(newVal);
-                  });
-                });
-              },
+                      _showAddCustomOptionDialog(title, selectionList, (newVal) {
+                        setState(() {
+                          if (!options.contains(newVal)) options.add(newVal);
+                          if (!selectionList.contains(newVal)) selectionList.add(newVal);
+                        });
+                      });
+                    },
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // --- Photos (Redesigned) ---
+  // --- Photos ---
+  int? _draggingSubIndex; // sub-index within slots 2–5 (0–3)
+
   Widget _buildPhotoStep() {
     return _buildStepContainer(
       title: "Add your photos",
       child: Column(
         children: [
-          Text("Add at least 2 photos. Tap a slot to add.", style: GoogleFonts.figtree(color: kInkMuted, fontSize: 16)),
-          const SizedBox(height: 20),
-          Expanded(
-            child: GridView.builder(
-              itemCount: 6,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3, 
-                crossAxisSpacing: 10, 
-                mainAxisSpacing: 10, 
-                childAspectRatio: 0.7
-              ),
-              itemBuilder: (context, index) {
-                final photoFile = _photos[index];
-                final isValidating = _validatingIndex == index;
-
-                return GestureDetector(
-                  onTap: () => (photoFile == null && !isValidating) ? _showPhotoOptions(index) : (photoFile != null ? _removeImage(index) : null),
-                  child: Container(
-                    decoration: BoxDecoration(color: kParchment,
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: photoFile == null && index < 2 ? kRose : Colors.transparent, width: 2), // Highlight required slots
-                      boxShadow: [BoxShadow(color: kInk.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
-                    ),
-                    child: isValidating
-                        ? const Center(child: HeartLoader())
-                        : photoFile != null
-                            ? Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  ClipRRect(borderRadius: BorderRadius.circular(13), child: Image.file(photoFile, fit: BoxFit.cover)),
-                                  const Positioned(bottom: 4, right: 4, child: CircleAvatar(radius: 10, backgroundColor: kCream, child: Icon(Icons.close, size: 14, color: kRose))),
-                                ],
-                              )
-                            : Icon(Icons.add_a_photo, color: index < 2 ? kRose : kInkMuted.withOpacity(0.5)),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: kRose.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: kRose.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, color: kRose, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    "First 2 photos are required. Hold & drag the bottom 4 to reorder.",
+                    style: GoogleFonts.figtree(color: kRose, fontSize: 13, fontWeight: FontWeight.w500, height: 1.4),
                   ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                const spacing = 10.0;
+                final cellW = (constraints.maxWidth - spacing * 2) / 3;
+                final cellH = cellW / 0.7;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: List.generate(6, (index) {
+                    final isDraggable = index >= 2;
+                    final si = index - 2; // sub-index for draggable slots
+                    final photoFile = _photos[index];
+                    final isValidating = _validatingIndex == index;
+                    final isDragging = isDraggable && _draggingSubIndex == si;
+
+                    final inner = _buildPhotoSlotInner(
+                      index: index,
+                      photoFile: photoFile,
+                      isValidating: isValidating,
+                    );
+
+                    // Slots 0–1: fixed, no drag
+                    if (!isDraggable) {
+                      return SizedBox(width: cellW, height: cellH, child: inner);
+                    }
+
+                    // Slots 2–5: draggable + drop target
+                    final draggableSlot = (photoFile != null && !isValidating)
+                        ? LongPressDraggable<int>(
+                            data: si,
+                            delay: const Duration(milliseconds: 300),
+                            onDragStarted: () => setState(() => _draggingSubIndex = si),
+                            onDragEnd: (_) => setState(() => _draggingSubIndex = null),
+                            onDraggableCanceled: (_, _) => setState(() => _draggingSubIndex = null),
+                            feedback: SizedBox(
+                              width: cellW,
+                              height: cellH,
+                              child: Material(color: Colors.transparent, child: Opacity(opacity: 0.85, child: inner)),
+                            ),
+                            childWhenDragging: const SizedBox.shrink(),
+                            child: inner,
+                          )
+                        : inner;
+
+                    return DragTarget<int>(
+                      key: ValueKey('drag_target_$si'),
+                      onWillAcceptWithDetails: (details) => details.data != si,
+                      onAcceptWithDetails: (details) {
+                        setState(() {
+                          final from = details.data + 2;
+                          final tmp = _photos[from];
+                          _photos[from] = _photos[index];
+                          _photos[index] = tmp;
+                          _draggingSubIndex = null;
+                        });
+                      },
+                      builder: (context, candidateData, _) {
+                        final isOver = candidateData.isNotEmpty;
+                        return SizedBox(
+                          width: cellW,
+                          height: cellH,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(15),
+                              border: isOver ? Border.all(color: kRose, width: 2) : null,
+                            ),
+                            child: Opacity(
+                              opacity: isDragging ? 0.35 : 1.0,
+                              child: draggableSlot,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  }),
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoSlotInner({
+    required int index,
+    required File? photoFile,
+    required bool isValidating,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        if (isValidating) return;
+        if (photoFile != null) {
+          _removeImage(index);
+        } else {
+          _showPhotoOptions(index);
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: kParchment,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: photoFile == null && index < 2 ? kRose : Colors.transparent,
+            width: 2,
+          ),
+          boxShadow: [BoxShadow(color: kInk.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))],
+        ),
+        child: isValidating
+            ? const Center(child: HeartLoader())
+            : photoFile != null
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(13),
+                        child: Image.file(photoFile, fit: BoxFit.cover),
+                      ),
+                      if (index >= 2)
+                        const Positioned(
+                          top: 4,
+                          left: 4,
+                          child: Icon(Icons.drag_indicator_rounded, size: 16, color: Colors.white70),
+                        ),
+                      const Positioned(
+                        bottom: 4,
+                        right: 4,
+                        child: CircleAvatar(radius: 10, backgroundColor: kCream, child: Icon(Icons.close, size: 14, color: kRose)),
+                      ),
+                    ],
+                  )
+                : Icon(Icons.add_a_photo, color: index < 2 ? kRose : kInkMuted.withValues(alpha: 0.5)),
       ),
     );
   }

@@ -4,18 +4,25 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:clush/services/image_validation_service.dart';
 import 'package:clush/services/content_moderator.dart';
+import 'package:clush/screens/setting_sub_pages.dart';
 
 import 'package:clush/theme/colors.dart';
 import 'package:clush/widgets/heart_loader.dart';
 
 class EditProfilePage extends StatefulWidget {
   final Map<String, dynamic> currentData;
-  const EditProfilePage({super.key, required this.currentData});
+  /// Section keys to visually highlight as incomplete: any of
+  /// 'photos', 'essentials', 'prompts'. The first one in that order
+  /// is auto-scrolled into view when the page opens.
+  final Set<String> highlightSections;
+  const EditProfilePage({
+    super.key,
+    required this.currentData,
+    this.highlightSections = const {},
+  });
 
   @override
   State<EditProfilePage> createState() => _EditProfilePageState();
@@ -23,6 +30,10 @@ class EditProfilePage extends StatefulWidget {
 
 class _EditProfilePageState extends State<EditProfilePage> {
   bool _isLoading = false;
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _photosKey = GlobalKey();
+  final GlobalKey _essentialsKey = GlobalKey();
+  final GlobalKey _promptsKey = GlobalKey();
   final ImagePicker _picker = ImagePicker();
   final ImageValidationService _imageValidationService = ImageValidationService();
   int? _validatingIndex;
@@ -73,16 +84,39 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.initState();
     _imageValidationService.initialize();
     _initializeData();
+    if (widget.highlightSections.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToFirstHighlight());
+    }
   }
 
   @override
   void dispose() {
     _imageValidationService.dispose();
+    _scrollController.dispose();
     _nameController.dispose();
     _jobController.dispose();
     _schoolController.dispose();
     _customMessageController.dispose();
     super.dispose();
+  }
+
+  void _scrollToFirstHighlight() {
+    GlobalKey? target;
+    if (widget.highlightSections.contains('photos')) {
+      target = _photosKey;
+    } else if (widget.highlightSections.contains('essentials')) {
+      target = _essentialsKey;
+    } else if (widget.highlightSections.contains('prompts')) {
+      target = _promptsKey;
+    }
+    final ctx = target?.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
   }
 
   void _initializeData() {
@@ -258,6 +292,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       body: Stack(
         children: [
           SingleChildScrollView(
+            controller: _scrollController,
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 60),
             child: Column(
@@ -266,7 +301,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 const SizedBox(height: 104), // header spacer
 
                 // ── PHOTOS ──────────────────────────────────────────────────
-                _buildSectionLabel("My Photos"),
+                KeyedSubtree(
+                  key: _photosKey,
+                  child: _buildSectionLabel("My Photos", highlighted: widget.highlightSections.contains('photos')),
+                ),
                 const SizedBox(height: 12),
                 _buildPhotoGrid(),
                 Padding(
@@ -279,15 +317,21 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
                 // ── THE ESSENTIALS ───────────────────────────────────────────
                 const SizedBox(height: 28),
-                _buildSectionLabel("The Essentials"),
+                KeyedSubtree(
+                  key: _essentialsKey,
+                  child: _buildSectionLabel("The Essentials", highlighted: widget.highlightSections.contains('essentials')),
+                ),
                 const SizedBox(height: 10),
-                _buildCard([
-                  _buildTextRow("Name", _nameController),
-                  _buildBoneDivider(),
-                  _buildTextRow("Job Title", _jobController),
-                  _buildBoneDivider(),
-                  _buildLocationRow(),
-                ]),
+                _buildCard(
+                  highlighted: widget.highlightSections.contains('essentials'),
+                  [
+                    _buildTextRow("Name", _nameController),
+                    _buildBoneDivider(),
+                    _buildTextRow("Job Title", _jobController),
+                    _buildBoneDivider(),
+                    _buildLocationRow(),
+                  ],
+                ),
 
                 // ── ABOUT ME ─────────────────────────────────────────────────
                 const SizedBox(height: 28),
@@ -351,7 +395,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
                 // ── PROMPTS ──────────────────────────────────────────────────
                 const SizedBox(height: 28),
-                _buildSectionLabel("My Prompts"),
+                KeyedSubtree(
+                  key: _promptsKey,
+                  child: _buildSectionLabel("My Prompts", highlighted: widget.highlightSections.contains('prompts')),
+                ),
                 const SizedBox(height: 10),
                 _buildPromptsList(),
               ],
@@ -420,32 +467,49 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   // ─── Section Label ────────────────────────────────────────────────────────────
-  Widget _buildSectionLabel(String label) {
+  Widget _buildSectionLabel(String label, {bool highlighted = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Row(
         children: [
-          Container(width: 3, height: 16, color: kGold, margin: const EdgeInsets.only(right: 10)),
+          Container(width: 3, height: 16, color: highlighted ? kRose : kGold, margin: const EdgeInsets.only(right: 10)),
           Text(
             label.toUpperCase(),
             style: GoogleFonts.figtree(
               fontSize: 11, fontWeight: FontWeight.w700,
-              color: kInkMuted, letterSpacing: 1.8,
+              color: highlighted ? kRose : kInkMuted, letterSpacing: 1.8,
             ),
           ),
+          if (highlighted) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: kRose.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'INCOMPLETE',
+                style: GoogleFonts.figtree(
+                  fontSize: 9, fontWeight: FontWeight.w800,
+                  color: kRose, letterSpacing: 1.0,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
   // ─── Card Shell ───────────────────────────────────────────────────────────────
-  Widget _buildCard(List<Widget> children) {
+  Widget _buildCard(List<Widget> children, {bool highlighted = false}) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: kParchment,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kBone, width: 1),
+        border: Border.all(color: highlighted ? kRose : kBone, width: highlighted ? 1.5 : 1),
         boxShadow: [BoxShadow(color: kInk.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 6))],
       ),
       child: Column(children: children),
@@ -468,13 +532,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
         itemCount: 6,
         itemBuilder: (context, index) {
           final item = _photos[index];
+          final highlightSlot = item == null && widget.highlightSections.contains('photos');
           return GestureDetector(
             onTap: () => _showPhotoOptions(index),
               child: Container(
               decoration: BoxDecoration(
                 color: kParchment,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: kBone, width: 1),
+                border: Border.all(color: highlightSlot ? kRose : kBone, width: highlightSlot ? 1.5 : 1),
                 boxShadow: [BoxShadow(color: kInk.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
               ),
               child: _validatingIndex == index
@@ -707,7 +772,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Widget _buildLocationRow() {
     return InkWell(
-      onTap: _fetchCurrentLocation,
+      onTap: _openLocationPicker,
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -785,20 +850,18 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  Future<void> _fetchCurrentLocation() async {
+  Future<void> _openLocationPicker() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => const CurrentLocationPage()));
+    if (!mounted) return;
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
     try {
-      LocationPermission permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
-      Position position = await Geolocator.getCurrentPosition();
-      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
-      if (placemarks.isNotEmpty) {
-        setState(() => _location = "${placemarks[0].locality}, ${placemarks[0].country}");
+      final data = await Supabase.instance.client
+          .from('profiles').select('location').eq('id', userId).maybeSingle();
+      if (mounted && data != null) {
+        setState(() => _location = data['location']);
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Location error: $e")));
-      }
-    }
+    } catch (_) {}
   }
 
   Widget _buildEducationSelector() {
@@ -866,12 +929,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
       child: Column(
         children: List.generate(3, (index) {
           final p = _prompts[index];
+          final highlightSlot = p == null && widget.highlightSections.contains('prompts');
           return Container(
             margin: const EdgeInsets.only(bottom: 10),
             decoration: BoxDecoration(
               color: kParchment,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: kBone, width: 1),
+              border: Border.all(color: highlightSlot ? kRose : kBone, width: highlightSlot ? 1.5 : 1),
               boxShadow: [BoxShadow(color: kInk.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 6))],
             ),
             child: p == null

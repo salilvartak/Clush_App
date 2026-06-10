@@ -1,173 +1,179 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:clush/services/matching_service.dart';
-import 'package:google_fonts/google_fonts.dart'; // Typography
-import 'package:flutter_animate/flutter_animate.dart'; // Animations
-import 'package:clush/screens/profile_view_page.dart'; 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import 'package:clush/l10n/app_localizations.dart';
+import 'package:clush/providers/profile_provider.dart';
+import 'package:clush/providers/wallet_provider.dart';
+import 'package:clush/screens/edit_profile_page.dart';
+import 'package:clush/screens/profile_view_page.dart';
 import 'package:clush/screens/settings_page.dart';
 import 'package:clush/screens/setting_sub_pages.dart';
-import 'package:clush/widgets/heart_loader.dart';
-import 'package:clush/l10n/app_localizations.dart';
-
 import 'package:clush/theme/colors.dart';
+import 'package:clush/widgets/heart_loader.dart';
 
-class ProfileTab extends StatefulWidget {
+class ProfileTab extends ConsumerWidget {
   const ProfileTab({super.key});
 
   @override
-  State<ProfileTab> createState() => _ProfileTabState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profileAsync = ref.watch(myProfileProvider);
+    final walletAsync = ref.watch(walletProvider);
 
-class _ProfileTabState extends State<ProfileTab>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
+    return profileAsync.when(
+      loading: () => const Scaffold(
+        backgroundColor: kCream,
+        body: Center(child: HeartLoader()),
+      ),
+      error: (e, st) {
+        debugPrint('Error loading profile: $e');
+        debugPrint('$st');
+        return Scaffold(
+          backgroundColor: kCream,
+          body: Center(child: Text('Error loading profile: $e')),
+        );
+      },
+      data: (profile) {
+        if (profile == null) {
+          return const Scaffold(
+            backgroundColor: kCream,
+            body: Center(child: HeartLoader()),
+          );
+        }
 
-  late Future<Map<String, dynamic>?> _profileFuture;
-  final MatchingService _matchingService = MatchingService();
+        final wallet = walletAsync.value ?? const WalletState();
+        final photos = profile['photo_urls'] as List? ?? [];
+        final firstPhoto = photos.isNotEmpty ? photos.first as String : '';
+        final name = profile['full_name'] as String? ?? 'User';
+        final age = _calculateAge(profile['birthday'] as String?);
+        final isVerified = profile['is_verified'] as bool? ?? false;
+        final completion = _calculateCompletion(profile);
 
-  @override
-  void initState() {
-    super.initState();
-    _profileFuture = _fetchProfile();
-  }
-
-  Future<Map<String, dynamic>?> _fetchProfile() async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return null;
-
-    final data = await Supabase.instance.client
-        .from('profile_discovery')
-        .select()
-        .eq('id', userId)
-        .maybeSingle();
-    if (data == null) return null;
-
-    final result = Map<String, dynamic>.from(data);
-
-    // Merge wallet credits so the feature tiles show live numbers
-    try {
-      final wallet = await _matchingService.getWallet();
-      if (wallet.isNotEmpty) {
-        result['super_likes_remaining']   = (wallet['super_likes_remaining']   as num?)?.toInt() ?? 0;
-        result['rewinds_remaining']       = (wallet['rewinds_remaining']       as num?)?.toInt() ?? 0;
-        result['profile_saves_remaining'] = (wallet['profile_saves_remaining'] as num?)?.toInt() ?? 0;
-      }
-    } catch (_) {}
-
-    return result;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    return Scaffold(
-      backgroundColor: kCream,
-      body: SafeArea(
-        child: FutureBuilder<Map<String, dynamic>?>(
-          future: _profileFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: HeartLoader());
-            }
-            if (snapshot.hasError || !snapshot.hasData) {
-              return Center(child: Text("Error loading profile: ${snapshot.error}"));
-            }
-
-            final profile = snapshot.data!;
-            final List photos = profile['photo_urls'] ?? [];
-            final String firstPhoto = photos.isNotEmpty ? photos.first : '';
-            final String name = profile['full_name'] ?? 'User';
-            final int age = _calculateAge(profile['birthday']);
-            
-            // 1. EXTRACT VERIFICATION STATUS
-            final bool isVerified = profile['is_verified'] ?? false; 
-
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        AppLocalizations.of(context)?.myProfile ?? "My Profile", 
-                        style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26, color: kBlack, letterSpacing: -0.5)
-                      ),
-                      Container(
-                        decoration: BoxDecoration(color: kParchment, shape: BoxShape.circle, boxShadow: [BoxShadow(color: kInk.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]),
-                        child: IconButton(
-                          onPressed: () {
-                            Navigator.push(
+        return Scaffold(
+          backgroundColor: kCream,
+          body: SafeArea(
+            child: RefreshIndicator(
+              color: kAccent,
+              onRefresh: () async {
+                ref.invalidate(myProfileProvider);
+                ref.invalidate(walletProvider);
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          AppLocalizations.of(context)?.myProfile ?? 'My Profile',
+                          style: GoogleFonts.gabarito(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 26,
+                            color: kBlack,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: kParchment,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: kInk.withValues(alpha: 0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: IconButton(
+                            onPressed: () => Navigator.push<void>(
                               context,
                               PageRouteBuilder(
-                                pageBuilder: (context, animation, secondaryAnimation) => const SettingsPage(),
-                                transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                  const begin = Offset(1.0, 0.0);
-                                  const end = Offset.zero;
-                                  const curve = Curves.easeInOutQuart;
-                                  var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-                                  return SlideTransition(
-                                    position: animation.drive(tween),
-                                    child: child,
-                                  );
-                                },
-                                transitionDuration: const Duration(milliseconds: 500),
+                                pageBuilder: (ctx, anim, _) =>
+                                    const SettingsPage(),
+                                transitionsBuilder: (ctx, anim, _, child) =>
+                                    SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(1, 0),
+                                    end: Offset.zero,
+                                  ).chain(CurveTween(curve: Curves.easeInOutQuart))
+                                      .animate(anim),
+                                  child: child,
+                                ),
+                                transitionDuration:
+                                    const Duration(milliseconds: 500),
                               ),
-                            );
-                          },
-                          icon: const Icon(Icons.settings_rounded, color: kBlack),
-                          tooltip: AppLocalizations.of(context)?.settings ?? "Settings",
+                            ),
+                            icon: const Icon(Icons.settings_rounded, color: kBlack),
+                            tooltip: AppLocalizations.of(context)?.settings ??
+                                'Settings',
+                          ),
+                        ),
+                      ],
+                    ).animate().fade(duration: 400.ms).slideY(
+                          begin: -0.2,
+                          end: 0,
+                          curve: Curves.easeOutQuad,
+                        ),
+                    const SizedBox(height: 32),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(25),
+                        onTap: () => Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => ProfileViewPage(profile: profile),
+                          ),
+                        ),
+                        child: _buildProfilePreviewCard(
+                          firstPhoto,
+                          name,
+                          age,
+                          isVerified,
+                          (MediaQuery.sizeOf(context).height * 0.55)
+                              .clamp(380.0, 520.0),
                         ),
                       ),
-                    ],
-                  ).animate().fade(duration: 400.ms).slideY(begin: -0.2, end: 0, curve: Curves.easeOutQuad),
-                  const SizedBox(height: 32),
-                  
-                  // Use InkWell for better hit testing and feedback
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(25),
-                      onTap: () {
-                        Navigator.push(
-                          context, 
-                          MaterialPageRoute(builder: (context) => ProfileViewPage(profile: profile))
-                        );
-                      },
-                      child: _buildProfilePreviewCard(
-                        firstPhoto, 
-                        name, 
-                        age, 
-                        isVerified, 
-                        (MediaQuery.sizeOf(context).height * 0.55).clamp(380.0, 520.0)
-                      ),
+                    ).animate().fade(duration: 600.ms, delay: 200.ms).scale(
+                          begin: const Offset(0.95, 0.95),
+                          end: const Offset(1, 1),
+                          curve: Curves.easeOutCubic,
+                        ),
+                    const SizedBox(height: 16),
+                    _buildCompletionCard(context, profile, completion),
+                    const SizedBox(height: 24),
+                    Center(
+                      child: Text(
+                        AppLocalizations.of(context)?.thisIsHowYouAppear ??
+                            'This is how you appear to others',
+                        style: GoogleFonts.figtree(
+                          color: kInkMuted,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ).animate().fade(duration: 600.ms, delay: 400.ms),
                     ),
-                  ).animate().fade(duration: 600.ms, delay: 200.ms).scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1), curve: Curves.easeOutCubic),
-                  const SizedBox(height: 24),
-                  Center(
-                    child: Text(
-                      AppLocalizations.of(context)?.thisIsHowYouAppear ?? "This is how you appear to others",
-                      style: GoogleFonts.figtree(color: kInkMuted, fontSize: 16, fontWeight: FontWeight.w500)
-                    ).animate().fade(duration: 600.ms, delay: 400.ms),
-                  ),
-                  const SizedBox(height: 32),
-                  _buildUpgradeSection(context, profile),
-                  const SizedBox(height: 24),
-                ],
+                    const SizedBox(height: 32),
+                    _buildUpgradeSection(context, wallet),
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
-            );
-          },
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 
-  // 3. UPDATED WIDGET SIGNATURE
   Widget _buildProfilePreviewCard(String photoUrl, String name, int age, bool isVerified, double cardHeight) {
     return Container(
       height: cardHeight,
@@ -242,6 +248,171 @@ class _ProfileTabState extends State<ProfileTab>
     );
   }
 
+  // ── Profile completion ────────────────────────────────────────────────────
+  // Weighs photos (50%), prompts/questions (30%) and bio + essentials (20%)
+  // to produce a single completion percentage shown on the completion card.
+  _ProfileCompletion _calculateCompletion(Map<String, dynamic> profile) {
+    const maxPhotos = 6;
+    const maxPrompts = 3;
+
+    final photos = profile['photo_urls'] as List? ?? [];
+    final prompts = profile['prompts'] as List? ?? [];
+
+    final photoScore = (photos.length / maxPhotos).clamp(0.0, 1.0);
+    final promptScore = (prompts.length / maxPrompts).clamp(0.0, 1.0);
+
+    final hasBio = (profile['custom_message'] as String?)?.trim().isNotEmpty ?? false;
+    const essentialKeys = [
+      'job_title',
+      'education',
+      'location',
+      'height',
+      'interests',
+    ];
+    final filledEssentials = essentialKeys.where((key) {
+      final value = profile[key];
+      if (value is String) return value.trim().isNotEmpty;
+      if (value is List) return value.isNotEmpty;
+      return value != null;
+    }).length;
+    final aboutScore = ((hasBio ? 1 : 0) + filledEssentials) / (essentialKeys.length + 1);
+
+    final overall = photoScore * 0.5 + promptScore * 0.3 + aboutScore * 0.2;
+
+    return _ProfileCompletion(
+      percent: (overall * 100).round().clamp(0, 100),
+      photosAdded: photos.length,
+      photosTarget: maxPhotos,
+      promptsAdded: prompts.length,
+      promptsTarget: maxPrompts,
+      aboutComplete: hasBio && filledEssentials == essentialKeys.length,
+    );
+  }
+
+  Widget _buildCompletionCard(BuildContext context, Map<String, dynamic> profile, _ProfileCompletion completion) {
+    if (completion.percent >= 100) return const SizedBox.shrink();
+
+    final missing = <String>[];
+    if (completion.photosAdded < completion.photosTarget) {
+      missing.add('Add ${completion.photosTarget - completion.photosAdded} more photo${completion.photosTarget - completion.photosAdded == 1 ? '' : 's'}');
+    }
+    if (completion.promptsAdded < completion.promptsTarget) {
+      missing.add('Answer ${completion.promptsTarget - completion.promptsAdded} more prompt${completion.promptsTarget - completion.promptsAdded == 1 ? '' : 's'}');
+    }
+    if (!completion.aboutComplete) {
+      missing.add('Fill out your bio & essentials');
+    }
+
+    return GestureDetector(
+      onTap: () => Navigator.push<void>(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => EditProfilePage(
+            currentData: profile,
+            highlightSections: completion.missingSections,
+          ),
+        ),
+      ),
+      child: Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: kParchment,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kBone, width: 1.5),
+        boxShadow: [
+          BoxShadow(color: kInk.withValues(alpha: 0.07), blurRadius: 16, offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: CircularProgressIndicator(
+                        value: completion.percent / 100,
+                        strokeWidth: 5,
+                        backgroundColor: kBone,
+                        valueColor: const AlwaysStoppedAnimation<Color>(kRose),
+                      ),
+                    ),
+                    Text(
+                      '${completion.percent}%',
+                      style: GoogleFonts.gabarito(
+                        color: kInk,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Profile Strength',
+                      style: GoogleFonts.gabarito(
+                        color: kInk,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      missing.isNotEmpty
+                          ? missing.first
+                          : 'Looking good — keep it up!',
+                      style: GoogleFonts.figtree(
+                        color: kInkMuted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (missing.length > 1) ...[
+            const SizedBox(height: 14),
+            Container(height: 1, color: kBone),
+            const SizedBox(height: 12),
+            ...missing.skip(1).map((tip) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.circle, size: 5, color: kInkMuted),
+                      const SizedBox(width: 8),
+                      Text(
+                        tip,
+                        style: GoogleFonts.figtree(
+                          color: kInkMuted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+        ],
+      ),
+      ),
+    ).animate().fade(duration: 500.ms, delay: 300.ms).slideY(begin: 0.08, end: 0, curve: Curves.easeOutCubic);
+  }
+
 
   void _showPurchaseSheet(BuildContext context, _PurchaseItem item) {
     showModalBottomSheet(
@@ -252,10 +423,10 @@ class _ProfileTabState extends State<ProfileTab>
     );
   }
 
-  Widget _buildFeatureTilesRow(BuildContext context, Map<String, dynamic> profile) {
-    final superLikes = (profile['super_likes_remaining'] as num?)?.toInt() ?? 0;
-    final rewinds    = (profile['rewinds_remaining']     as num?)?.toInt() ?? 0;
-    final saves      = (profile['profile_saves_remaining'] as num?)?.toInt() ?? 0;
+  Widget _buildFeatureTilesRow(BuildContext context, WalletState wallet) {
+    final superLikes = wallet.superLikesRemaining;
+    final rewinds    = wallet.rewindsRemaining;
+    final saves      = wallet.savesRemaining;
 
     final items = [
       _PurchaseItem(
@@ -382,12 +553,11 @@ class _ProfileTabState extends State<ProfileTab>
     );
   }
 
-  Widget _buildUpgradeSection(BuildContext context, Map<String, dynamic> profile) {
+  Widget _buildUpgradeSection(BuildContext context, WalletState wallet) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Feature tiles row ─────────────────────────────────────────────────
-        _buildFeatureTilesRow(context, profile),
+        _buildFeatureTilesRow(context, wallet),
         const SizedBox(height: 14),
 
         // ── Clush+ comparison card ────────────────────────────────────────────
@@ -538,6 +708,32 @@ class _ProfileTabState extends State<ProfileTab>
 }
 
 // ── Data models ───────────────────────────────────────────────────────────────
+
+class _ProfileCompletion {
+  final int percent;
+  final int photosAdded;
+  final int photosTarget;
+  final int promptsAdded;
+  final int promptsTarget;
+  final bool aboutComplete;
+
+  const _ProfileCompletion({
+    required this.percent,
+    required this.photosAdded,
+    required this.photosTarget,
+    required this.promptsAdded,
+    required this.promptsTarget,
+    required this.aboutComplete,
+  });
+
+  /// Section keys (matching [EditProfilePage.highlightSections]) that are
+  /// still incomplete, in the order they appear on the edit page.
+  Set<String> get missingSections => {
+        if (photosAdded < photosTarget) 'photos',
+        if (!aboutComplete) 'essentials',
+        if (promptsAdded < promptsTarget) 'prompts',
+      };
+}
 
 class _Pack {
   final String label;

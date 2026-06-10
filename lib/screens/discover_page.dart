@@ -1,14 +1,17 @@
 import 'dart:math' show cos, sqrt, asin, pi;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:ui'; // For blur effects
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lottie/lottie.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:clush/services/matching_service.dart';
 import 'package:clush/widgets/heart_loader.dart';
 import 'package:clush/widgets/match_animation_dialog.dart';
+import 'package:clush/widgets/animated_swipe_icon.dart';
 import 'package:clush/services/cache_service.dart';
+import 'package:clush/providers/likes_provider.dart';
 // activity_badge import removed — badge moved into _buildFirstProfileCard overlay;
 
 import 'package:clush/theme/colors.dart';
@@ -35,8 +38,11 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   List<Map<String, dynamic>> _profiles = [];
   bool _isLoading = true;
+  bool _isCurating = false;
   int _likesRemaining = 6;
   int _superLikesRemaining = 1;
+  int _rewindsRemaining = 2;
+  int _savesRemaining = 2;
   bool _isPremium = false;
 
   String? _myPhotoUrl;
@@ -66,16 +72,35 @@ class _DiscoverPageState extends State<DiscoverPage>
   bool _showFloatingName = false;
 
   // ── Swipe animation ──────────────────────────────────────────────────────────
-  late AnimationController _swipeController;
-  late Animation<double> _swipeProgress;
+  // Cinematic sequential reveal, driven by ONE controller split into four phases:
+  //   Phase 1 (exit)   0.00–0.30  card slides off, blurred backdrop fades in
+  //   Phase 2 (icon in)0.30–0.55  heart/cross rises from below & scales in
+  //   Phase 3 (icon out)0.55–0.75 icon holds briefly then fades away
+  //   Phase 4 (next in)0.75–1.00  next profile fades in, backdrop fades out
+  static const Duration _kSequenceDuration = Duration(milliseconds: 2800);
+  static const Interval _kExitPhase = Interval(0.00, 0.22, curve: Curves.easeOutCubic);
+  static const Interval _kIconInPhase = Interval(0.22, 0.48, curve: Curves.easeOutCubic);
+  static const Interval _kIconOutPhase = Interval(0.48, 0.70, curve: Curves.easeIn);
+  static const Interval _kNextInPhase = Interval(0.70, 1.00, curve: Curves.easeOutCubic);
+
+  late AnimationController _sequenceController;
   bool _isSwiping = false;
   bool _isRewinding = false; // Card slide-in from left (rewind)
-  String _swipeType = ''; // 'like' | 'dislike' | 'gem'
+  String _swipeType = ''; // 'like' | 'dislike' | 'gem' | 'save'
   final ValueNotifier<double> _dragNotifier = ValueNotifier(0.0);
   late AnimationController _snapController;
+  late AnimationController _rewindController;
+  late Animation<double> _rewindProgress;
   String? _pendingTargetId;
   String? _pendingMessage;
   Map<String, dynamic>? _lastDislikedProfile;
+  // Snapshot of the card mid-sequence so the backdrop/next-card don't shift under it
+  Map<String, dynamic>? _departingProfile;
+  Map<String, dynamic>? _incomingProfile;
+  // Horizontal drag offset at the moment the swipe was triggered — lets the
+  // cinematic exit continue smoothly from wherever the finger released the
+  // card instead of snapping it back to centre first.
+  double _exitStartOffset = 0.0;
 
   @override
   void initState() {
@@ -85,24 +110,27 @@ class _DiscoverPageState extends State<DiscoverPage>
       duration: const Duration(milliseconds: 280),
     );
 
-    _swipeController = AnimationController(
+    _sequenceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 650),
+      duration: _kSequenceDuration,
     )..addStatusListener((status) {
       if (status == AnimationStatus.completed && _isSwiping) {
-        _onSwipeAnimationComplete();
+        _onSequenceComplete();
       }
+    });
+
+    _rewindController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..addStatusListener((status) {
       if (status == AnimationStatus.dismissed && _isRewinding) {
         setState(() => _isRewinding = false);
       }
     });
-    _swipeProgress = CurvedAnimation(
-      parent: _swipeController,
-      curve: Curves.easeInOutCubic,
+    _rewindProgress = CurvedAnimation(
+      parent: _rewindController,
+      curve: Curves.easeOutCubic,
     );
-
-    // Initial load from cache for speed
-    _loadCachedFeed();
 
     _scrollController.addListener(() {
       if (_profiles.isEmpty) return;
@@ -178,24 +206,14 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   @override
   void dispose() {
-    _swipeController.dispose();
+    _sequenceController.dispose();
     _snapController.dispose();
+    _rewindController.dispose();
     _dragNotifier.dispose();
     super.dispose();
   }
 
-  Future<void> _loadCachedFeed() async {
-    final cached = await CacheService.instance.getCachedDiscoveryFeed();
-    if (cached != null && cached.isNotEmpty && mounted) {
-      setState(() {
-        _profiles = cached;
-        _isLoading = false;
-      });
-    }
-  }
-
   Future<void> _fetchProfiles() async {
-    final stopwatch = Stopwatch()..start();
     try {
       final myId = FirebaseAuth.instance.currentUser?.uid;
       if (myId == null) {
@@ -230,7 +248,7 @@ class _DiscoverPageState extends State<DiscoverPage>
 
         ignoreIds.addAll(matchedIds);
       } catch (e) {
-        print("Matches check failed: $e");
+        debugPrint("Matches check failed: $e");
       }
 
       try {
@@ -241,7 +259,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         final List<String> savedIds = (savedResponse as List).map((e) => e['saved_user_id'].toString()).toList();
         ignoreIds.addAll(savedIds);
       } catch (e) {
-        print("Saved profiles check failed: $e");
+        debugPrint("Saved profiles check failed: $e");
       }
 
       try {
@@ -258,7 +276,7 @@ class _DiscoverPageState extends State<DiscoverPage>
 
         ignoreIds.addAll(blockedIds);
       } catch (e) {
-        print("Blocks check failed: $e");
+        debugPrint("Blocks check failed: $e");
       }
 
       final myProfileResponse = await Supabase.instance.client
@@ -269,8 +287,6 @@ class _DiscoverPageState extends State<DiscoverPage>
 
       if (myProfileResponse == null) {
         if (mounted) {
-          final elapsed = stopwatch.elapsedMilliseconds;
-          if (elapsed < 2200) await Future.delayed(Duration(milliseconds: 2200 - elapsed));
           setState(() {
             _isLoading = false;
             _errorMessage = "Profile not found. Please complete your profile.";
@@ -396,74 +412,66 @@ class _DiscoverPageState extends State<DiscoverPage>
       }
 
       // --- DISTANCE FILTERING ---
-      debugPrint("📍 My Coordinates: $myCoords");
-      debugPrint("🔍 Filtering profiles vs distance: ${_filterDistance}km");
-
       if (myCoords != null) {
         filteredProfiles = filteredProfiles.where((p) {
-          final otherLocationStr = p['location'] as String?;
-          final otherCoords = _parseCoordinates(otherLocationStr);
-          final name = p['full_name'] ?? 'Unknown';
-
-          if (otherCoords == null) {
-            debugPrint("❌ $name: No coordinates found. Hiding.");
-            return false;
-          }
-
+          final otherCoords = _parseCoordinates(p['location'] as String?);
+          if (otherCoords == null) return false;
           final distance = _calculateDistance(
             myCoords['lat']!,
             myCoords['lng']!,
             otherCoords['lat']!,
             otherCoords['lng']!,
           );
-          
           p['calculated_distance'] = distance;
-          
-          final isWithin = distance <= _filterDistance;
-          if (isWithin) {
-            debugPrint("✅ $name: ${distance.toStringAsFixed(2)}km away. Keeping.");
-          } else {
-            debugPrint("🚫 $name: ${distance.toStringAsFixed(2)}km away. Filtered out.");
-          }
-
-          return isWithin;
+          return distance <= _filterDistance;
         }).toList();
 
-        // --- SORT BY DISTANCE ---
         filteredProfiles.sort((a, b) {
           final distA = a['calculated_distance'] as double? ?? 99999.0;
           final distB = b['calculated_distance'] as double? ?? 99999.0;
           return distA.compareTo(distB);
         });
-        debugPrint("📊 Found ${filteredProfiles.length} users within ${_filterDistance}km");
       } else {
-        debugPrint("⚠️ My coordinates are null. Hiding everyone.");
         filteredProfiles = [];
       }
 
       if (mounted) {
-        final elapsed = stopwatch.elapsedMilliseconds;
-        if (elapsed < 1200) await Future.delayed(Duration(milliseconds: 1200 - elapsed));
-        
         // Fetch wallet to sync credits
         final wallet = await _matchingService.getWallet();
-        
+
+        // Check for CURATING_BATCH sentinel from server
+        final bool curating = filteredProfiles.length == 1 &&
+            filteredProfiles.first['__status'] == 'CURATING_BATCH';
+
         setState(() {
-          _profiles = filteredProfiles.take(20).toList();
+          _isCurating = curating;
+          _profiles = curating ? [] : filteredProfiles.take(20).toList();
           _isLoading = false;
           if (wallet.isNotEmpty) {
             _likesRemaining = wallet['likes_remaining'] ?? 6;
             _superLikesRemaining = wallet['super_likes_remaining'] ?? 0;
+            _rewindsRemaining = wallet['rewinds_remaining'] ?? 0;
+            _savesRemaining = wallet['profile_saves_remaining'] ?? 0;
             _isPremium = wallet['is_premium'] ?? false;
           }
         });
         // Cache the newly fetched feed
         CacheService.instance.cacheDiscoveryFeed(_profiles);
+        // Warm the image cache for the first couple of cards so they're
+        // already decoded by the time they're shown — avoids the visible
+        // pop-in / loading-spinner flash on first paint.
+        _precacheUpcomingPhotos();
       }
     } catch (e) {
-      if (mounted) {
-        final elapsed = stopwatch.elapsedMilliseconds;
-        if (elapsed < 1200) await Future.delayed(Duration(milliseconds: 1200 - elapsed));
+      // Fall back to cache only when the network fetch fails entirely
+      final cached = await CacheService.instance.getCachedDiscoveryFeed();
+      if (cached != null && cached.isNotEmpty && mounted) {
+        setState(() {
+          _profiles = cached;
+          _isLoading = false;
+        });
+        _precacheUpcomingPhotos();
+      } else if (mounted) {
         setState(() {
           _errorMessage = 'Error loading profiles: $e';
           _isLoading = false;
@@ -472,55 +480,108 @@ class _DiscoverPageState extends State<DiscoverPage>
     }
   }
 
+  String? _firstPhotoUrl(Map<String, dynamic> profile) {
+    final urls = profile['photo_urls'];
+    if (urls is List && urls.isNotEmpty) {
+      final url = urls.first;
+      if (url is String && url.isNotEmpty) return url;
+    }
+    return null;
+  }
+
+  /// Warms the disk/memory cache for a profile's primary photo so
+  /// `CachedNetworkImage` paints instantly once the card is shown —
+  /// eliminates the load-in flash/spinner on first appearance.
+  void _precacheProfilePhoto(Map<String, dynamic> profile) {
+    final url = _firstPhotoUrl(profile);
+    if (url == null || !mounted) return;
+    precacheImage(CachedNetworkImageProvider(url), context).catchError((_) {});
+  }
+
+  /// Keeps the image pipeline a couple of cards ahead of what's on screen.
+  void _precacheUpcomingPhotos({int count = 2}) {
+    for (final p in _profiles.take(count)) {
+      _precacheProfilePhoto(p);
+    }
+  }
+
   // --- SWIPE LOGIC ---
 
   void _triggerSwipe(String targetUserId, String swipeType, {String? message}) {
     if (_isSwiping || _isRewinding || _profiles.isEmpty) return;
-    
+
     if (swipeType == 'gem') {
       if (_superLikesRemaining <= 0) {
+        _snapBack();
         Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsPage())).then((_) => _fetchProfiles());
         return;
       }
     } else if (swipeType == 'like' && _likesRemaining <= 0) {
-      _showThemedToast('Out of likes! Save them for later or wait until they replenish.', isError: true);
+      _snapBack();
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsPage())).then((_) => _fetchProfiles());
+      return;
+    } else if (swipeType == 'save' && _savesRemaining <= 0) {
+      _snapBack();
+      _showThemedToast('No saves left! Get Clush+ or purchase more.', isError: true);
       return;
     }
 
+    // Snapshot the departing + incoming profiles so the cinematic sequence
+    // has stable content to render through every phase, independent of
+    // `_profiles` mutating mid-flight.
     _pendingTargetId = targetUserId;
     _pendingMessage = message;
+    _departingProfile = _profiles.first;
+    _incomingProfile = _profiles.length > 1 ? _profiles[1] : null;
+    // Stay one card ahead of the stack: by the time this swipe resolves,
+    // `_profiles[1]` becomes current and `_profiles[2]` becomes "next" —
+    // warm its photo now so it's ready well before it's ever shown.
+    if (_profiles.length > 2) _precacheProfilePhoto(_profiles[2]);
+    // Carry the live drag offset into the exit animation so a manual
+    // release continues smoothly from the finger's position instead of
+    // snapping the card back to centre before it flies off.
+    _exitStartOffset = (swipeType == 'like' || swipeType == 'dislike')
+        ? _dragNotifier.value
+        : 0.0;
+
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+
+    // Flip to the cinematic-sequence view FIRST — only then clear the drag
+    // offset. Doing it in this order means the idle, drag-driven card is
+    // already unmounted when `_dragNotifier` fires, so it never repaints at
+    // identity (drag = 0) and visibly snaps back to centre before flying off.
     setState(() {
       _isSwiping = true;
       _swipeType = swipeType;
+      _showFloatingName = false;
     });
-    _swipeController.forward();
+    _dragNotifier.value = 0;
+    _sequenceController.forward(from: 0);
   }
 
-  void _onSwipeAnimationComplete() {
-    if (_profiles.isEmpty) return;
-    final droppedProfile = _profiles.first;
+  void _onSequenceComplete() {
+    final droppedProfile = _departingProfile;
     final swipeType = _swipeType;
-    final targetId = _pendingTargetId!;
+    final targetId = _pendingTargetId;
     final message = _pendingMessage;
+    if (droppedProfile == null || targetId == null) return;
 
-    // Reset scroll and floating name state for the next profile
-    if (_scrollController.hasClients) {
-      _scrollController.jumpTo(0);
-    }
+    _sequenceController.reset();
 
     setState(() {
       _isSwiping = false;
       _swipeType = '';
-      _showFloatingName = false;
       if (swipeType == 'like') _likesRemaining--;
       if (swipeType == 'gem') _superLikesRemaining--;
+      if (swipeType == 'save') _savesRemaining--;
       if (swipeType == 'dislike') _lastDislikedProfile = droppedProfile;
-      else _lastDislikedProfile = null; // only one rewind level
-      _profiles.removeAt(0);
+      else _lastDislikedProfile = null;
+      if (_profiles.isNotEmpty) _profiles.removeAt(0);
       _pendingTargetId = null;
       _pendingMessage = null;
+      _departingProfile = null;
+      _incomingProfile = null;
     });
-    _swipeController.reset();
     _recordSwipeInBackground(targetId, swipeType, droppedProfile, message: message);
   }
 
@@ -539,16 +600,10 @@ class _DiscoverPageState extends State<DiscoverPage>
     final vx = details.velocity.pixelsPerSecond.dx;
     final drag = _dragNotifier.value;
     final targetId = _profiles.first['id'].toString();
-    final sw = MediaQuery.of(context).size.width;
 
     if (drag > 80 || vx > 500) {
-      // Seed the swipe animation at the drag position so there is no snap-to-centre frame.
-      _swipeController.value = (drag / (sw * 1.4)).clamp(0.0, 0.4);
-      _dragNotifier.value = 0;
       _triggerSwipe(targetId, 'like');
     } else if (drag < -80 || vx < -500) {
-      _swipeController.value = (-drag / (sw * 1.4)).clamp(0.0, 0.4);
-      _dragNotifier.value = 0;
       _triggerSwipe(targetId, 'dislike');
     } else {
       _snapBack();
@@ -575,31 +630,39 @@ class _DiscoverPageState extends State<DiscoverPage>
       });
   }
 
-  void _saveCurrentProfile() async {
-    if (_profiles.isEmpty) return;
-    final targetId = _profiles.first['id'].toString();
-    setState(() => _profiles.removeAt(0));
-    try {
-      await _matchingService.saveProfile(targetId);
-      if (mounted) _showThemedToast('Profile saved!', isError: false);
-    } catch (e) {
-      debugPrint('Save failed: $e');
-    }
-  }
-
-  void _triggerRewind() {
+  void _triggerRewind() async {
     if (_isSwiping || _isRewinding || _lastDislikedProfile == null) return;
+    if (_rewindsRemaining <= 0) {
+      _showThemedToast('No rewinds left! Get Clush+ or purchase more.', isError: true);
+      return;
+    }
     final profileToRestore = _lastDislikedProfile!;
     setState(() {
       _profiles.insert(0, profileToRestore);
       _lastDislikedProfile = null;
       _isRewinding = true;
+      _rewindsRemaining--;
       _showFloatingName = false;
     });
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
-    _swipeController.value = 1.0;
-    _swipeController.reverse();
-    _matchingService.rewind(profileToRestore['id'].toString());
+    _rewindController.forward(from: 0);
+    final result = await _matchingService.rewind(profileToRestore['id'].toString());
+    if (result['success'] == false && mounted) {
+      // Roll back: remove the restored card and refund the credit.
+      setState(() {
+        if (_profiles.isNotEmpty && _profiles.first['id'] == profileToRestore['id']) {
+          _profiles.removeAt(0);
+        }
+        _lastDislikedProfile = profileToRestore;
+        _rewindsRemaining++;
+      });
+      _showThemedToast(
+        result['error'] == 'no_rewinds'
+            ? 'No rewinds left! Get Clush+ or purchase more.'
+            : 'Failed to rewind.',
+        isError: true,
+      );
+    }
   }
 
   void _recordSwipeInBackground(
@@ -608,14 +671,15 @@ class _DiscoverPageState extends State<DiscoverPage>
     Map<String, dynamic> droppedProfile, {
     String? message,
   }) async {
-    final backendType = swipeType == 'dislike' ? 'pass' : swipeType;
     try {
       Map<String, dynamic> result;
-      if (backendType == 'like') {
+      if (swipeType == 'like') {
         result = await _matchingService.swipeRight(targetUserId);
-      } else if (backendType == 'gem') {
+      } else if (swipeType == 'gem') {
         // Map UI 'gem' to the backend 'pulse' endpoint
         result = await _matchingService.pulse(targetUserId, message);
+      } else if (swipeType == 'save') {
+        result = await _matchingService.saveProfile(targetUserId);
       } else {
         result = await _matchingService.swipeLeft(targetUserId);
       }
@@ -625,8 +689,21 @@ class _DiscoverPageState extends State<DiscoverPage>
         if (error == 'daily_limit') {
           _showThemedToast('Out of likes! Wait until they replenish.', isError: true);
         } else if (error == 'exhausted') {
-          _showThemedToast('No ${result['type'] ?? 'feature'} credits left! Get Clush+ or purchase more.', isError: true);
+          _showThemedToast(
+            swipeType == 'save'
+                ? 'No saves left! Get Clush+ or purchase more.'
+                : 'No ${result['type'] ?? 'feature'} credits left! Get Clush+ or purchase more.',
+            isError: true,
+          );
+        } else if (swipeType == 'save') {
+          _showThemedToast('Failed to save profile.', isError: true);
         }
+      } else if (swipeType == 'save') {
+        // Keep the Saved tab in sync — without this it shows stale data
+        // until the user manually pulls to refresh.
+        ProviderScope.containerOf(context, listen: false)
+            .read(savedProfilesProvider.notifier)
+            .refresh();
       } else if (result['match'] == true && mounted) {
         _showMatchDialog(droppedProfile);
       }
@@ -825,16 +902,7 @@ class _DiscoverPageState extends State<DiscoverPage>
     if (_isLoading) {
       return Scaffold(
         backgroundColor: kCream,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-              child: Container(color: Colors.white.withValues(alpha: 0.18)),
-            ),
-            const Center(child: HeartLoader()),
-          ],
-        ),
+        body: const Center(child: HeartLoader()),
       );
     }
 
@@ -870,39 +938,45 @@ class _DiscoverPageState extends State<DiscoverPage>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      "You've seen everyone",
-                      style: GoogleFonts.gabarito(fontWeight: FontWeight.bold, fontSize: 26,
+                      _isCurating
+                          ? "We're curating your next introductions"
+                          : "You've seen everyone",
+                      style: GoogleFonts.gabarito(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 26,
                         color: kInk,
                         fontStyle: FontStyle.italic,
                       ),
+                      textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      "Check back soon for new profiles",
-                      style: GoogleFonts.figtree(
-                        fontSize: 14,
-                        color: kInkMuted,
-                      ),
+                      _isCurating
+                          ? "We're finding the best matches for you.\nCheck back in a little while."
+                          : "Check back soon for new profiles",
+                      style: GoogleFonts.figtree(fontSize: 14, color: kInkMuted),
+                      textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 32),
-                    ElevatedButton(
-                      onPressed: () => _showFiltersModal(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kInk,
-                        foregroundColor: kCream,
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+                    if (!_isCurating) ...[
+                      const SizedBox(height: 32),
+                      ElevatedButton(
+                        onPressed: () => _showFiltersModal(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kInk,
+                          foregroundColor: kCream,
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+                        ),
+                        child: Text(
+                          "Broaden your view",
+                          style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
                       ),
-                      child: Text(
-                        "Broaden your view",
-                        style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                    ),
+                    ],
                   ],
                 ),
               ),
-              // Header spacer or just the header on top of Stack if we use Stack in ListView
             ],
           ),
         ),
@@ -910,10 +984,6 @@ class _DiscoverPageState extends State<DiscoverPage>
     }
 
     final profile = _profiles.first;
-    // Pre-build next card outside AnimatedBuilder so it isn't rebuilt every frame
-    final Widget nextCard = _profiles.length > 1
-        ? _buildProfileContent(_profiles[1])
-        : const SizedBox.shrink();
 
     return Scaffold(
       backgroundColor: kCream,
@@ -923,130 +993,48 @@ class _DiscoverPageState extends State<DiscoverPage>
         backgroundColor: kCard,
         child: Stack(
           children: [
-            // 1. SCROLLABLE PROFILE CONTENT — swipe-animated + drag gesture
-            GestureDetector(
-              onHorizontalDragUpdate: _onHorizontalDragUpdate,
-              onHorizontalDragEnd: _onHorizontalDragEnd,
-              onHorizontalDragCancel: _onHorizontalDragCancel,
-              child: AnimatedBuilder(
-                animation: Listenable.merge([_swipeProgress, _dragNotifier]),
-                child: _buildProfileContent(profile),
-                builder: (context, currentCard) {
-                  final double t    = _swipeProgress.value;
-                  final double drag = _dragNotifier.value;
-                  final double sw   = MediaQuery.of(context).size.width;
+            // 1. CARD LAYER — either the cinematic swipe sequence, or the
+            //    plain interactive card (idle / dragging / rewinding).
+            //    Crucially: only ONE profile is ever visible at a time —
+            //    no card is ever stacked behind another.
+            _isSwiping
+                ? _buildSwipeSequence()
+                : GestureDetector(
+                    onHorizontalDragUpdate: _onHorizontalDragUpdate,
+                    onHorizontalDragEnd: _onHorizontalDragEnd,
+                    onHorizontalDragCancel: _onHorizontalDragCancel,
+                    child: AnimatedBuilder(
+                      animation: Listenable.merge([_rewindProgress, _dragNotifier]),
+                      child: _buildProfileContent(profile),
+                      builder: (context, currentCard) {
+                        final double r    = _rewindProgress.value;
+                        final double drag = _dragNotifier.value;
+                        final double sw   = MediaQuery.of(context).size.width;
 
-                  final Matrix4 mat;
-                  if (_isRewinding) {
-                    mat = t > 0
-                        ? (Matrix4.translationValues(-sw * 1.2 * t, 30.0 * t, 0)
-                          ..rotateZ(-0.15 * t))
-                        : Matrix4.identity();
-                  } else if (_isSwiping) {
-                    if (_swipeType == 'gem') {
-                      final double sh = MediaQuery.of(context).size.height;
-                      final double s = 1.0 - 0.1 * t;
-                      mat = Matrix4.translationValues(0, -sh * 1.2 * t, 0)
-                        ..scaleByDouble(s, s, s, 1.0);
-                    } else {
-                      final bool goLeft = _swipeType == 'dislike';
-                      mat = Matrix4.translationValues(
-                        goLeft ? -sw * 1.4 * t : sw * 1.4 * t,
-                        40.0 * t, 0,
-                      )..rotateZ((goLeft ? -0.2 : 0.2) * t);
-                    }
-                  } else if (drag != 0) {
-                    final double normalizedX = drag / sw;
-                    mat = Matrix4.translationValues(drag, drag.abs() * 0.06, 0)
-                      ..rotateZ(normalizedX * 0.18);
-                  } else {
-                    mat = Matrix4.identity();
-                  }
+                        final Matrix4 mat;
+                        if (_isRewinding) {
+                          // Slide in from the left as r goes 0→1
+                          mat = Matrix4.translationValues(-sw * 1.2 * (1.0 - r), 0, 0)
+                            ..rotateZ(-0.12 * (1.0 - r));
+                        } else if (drag != 0) {
+                          final double normalizedX = drag / sw;
+                          mat = Matrix4.translationValues(drag, 0, 0)
+                            ..rotateZ(normalizedX * 0.12);
+                        } else {
+                          mat = Matrix4.identity();
+                        }
 
-                  // Indicator opacity — ramps from 0→1 over 40–140 px
-                  final double likeOpacity = ((drag - 40) / 100).clamp(0.0, 1.0);
-                  final double nopeOpacity = ((-drag - 40) / 100).clamp(0.0, 1.0);
-
-                  return Stack(
-                    children: [
-                      if (_isSwiping && _profiles.length > 1)
-                        Transform.scale(
-                          scale: 0.94 + 0.06 * t,
+                        return Transform(
+                          transform: mat,
                           alignment: Alignment.bottomCenter,
-                          child: Opacity(
-                            opacity: t.clamp(0.0, 1.0),
-                            child: nextCard,
-                          ),
-                        ),
-                      Transform(
-                        transform: mat,
-                        alignment: Alignment.bottomCenter,
-                        child: currentCard,
-                      ),
-                      // LIKE indicator
-                      if (likeOpacity > 0)
-                        Positioned(
-                          top: 140, left: 28,
-                          child: Opacity(
-                            opacity: likeOpacity,
-                            child: Transform.rotate(
-                              angle: -0.25,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: kAccent.withValues(alpha: 0.9),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: kAccent, width: 2),
-                                ),
-                                child: Text(
-                                  'LIKE',
-                                  style: GoogleFonts.gabarito(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 22,
-                                    letterSpacing: 1.5,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      // NOPE indicator
-                      if (nopeOpacity > 0)
-                        Positioned(
-                          top: 140, right: 28,
-                          child: Opacity(
-                            opacity: nopeOpacity,
-                            child: Transform.rotate(
-                              angle: 0.25,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: kDestructive.withValues(alpha: 0.9),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: kDestructive, width: 2),
-                                ),
-                                child: Text(
-                                  'NOPE',
-                                  style: GoogleFonts.gabarito(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 22,
-                                    letterSpacing: 1.5,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-            ),
+                          child: currentCard,
+                        );
+                      },
+                    ),
+                  ),
 
             // 2. Floating Name Pill
-            if (_showFloatingName)
+            if (_showFloatingName && !_isSwiping)
               Positioned(
                 top: 54, left: 0, right: 0,
                 child: _buildFloatingNamePill(profile)
@@ -1055,14 +1043,209 @@ class _DiscoverPageState extends State<DiscoverPage>
                     .slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
               ),
 
-            // 4. Bottom action bar — Rewind · Save · Gem
+            // Rewind — bottom left (mirrors the gem button)
             Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: _buildBottomActionBar(),
+              bottom: 40, left: 24,
+              child: _buildRewindFAB(),
+            ),
+
+            // Save pill — center, only when daily likes are exhausted
+            if (_likesRemaining <= 0)
+              Positioned(
+                bottom: 44, left: 84, right: 84,
+                child: Center(child: _buildSavePill()),
+              ),
+
+            // Gem — bottom right FAB
+            Positioned(
+              bottom: 40, right: 24,
+              child: _buildGemFAB(),
+            ),
+
+            // Fixed header overlay — drawn last so it sits on top of scroll content
+            Positioned(
+              top: 0, left: 0, right: 0,
+              child: _buildHeader(context),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ================= CINEMATIC SWIPE SEQUENCE =================
+  //
+  // A single, locked, four-phase reveal driven by `_sequenceController`:
+  //   1. Exit    — current card slides fully off-screen, a softly blurred /
+  //                dimmed backdrop of its photo fades in behind it.
+  //   2. Icon in — a heart (like/gem), cross (dislike), or bookmark (save)
+  //                rises from below the centre and scales in with a pop.
+  //   3. Icon out— the icon holds for a beat, then fades away.
+  //   4. Next in — the next profile fades in over the backdrop, which
+  //                simultaneously fades out beneath it.
+  //
+  // Input is locked for the whole sequence (`_isSwiping`), so nothing can
+  // interrupt the choreography — keeping it slow and deliberate.
+  Widget _buildSwipeSequence() {
+    final departing = _departingProfile;
+    if (departing == null) return const SizedBox.shrink();
+
+    final bool isLike = _swipeType == 'like' || _swipeType == 'gem';
+    final bool isSave = _swipeType == 'save';
+    final IconData sequenceIcon = isSave
+        ? Icons.bookmark_rounded
+        : (isLike ? Icons.favorite_rounded : Icons.close_rounded);
+    final Color sequenceColor = isSave ? kGold : (isLike ? kRose : kDestructive);
+
+    return AnimatedBuilder(
+      animation: _sequenceController,
+      builder: (context, _) {
+        final double progress = _sequenceController.value;
+        final double sw = MediaQuery.of(context).size.width;
+        final double sh = MediaQuery.of(context).size.height;
+
+        // ── Phase 1: exit transform for the departing card ──
+        final double exitT = _kExitPhase.transform(progress).clamp(0.0, 1.0);
+        final bool goLeft = _swipeType == 'dislike';
+        final Matrix4 exitMat;
+        if (_swipeType == 'gem') {
+          final double s = 1.0 - 0.1 * exitT;
+          exitMat = Matrix4.translationValues(0, -sh * 1.2 * exitT, 0)
+            ..scaleByDouble(s, s, s, 1.0);
+        } else {
+          // Blend from wherever the finger released the card (`_exitStartOffset`)
+          // out to the full off-screen translation, so there's no jump back
+          // to centre before the card continues on its way out.
+          final double targetX = goLeft ? -sw * 1.4 : sw * 1.4;
+          final double x = _exitStartOffset + (targetX - _exitStartOffset) * exitT;
+          final double targetRotation = goLeft ? -0.16 : 0.16;
+          final double startRotation = (_exitStartOffset / sw) * 0.12;
+          final double rotation = startRotation + (targetRotation - startRotation) * exitT;
+          exitMat = Matrix4.translationValues(x, 0, 0)..rotateZ(rotation);
+        }
+        // Card is fully gone once phase 1 completes — avoid lingering paints.
+        final bool showDepartingCard = progress < _kExitPhase.end;
+
+        // ── Phase 2 + 3: icon pop-in then fade-out ──
+        final double iconInT = _kIconInPhase.transform(progress).clamp(0.0, 1.0);
+        final double iconOutT = _kIconOutPhase.transform(progress).clamp(0.0, 1.0);
+        double iconOpacity;
+        double iconScale;
+        double iconRise;
+        if (progress < _kIconInPhase.begin) {
+          iconOpacity = 0.0;
+          iconScale = 0.4;
+          iconRise = 60.0;
+        } else if (progress < _kIconOutPhase.begin) {
+          iconOpacity = iconInT;
+          iconScale = 0.4 + 0.6 * iconInT;
+          iconRise = 60.0 * (1.0 - iconInT);
+        } else {
+          iconOpacity = (1.0 - iconOutT);
+          iconScale = 1.0;
+          iconRise = 0.0;
+        }
+
+        // ── Phase 4: next profile fades in ──
+        final double nextInT = _kNextInPhase.transform(progress).clamp(0.0, 1.0);
+
+        return Stack(
+          children: [
+            // Plain background — same as the rest of the app, no blurred photo
+            const Positioned.fill(child: ColoredBox(color: kCream)),
+
+            // Next profile fading in (only once it exists)
+            if (_incomingProfile != null && nextInT > 0)
+              Positioned.fill(
+                child: Opacity(
+                  opacity: nextInT,
+                  child: _buildProfileContent(_incomingProfile!, interactive: false),
+                ),
+              ),
+
+            // Departing card sliding/flying away
+            if (showDepartingCard)
+              Transform(
+                transform: exitMat,
+                alignment: Alignment.bottomCenter,
+                child: _buildProfileContent(departing, interactive: false),
+              ),
+
+            // Lottie animations for Gem
+            if (iconOpacity > 0 && _swipeType == 'gem')
+              IgnorePointer(
+                child: Center(
+                  child: Transform.translate(
+                    offset: Offset(0, iconRise),
+                    child: Opacity(
+                      opacity: iconOpacity.clamp(0.0, 1.0),
+                      child: Transform.scale(
+                        scale: iconScale,
+                        child: SizedBox(
+                          width: sw,
+                          height: sw,
+                          child: Lottie.asset(
+                            'assets/Lottie/gem.lottie',
+                            decoder: (bytes) => LottieComposition.decodeZip(
+                              bytes,
+                              filePicker: (files) => files.firstWhere(
+                                (f) => f.name.endsWith('.json') && f.name != 'manifest.json',
+                              ),
+                            ),
+                            repeat: false,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            // Native flutter_animate burst for Like and Dislike
+            if (iconOpacity > 0 && (_swipeType == 'like' || _swipeType == 'dislike'))
+              IgnorePointer(
+                child: Center(
+                  child: AnimatedSwipeIcon(
+                    key: ValueKey('swipe_icon_$_swipeType'),
+                    isLike: _swipeType == 'like',
+                  ),
+                ),
+              ),
+
+            // Bookmark icon for 'save' — rises from below, pops in, then fades away
+            if (iconOpacity > 0 && _swipeType == 'save')
+              IgnorePointer(
+                child: Center(
+                  child: Transform.translate(
+                    offset: Offset(0, iconRise),
+                    child: Opacity(
+                      opacity: iconOpacity.clamp(0.0, 1.0),
+                      child: Transform.scale(
+                        scale: iconScale,
+                        child: Container(
+                          width: 130,
+                          height: 130,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: kCream.withValues(alpha: 0.92),
+                            boxShadow: [
+                              BoxShadow(
+                                color: kInk.withValues(alpha: 0.18),
+                                blurRadius: 28,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Icon(sequenceIcon, color: sequenceColor, size: 72),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -1073,47 +1256,41 @@ class _DiscoverPageState extends State<DiscoverPage>
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(30),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: kCream.withOpacity(0.8),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: kBone.withOpacity(0.5), width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: kInk.withOpacity(0.08),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.gabarito(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: kInk,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: kCream.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: kBone.withValues(alpha: 0.5), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: kInk.withValues(alpha: 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              )
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.gabarito(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: kInk,
+                    letterSpacing: -0.2,
                   ),
-                  if (isVerified) ...[
-                    const SizedBox(width: 6),
-                    const Icon(Icons.verified_rounded, color: kGold, size: 16),
-                  ],
-                ],
+                ),
               ),
-            ),
+              if (isVerified) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.verified_rounded, color: kGold, size: 16),
+              ],
+            ],
           ),
         ),
       ),
@@ -1122,7 +1299,16 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   // ================= CONTENT BUILDER =================
 
-  Widget _buildProfileContent(Map<String, dynamic> profile) {
+  // [interactive] true for the live/draggable top card (uses the shared
+  // `_scrollController` that drives the floating-name pill + jump-to-top).
+  // Snapshot cards rendered during the cinematic sequence (departing /
+  // incoming) must NOT share that controller — a ScrollController can only
+  // be attached to one Scrollable at a time, and swapping subtrees between
+  // the idle view and the sequence view would otherwise race two
+  // SingleChildScrollViews over it, throwing a
+  // "_lifecycleState == inactive" assertion. They get their own internal
+  // scroll position and are non-scrollable since input is locked anyway.
+  Widget _buildProfileContent(Map<String, dynamic> profile, {bool interactive = true}) {
     final List photoUrls = profile['photo_urls'] ?? [];
     final List prompts = profile['prompts'] ?? [];
 
@@ -1176,9 +1362,9 @@ class _DiscoverPageState extends State<DiscoverPage>
     }
 
     List<Widget> contentList = [];
-    
-    // Header
-    contentList.add(_buildHeader(context));
+
+    // Spacer so content starts below the fixed header overlay
+    contentList.add(const SizedBox(height: 100));
 
     // First profile card: image with overlay + interests panel
     contentList.add(_buildFirstProfileCard(profile, allInterests));
@@ -1271,8 +1457,10 @@ class _DiscoverPageState extends State<DiscoverPage>
     contentList.add(const SizedBox(height: 140));
 
     return SingleChildScrollView(
-      controller: _scrollController,
-      physics: const BouncingScrollPhysics(),
+      controller: interactive ? _scrollController : null,
+      physics: interactive
+          ? const BouncingScrollPhysics()
+          : const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1333,19 +1521,16 @@ class _DiscoverPageState extends State<DiscoverPage>
   // ================= HEADER =================
 
   Widget _buildHeader(BuildContext context) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          height: 100,
-          decoration: BoxDecoration(
-            color: kCream.withOpacity(0.88),
-            border: Border(
-              bottom: BorderSide(color: kBone, width: 0.5),
-            ),
-          ),
-          padding: const EdgeInsets.fromLTRB(16, 48, 16, 12),
-          child: Row(
+    return Container(
+      height: 100,
+      decoration: BoxDecoration(
+        color: kCream,
+        border: Border(
+          bottom: BorderSide(color: kBone, width: 0.5),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 48, 16, 12),
+      child: Row(
             children: [
               GestureDetector(
                 onTap: () => _showFiltersModal(),
@@ -1375,8 +1560,6 @@ class _DiscoverPageState extends State<DiscoverPage>
                 ),
               ),
             ],
-          ),
-        ),
       ),
     );
   }
@@ -1592,103 +1775,119 @@ class _DiscoverPageState extends State<DiscoverPage>
     );
   }
 
-  Widget _buildBottomActionBar() {
-    if (_profiles.isEmpty) return const SizedBox();
+  Widget _buildGemFAB() {
     final currentProfileId = _profiles.first['id'].toString();
-    final canRewind = _lastDislikedProfile != null && !_isSwiping && !_isRewinding;
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [kCream, kCream.withValues(alpha: 0.95), kCream.withValues(alpha: 0)],
-          stops: const [0.0, 0.65, 1.0],
+    final hasGems = _superLikesRemaining > 0;
+    return GestureDetector(
+      onTap: () {
+        if (!hasGems) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SubscriptionsPage()),
+          ).then((_) => _fetchProfiles());
+          return;
+        }
+        final profile = _profiles.first;
+        final name = profile['fullName'] ?? profile['full_name'] ?? 'them';
+        _showGemDialog(currentProfileId, name);
+      },
+      child: Container(
+        width: 60,
+        height: 60,
+        decoration: BoxDecoration(
+          color: kCard,
+          shape: BoxShape.circle,
+          border: Border.all(color: kBorderLight, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: kInk.withValues(alpha: 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-      ),
-      padding: const EdgeInsets.fromLTRB(24, 28, 24, 36),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // ── Rewind ────────────────────────────────────────────
-          _buildBarButton(
-            icon: Icons.replay_rounded,
-            label: 'Rewind',
-            onTap: canRewind ? _triggerRewind : null,
-            iconColor: canRewind ? kAccent : kBorderLight,
-            size: 52,
-          ),
-          const SizedBox(width: 20),
-
-          // ── Save for Later ────────────────────────────────────
-          _buildBarButton(
-            icon: Icons.bookmark_border_rounded,
-            label: 'Save',
-            onTap: _saveCurrentProfile,
-            iconColor: kInk,
-            size: 52,
-          ),
-          const SizedBox(width: 20),
-
-          // ── Gem ───────────────────────────────────────────────
-          _buildBarButton(
-            icon: Icons.diamond_rounded,
-            label: 'Gem',
-            onTap: () {
-              if (_superLikesRemaining <= 0) {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionsPage()))
-                    .then((_) => _fetchProfiles());
-                return;
-              }
-              final profile = _profiles.first;
-              final name = profile['fullName'] ?? profile['full_name'] ?? 'them';
-              _showGemDialog(currentProfileId, name);
-            },
-            iconColor: _superLikesRemaining > 0 ? kGold : kBorderLight,
-            size: 52,
-          ),
-        ],
+        child: Icon(
+          Icons.diamond_rounded,
+          color: hasGems ? kGold : kBorderLight,
+          size: 26,
+        ),
       ),
     );
   }
 
-  Widget _buildBarButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onTap,
-    required Color iconColor,
-    required double size,
-  }) {
-    final enabled = onTap != null;
+  Widget _buildRewindFAB() {
+    final hasRewindTarget = _lastDislikedProfile != null && !_isSwiping && !_isRewinding;
+    final hasCredits = _rewindsRemaining > 0;
+    final canRewind = hasRewindTarget && hasCredits;
     return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              color: kCard,
-              shape: BoxShape.circle,
-              border: Border.all(color: enabled ? kBorderLight : kBorderLight.withValues(alpha: 0.5), width: 1),
-              boxShadow: enabled
-                  ? [BoxShadow(color: kInk.withValues(alpha: 0.07), blurRadius: 10, offset: const Offset(0, 3))]
-                  : [],
-            ),
-            child: Icon(icon, color: iconColor, size: size * 0.44),
+      onTap: !hasRewindTarget
+          ? null
+          : hasCredits
+              ? _triggerRewind
+              : () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SubscriptionsPage()),
+                  ).then((_) => _fetchProfiles());
+                },
+      child: Container(
+        width: 60,
+        height: 60,
+        decoration: BoxDecoration(
+          color: kCard,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: canRewind ? kBorderLight : kBorderLight.withValues(alpha: 0.4),
+            width: 1,
           ),
-          const SizedBox(height: 5),
-          Text(
-            label,
-            style: GoogleFonts.figtree(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: enabled ? kInkMuted : kBorderLight,
+          boxShadow: canRewind
+              ? [BoxShadow(color: kInk.withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 4))]
+              : [],
+        ),
+        child: Icon(
+          Icons.replay_rounded,
+          color: canRewind ? kAccent : kBorderLight,
+          size: 26,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSavePill() {
+    return GestureDetector(
+      onTap: () {
+        if (_profiles.isEmpty) return;
+        _triggerSwipe(_profiles.first['id'].toString(), 'save');
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+        decoration: BoxDecoration(
+          color: kCard,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: kBorderLight, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: kInk.withValues(alpha: 0.07),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.bookmark_border_rounded, color: kInk, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              'Save for Later',
+              style: GoogleFonts.figtree(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: kInk,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -90,6 +90,14 @@
           }
         },
         {
+          "client_id": "903021608749-auhdmug1butekcnuq3dh1g9p1nk6maje.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.clush",
+            "certificate_hash": "1ef94acd3bbc73f63c5ca9c04ca20e8fd62d7c25"
+          }
+        },
+        {
           "client_id": "903021608749-hh67tplu46lpc4lg4bb88g3r9rv3run0.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

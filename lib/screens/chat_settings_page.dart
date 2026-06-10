@@ -1,9 +1,91 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:clush/theme/colors.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:clush/screens/setting_sub_pages.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:clush/services/stream_service.dart';
 
-class ChatSettingsPage extends StatelessWidget {
+class ChatSettingsPage extends StatefulWidget {
   const ChatSettingsPage({super.key});
+
+  @override
+  State<ChatSettingsPage> createState() => _ChatSettingsPageState();
+}
+
+class _ChatSettingsPageState extends State<ChatSettingsPage> {
+  bool _muteNotifications = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _muteNotifications = prefs.getBool('mute_chat_notifications') ?? false;
+    });
+  }
+
+  Future<void> _toggleMute(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('mute_chat_notifications', value);
+    setState(() {
+      _muteNotifications = value;
+    });
+  }
+
+  void _confirmDeleteAllChats() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text("Delete All Chats?",
+            style: GoogleFonts.gabarito(color: kInk, fontWeight: FontWeight.bold)),
+        content: Text("This will permanently delete all your chat history. Your matches will remain.",
+            style: GoogleFonts.figtree(color: kInkMuted)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text("Cancel", style: GoogleFonts.figtree(color: kInk, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final myId = FirebaseAuth.instance.currentUser?.uid;
+              if (myId != null) {
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => const Center(child: CircularProgressIndicator(color: kAccent)),
+                );
+                await StreamService.instance.deleteAllChats(myId);
+                if (mounted) {
+                  Navigator.pop(context); // Pop loading
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('All chats deleted', style: GoogleFonts.figtree()),
+                      backgroundColor: kInk,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kDestructive,
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+            child: Text("Delete All", style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,28 +116,15 @@ class ChatSettingsPage extends StatelessWidget {
             _buildTile(
               icon: Icons.notifications_off_outlined,
               title: "Mute Notifications",
-              trailing: Switch.adaptive(value: false, onChanged: (v) {}),
+              trailing: Switch.adaptive(value: _muteNotifications, onChanged: _toggleMute),
             ),
             _buildDivider(),
             _buildTile(
               icon: Icons.block_flipped,
               title: "Blocked Contacts",
-              onTap: () {},
-            ),
-          ]),
-          const SizedBox(height: 32),
-          _buildSectionLabel("Chat Preferences"),
-          _buildCard([
-            _buildTile(
-              icon: Icons.wallpaper_rounded,
-              title: "Chat Wallpaper",
-              onTap: () {},
-            ),
-            _buildDivider(),
-            _buildTile(
-              icon: Icons.history_rounded,
-              title: "Clear Chat History",
-              onTap: () {},
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const BlockListPage()));
+              },
             ),
           ]),
           const SizedBox(height: 48),
@@ -126,7 +195,7 @@ class ChatSettingsPage extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {},
+          onTap: _confirmDeleteAllChats,
           borderRadius: BorderRadius.circular(16),
           child: Center(
             child: Text(
