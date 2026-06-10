@@ -1820,16 +1820,16 @@ class _DiscoverPageState extends State<DiscoverPage>
     final hasCredits = _rewindsRemaining > 0;
     final canRewind = hasRewindTarget && hasCredits;
     return GestureDetector(
-      onTap: !hasRewindTarget
-          ? null
-          : hasCredits
-              ? _triggerRewind
-              : () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SubscriptionsPage()),
-                  ).then((_) => _fetchProfiles());
-                },
+      onTap: !hasCredits
+          ? () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SubscriptionsPage()),
+              ).then((_) => _fetchProfiles());
+            }
+          : !hasRewindTarget
+              ? null
+              : _triggerRewind,
       child: Container(
         width: 60,
         height: 60,

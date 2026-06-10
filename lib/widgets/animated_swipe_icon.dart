@@ -1,122 +1,127 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
-class AnimatedSwipeIcon extends StatelessWidget {
+/// Draws the like/dislike feedback as a self-drawing outline: the outer
+/// circle traces itself first, then the heart (like) or cross (dislike)
+/// strokes itself in — instead of the previous pop/bounce/ripple animation.
+class AnimatedSwipeIcon extends StatefulWidget {
   final bool isLike;
 
   const AnimatedSwipeIcon({super.key, required this.isLike});
 
   @override
+  State<AnimatedSwipeIcon> createState() => _AnimatedSwipeIconState();
+}
+
+class _AnimatedSwipeIconState extends State<AnimatedSwipeIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  // Phase 1: outer circle draws itself.
+  static const Interval _circlePhase = Interval(0.0, 0.55, curve: Curves.easeInOut);
+  // Phase 2: heart/cross draws itself, slightly overlapping the circle finish.
+  static const Interval _iconPhase = Interval(0.40, 1.0, curve: Curves.easeInOut);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     const wineColor = Color(0xFF722F37);
-
-    // The base circle and ripples share the same radius/stroke
-    Widget buildBaseCircle({double strokeWidth = 5}) {
-      return Container(
-        width: 144,
-        height: 144,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: wineColor, width: strokeWidth),
-        ),
-      );
-    }
-
-    Widget heartIcon = CustomPaint(
-      size: const Size(144, 144),
-      painter: HeartPainter(color: wineColor, strokeWidth: 5),
-    );
-
-    Widget crossIcon = CustomPaint(
-      size: const Size(144, 144),
-      painter: CrossPainter(color: wineColor, strokeWidth: 7.5),
-    );
 
     return SizedBox(
       width: 220,
       height: 220,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Base Circle
-          buildBaseCircle(strokeWidth: 5)
-              .animate(delay: 50.ms)
-              .fadeIn(duration: 150.ms, curve: Curves.easeOut)
-              .scale(
-                begin: const Offset(0.5, 0.5),
-                end: const Offset(1, 1),
-                duration: 400.ms,
-                curve: Curves.easeOutBack,
-              ),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final circleT = _circlePhase.transform(_controller.value);
+          final iconT = _iconPhase.transform(_controller.value);
 
-          // Inner Icon (Heart or Cross)
-          (isLike ? heartIcon : crossIcon)
-              .animate(delay: 150.ms)
-              .fadeIn(duration: 150.ms, curve: Curves.easeOut)
-              .scale(
-                begin: const Offset(0.4, 0.4),
-                end: const Offset(1, 1),
-                duration: 400.ms,
-                curve: Curves.easeOutBack,
-              ),
-
-          // Ripple 1
-          buildBaseCircle(strokeWidth: 3)
-              .animate(delay: 200.ms)
-              .scale(
-                begin: const Offset(0.9, 0.9),
-                end: const Offset(1.6, 1.6),
-                duration: 700.ms,
-                curve: Curves.easeOutCubic,
-              )
-              .fadeOut(
-                begin: 0.4,
-                duration: 700.ms,
-                curve: Curves.easeOutCubic,
-              ),
-
-          // Ripple 2
-          buildBaseCircle(strokeWidth: 2)
-              .animate(delay: 300.ms)
-              .scale(
-                begin: const Offset(0.95, 0.95),
-                end: const Offset(1.9, 1.9),
-                duration: 900.ms,
-                curve: Curves.easeOutCubic,
-              )
-              .fadeOut(
-                begin: 0.2,
-                duration: 900.ms,
-                curve: Curves.easeOutCubic,
-              ),
-        ],
+          return CustomPaint(
+            size: const Size(220, 220),
+            painter: _SwipeIconPainter(
+              isLike: widget.isLike,
+              color: wineColor,
+              circleProgress: circleT,
+              iconProgress: iconT,
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-class HeartPainter extends CustomPainter {
+class _SwipeIconPainter extends CustomPainter {
+  final bool isLike;
   final Color color;
-  final double strokeWidth;
+  final double circleProgress;
+  final double iconProgress;
 
-  HeartPainter({required this.color, required this.strokeWidth});
+  _SwipeIconPainter({
+    required this.isLike,
+    required this.color,
+    required this.circleProgress,
+    required this.iconProgress,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+    final center = Offset(size.width / 2, size.height / 2);
+    const circleRadius = 72.0;
+
+    // ── Outer circle, drawn as a sweeping arc ──
+    if (circleProgress > 0) {
+      final circlePaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round;
+
+      final rect = Rect.fromCircle(center: center, radius: circleRadius);
+      const startAngle = -3.14159265358979 / 2; // start at top
+      final sweepAngle = 2 * 3.14159265358979 * circleProgress;
+      canvas.drawArc(rect, startAngle, sweepAngle, false, circlePaint);
+    }
+
+    // ── Inner icon (heart or cross), drawn progressively ──
+    if (iconProgress > 0) {
+      final iconPaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..strokeWidth = isLike ? 5 : 7.5;
+
+      final fullPath = isLike ? _heartPath(center) : _crossPath(center);
+      final partialPath = _extractProgress(fullPath, iconProgress);
+      canvas.drawPath(partialPath, iconPaint);
+    }
+  }
+
+  /// Heart path centered on [center]. Source SVG: d="M110 144 C93 128 75 116
+  /// 75 99 C75 87 84 79 95 79 C102 79 107 83 110 89 C113 83 118 79 125 79
+  /// C136 79 145 87 145 99 C145 116 127 128 110 144Z" (220x220 viewBox).
+  /// Bounding box: x [75,145], y [79,144] → center (110, 111.5).
+  Path _heartPath(Offset center) {
+    const double srcCx = 110;
+    const double srcCy = 111.5;
+    final double dx = center.dx - srcCx;
+    final double dy = center.dy - srcCy;
 
     final path = Path();
-    // HTML SVG d="M110 144 C93 128 75 116 75 99 C75 87 84 79 95 79 C102 79 107 83 110 89 C113 83 118 79 125 79 C136 79 145 87 145 99 C145 116 127 128 110 144Z"
-    // The original SVG was 220x220, centered at 110. Since this canvas is 144x144, 
-    // the offset needs to be shifted so 110 becomes 72. (Offset by -38)
-    const double dx = -38;
-    const double dy = -38 + 8; // Added 8px down shift for centering since original transform-origin was 110 118
-
     path.moveTo(110 + dx, 144 + dy);
     path.cubicTo(93 + dx, 128 + dy, 75 + dx, 116 + dy, 75 + dx, 99 + dy);
     path.cubicTo(75 + dx, 87 + dy, 84 + dx, 79 + dy, 95 + dx, 79 + dy);
@@ -125,37 +130,40 @@ class HeartPainter extends CustomPainter {
     path.cubicTo(136 + dx, 79 + dy, 145 + dx, 87 + dy, 145 + dx, 99 + dy);
     path.cubicTo(145 + dx, 116 + dy, 127 + dx, 128 + dy, 110 + dx, 144 + dy);
     path.close();
+    return path;
+  }
 
-    canvas.drawPath(path, paint);
+  /// Cross (X) path centered on [center]. Source SVG lines: (80,80)-(140,140)
+  /// and (140,80)-(80,140) → bounding box center (110, 110).
+  Path _crossPath(Offset center) {
+    const double srcCx = 110;
+    const double srcCy = 110;
+    final double dx = center.dx - srcCx;
+    final double dy = center.dy - srcCy;
+
+    final path = Path();
+    path.moveTo(80 + dx, 80 + dy);
+    path.lineTo(140 + dx, 140 + dy);
+    path.moveTo(140 + dx, 80 + dy);
+    path.lineTo(80 + dx, 140 + dy);
+    return path;
+  }
+
+  /// Returns the sub-path of [source] covering [progress] (0-1) of its total length.
+  Path _extractProgress(Path source, double progress) {
+    if (progress >= 1) return source;
+    final result = Path();
+    for (final metric in source.computeMetrics()) {
+      final length = metric.length * progress;
+      result.addPath(metric.extractPath(0, length), Offset.zero);
+    }
+    return result;
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class CrossPainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-
-  CrossPainter({required this.color, required this.strokeWidth});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    // HTML SVG x1="80" y1="80" x2="140" y2="140"
-    // Center at 110 offset to 72 (-38)
-    const double dx = -38;
-    const double dy = -38;
-
-    canvas.drawLine(const Offset(80 + dx, 80 + dy), const Offset(140 + dx, 140 + dy), paint);
-    canvas.drawLine(const Offset(140 + dx, 80 + dy), const Offset(80 + dx, 140 + dy), paint);
+  bool shouldRepaint(covariant _SwipeIconPainter oldDelegate) {
+    return oldDelegate.circleProgress != circleProgress ||
+        oldDelegate.iconProgress != iconProgress ||
+        oldDelegate.isLike != isLike;
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
