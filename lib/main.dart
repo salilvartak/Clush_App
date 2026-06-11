@@ -310,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _bgVideoController = VideoPlayerController.asset('assets/images/login.mp4')
+    _bgVideoController = VideoPlayerController.asset('assets/images/login_1.mp4')
       ..setLooping(true)
       ..setVolume(0)
       ..initialize().then((_) {
@@ -432,21 +432,6 @@ class _LoginScreenState extends State<LoginScreen> {
               'assets/images/bg.png',
               fit: BoxFit.cover,
             ),
-          // Gradient overlay so the logo and text stay readable over the video
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: 0.55),
-                  Colors.black.withValues(alpha: 0.35),
-                  Colors.black.withValues(alpha: 0.65),
-                ],
-                stops: const [0.0, 0.45, 1.0],
-              ),
-            ),
-          ),
           // Content
           SafeArea(
             child: LayoutBuilder(

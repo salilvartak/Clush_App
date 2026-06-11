@@ -4,7 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:clush/main.dart'; 
+import 'package:clush/main.dart';
+import 'package:clush/screens/chat_page.dart';
 import 'package:clush/services/stream_service.dart';
 import 'package:clush/widgets/notification_overlay.dart';
 import 'package:stream_chat_flutter_core/stream_chat_flutter_core.dart';
@@ -116,7 +117,13 @@ class NotificationService {
 
     switch (type) {
       case 'new_match':
-        // Navigate to match/chat
+      case 'new_message':
+        final otherUserId = type == 'new_match'
+            ? payload['matchId'] as String?
+            : payload['sender_id'] as String?;
+        if (otherUserId != null) {
+          _openChat(otherUserId);
+        }
         break;
       case 'new_like':
         // Navigate to likes
@@ -126,6 +133,50 @@ class NotificationService {
         break;
       default:
         // Default behavior (open app)
+    }
+  }
+
+  Future<void> _openChat(String otherUserId) async {
+    final myId = FirebaseAuth.instance.currentUser?.uid;
+    if (myId == null) return;
+
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    try {
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('full_name, photo_urls')
+          .eq('id', otherUserId)
+          .maybeSingle();
+
+      final matchName = profile?['full_name'] as String? ?? 'Match';
+      final photoUrls = profile?['photo_urls'] as List?;
+      final matchPhotoUrl = (photoUrls != null && photoUrls.isNotEmpty)
+          ? photoUrls[0] as String
+          : null;
+
+      // Fetch my own name for the chat header
+      final myProfile = await Supabase.instance.client
+          .from('profiles')
+          .select('full_name')
+          .eq('id', myId)
+          .maybeSingle();
+      final myName = myProfile?['full_name'] as String? ?? 'Me';
+
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            myId: myId,
+            matchId: otherUserId,
+            myName: myName,
+            matchName: matchName,
+            matchPhotoUrl: matchPhotoUrl,
+          ),
+        ),
+      );
+    } catch (e) {
+      print("⚠️ Error opening chat from notification: $e");
     }
   }
 
